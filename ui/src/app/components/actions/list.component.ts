@@ -21,7 +21,7 @@ import {NaturaltextActionExample} from "../../models/natural-text-action-example
 export class ListComponent extends BaseComponent implements OnInit {
   public nlActions: Page<NaturalTextActions>;
   public selectedTemplate: NaturaltextActionExample;
-  public filteredBy: string;
+  public filteredBy: String;
   public actions: String[] = ["all"];
   public filterIsOpen = false;
   @ViewChild('filter') overlayDir: CdkConnectedOverlay;

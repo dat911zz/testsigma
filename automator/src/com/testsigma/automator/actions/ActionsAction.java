@@ -45,7 +45,6 @@ public abstract class ActionsAction extends ElementAction {
         throw ex;
       } else {
         log.error("Encountered exception, doing a retry: " + ex.getMessage(), ex);
-        log.error("Encountered exception, doing a retry: " + ex.getMessage(), ex);
         scrollToElement(elementVariableName);
         if (retry) {
           click(elementVariableName, false);
