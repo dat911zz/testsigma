@@ -25,6 +25,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -53,7 +54,8 @@ public class TestDataProfilesController {
   }
 
   @RequestMapping(method = RequestMethod.GET)
-  public Page<TestDataProfileDTO> index(TestDataProfileSpecificationsBuilder builder, Pageable pageable) {
+  public Page<TestDataProfileDTO> index(TestDataProfileSpecificationsBuilder builder,
+                                        @PageableDefault(value = Integer.MAX_VALUE, page = 0) Pageable pageable) {
     Specification<TestData> spec = builder.build();
     Page<TestData> testData = this.service.findAll(spec, pageable);
     List<TestDataProfileDTO> testDataProfileDTOS =

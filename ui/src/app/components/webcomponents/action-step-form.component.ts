@@ -1001,6 +1001,9 @@ export class ActionStepFormComponent extends BaseComponent implements OnInit {
               //   }
               //   return this.stopEvent(event);
               // }
+              if (item?.dataset?.reference == "test-data-profile") {
+                this.showDataTypes = true;
+              }
               if (event.key == "Enter" && !this.showDataTypes) {
                 return this.stopEvent(event);
               }

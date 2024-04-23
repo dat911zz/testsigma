@@ -29,7 +29,7 @@
               <span
                 [translate]="'test_plan.btn.run'"></span></button>
           </div>
-          <div *ngIf="version?.workspace?.isMobileNative && !testCase?.deleted">
+          <div *ngIf="(version?.workspace && version?.workspace?.isMobileNative) && !testCase?.deleted">
             <button
               *ngIf="hasInspectorFeature()"
               [routerLink]="['/td', 'record', testCase.workspaceVersionId]"

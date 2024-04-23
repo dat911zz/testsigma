@@ -37,14 +37,14 @@ REM Set execute permissions for stop_nginx.sh
 icacls "%BUILD_FOLDER%\stop_nginx.sh" /grant Everyone:RX
 
 REM Copy Nginx files
-xcopy /s /e /i "%ROOT_FOLDER%\.testsigma_os\%OS_PATH_SUFFIX%\nginx" "%BUILD_FOLDER%\"
+xcopy /s /e /i "%ROOT_FOLDER%\.testsigma_os\%OS_PATH_SUFFIX%\nginx" "%BUILD_FOLDER%\nginx"
 
 REM Testsigma UI Build
 set "UI_BUILD_FILE_PREFIX=TestsigmaUI"
 set "UI_BUILD_FOLDER=%BUILD_FOLDER%\%UI_BUILD_FILE_PREFIX%"
 rmdir /s /q "%UI_BUILD_FOLDER%"
 mkdir "%UI_BUILD_FOLDER%"
-xcopy /s /e /i "%WORKING_DIR%\ui\dist\testsigma-angular\*" "%UI_BUILD_FOLDER%"
+xcopy /s /e /i "%ROOT_FOLDER%\ui\dist\testsigma-angular\*" "%UI_BUILD_FOLDER%"
 
 REM Testsigma Server Build
 set "SERVER_BUILD_FILE_PREFIX=TestsigmaServer"
@@ -61,7 +61,7 @@ copy "%ROOT_FOLDER%\server\src\main\scripts\posix\start.sh" "%SERVER_BUILD_FOLDE
 copy "%ROOT_FOLDER%\server\src\main\scripts\windows\start.bat" "%SERVER_BUILD_FOLDER%\"
 copy "%ROOT_FOLDER%\server\src\main\scripts\posix\stop.sh" "%SERVER_BUILD_FOLDER%\"
 copy "%ROOT_FOLDER%\server\src\main\scripts\windows\stop.bat" "%SERVER_BUILD_FOLDER%\"
-xcopy /s /e /i "%ROOT_FOLDER%\.testsigma_os\%OS_PATH_SUFFIX%\jre" "%SERVER_BUILD_FOLDER%"
+xcopy /s /e /i "%ROOT_FOLDER%\.testsigma_os\%OS_PATH_SUFFIX%\jre" "%SERVER_BUILD_FOLDER%\jre"
 
 REM Copy Windows-specific files
 if "%OS_PATH_SUFFIX%"=="windows" (
