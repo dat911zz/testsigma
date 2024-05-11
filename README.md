@@ -3,8 +3,6 @@
 <a href="https://discord.gg/invite/5caWS7R6QX"><img src="https://img.shields.io/badge/chat-discord-brightgreen.svg?logo=discord&style=flat"></a>
 <a href="https://testsigma.com/newsletter"><img src="https://img.shields.io/badge/newsletter-subscribe-yellow.svg?style=flat"></a>
 
-
-
 <a href="https://testsigma.com/signup?utm_source=github&utm_medium=social">![testsigma-os-banner](https://docs.testsigma.com/images/github/testsigma-opensource-banner-new.png)</a>
 
 <p align="center">
