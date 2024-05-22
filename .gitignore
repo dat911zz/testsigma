@@ -5,3 +5,6 @@ out/**
 bin/**
 logs/**
 *.zip
+/run-and-debug/nginx/logs/
+/run-and-debug/nginx/ssl/
+.log
