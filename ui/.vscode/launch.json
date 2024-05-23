@@ -2,9 +2,9 @@
     "configurations": [
         {
             "type": "chrome",
-            "name": "http://localhost:4202/",
+            "name": "local.testsigmaos.com",
             "request": "launch",
-            "url": "http://localhost:4202/"
+            "url": "https://local.testsigmaos.com/"
         }
     ]
 }
