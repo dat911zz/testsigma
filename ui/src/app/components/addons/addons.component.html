@@ -4,9 +4,10 @@
       <div class="ts-col-50 my-auto" *ngIf="authGuard?.openSource?.isEnabled">
         <div class="text-center fz-20 rb-light" [innerHTML]="'settings.testsigma_free_lab.already_registered' | translate"></div>
       </div>
-      <div class="ts-col-50 h-100 overflow-y-auto" *ngIf="!authGuard?.openSource?.isEnabled">
+      <div class="ts-col-50 h-100 overflow-y-auto" *ngIf="!authGuard?.openSource?.isEnabled"
+           [ngStyle]="{'background-color': '#F2F8F2', 'padding': '5% 6%'}">
 <!--        <app-testsigma-signin [isAddon]=true></app-testsigma-signin>-->
-<!--        <app-plugins [testInput]="input here hehe"></app-plugins>-->
+        <app-plugins [testInput]="'input here hehe'"></app-plugins>
       </div>
       <div class="ts-col-50 bg-light h-100 border-rds-right-3"
            [ngStyle]="{'background-color': '#F2F8F2', 'padding': '5% 6%'}"
