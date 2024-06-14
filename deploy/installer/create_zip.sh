@@ -1,14 +1,18 @@
 #!/bin/bash
 set -x
-set -e
+#set -e
 
 WORKING_DIR="$(pwd -P)"
 
 ROOT_FOLDER="$(cd "$(dirname "$0")"; cd ../../ ; pwd -P)"
 
-BUILD_OS_NAME=$1
-OS_PATH_SUFFIX=$2
-VERSION=$3
+#BUILD_OS_NAME=$1
+#OS_PATH_SUFFIX=$2
+#VERSION=$3
+
+BUILD_OS_NAME="Windows"
+OS_PATH_SUFFIX="windows"
+VERSION="3.0.1"
 
 echo "Generating $OS_PATH_SUFFIX testsigma build"
 
@@ -59,10 +63,10 @@ cp -Rf $ROOT_FOLDER/server/src/main/scripts/posix/start.sh "$SERVER_BUILD_FOLDER
 cp -Rf $ROOT_FOLDER/server/src/main/scripts/windows/start.bat "$SERVER_BUILD_FOLDER/"
 cp -Rf $ROOT_FOLDER/server/src/main/scripts/posix/stop.sh "$SERVER_BUILD_FOLDER/"
 cp -Rf $ROOT_FOLDER/server/src/main/scripts/windows/stop.bat "$SERVER_BUILD_FOLDER/"
-cp -Rf $HOME/.testsigma_os/$OS_PATH_SUFFIX/jre "$SERVER_BUILD_FOLDER"
+cp -Rf $ROOT_FOLDER/.testsigma_os/$OS_PATH_SUFFIX/jre "$SERVER_BUILD_FOLDER"
 
 if [[ "$OS_PATH_SUFFIX" == "windows"* ]]; then
-  cp -Rf $HOME/.testsigma_os/windows/windows-kill.exe "$SERVER_BUILD_FOLDER/"
+  cp -Rf $ROOT_FOLDER/.testsigma_os/windows/windows-kill.exe "$SERVER_BUILD_FOLDER/"
 fi
 
 
@@ -88,17 +92,17 @@ cp -Rf $ROOT_FOLDER/agent/src/main/scripts/posix/start.sh "$AGENT_BUILD_FOLDER/"
 cp -Rf $ROOT_FOLDER/agent/src/main/scripts/posix/stop.sh "$AGENT_BUILD_FOLDER/"
 
 if [[ "$OS_PATH_SUFFIX" == "windows"* ]]; then
-  cp -Rf $HOME/.testsigma_os/windows/windows-kill.exe "$AGENT_BUILD_FOLDER/"
+  cp -Rf $ROOT_FOLDER/.testsigma_os/windows/windows-kill.exe "$AGENT_BUILD_FOLDER/"
 fi
-cp -Rf $HOME/.testsigma_os/$OS_PATH_SUFFIX/jre "$AGENT_BUILD_FOLDER"
+cp -Rf $ROOT_FOLDER/.testsigma_os/$OS_PATH_SUFFIX/jre "$AGENT_BUILD_FOLDER"
 
 chmod +x "$AGENT_BUILD_FOLDER/start.sh"
 chmod +x "$AGENT_BUILD_FOLDER/stop.sh"
 chmod -R +xw "$AGENT_BUILD_FOLDER/jre"
 
-cp -Rf $HOME/.testsigma_os/$OS_PATH_SUFFIX/android "$AGENT_BUILD_FOLDER"
-cp -Rf $HOME/.testsigma_os/$OS_PATH_SUFFIX/ios "$AGENT_BUILD_FOLDER"
-cp -Rf $HOME/.testsigma_os/$OS_PATH_SUFFIX/appium "$AGENT_BUILD_FOLDER"
+cp -Rf $ROOT_FOLDER/.testsigma_os/$OS_PATH_SUFFIX/android "$AGENT_BUILD_FOLDER"
+cp -Rf $ROOT_FOLDER/.testsigma_os/$OS_PATH_SUFFIX/ios "$AGENT_BUILD_FOLDER"
+cp -Rf $ROOT_FOLDER/.testsigma_os/$OS_PATH_SUFFIX/appium "$AGENT_BUILD_FOLDER"
 
 chmod -R +xw "$AGENT_BUILD_FOLDER/appium"
 chmod -R +xw "$AGENT_BUILD_FOLDER/android"
