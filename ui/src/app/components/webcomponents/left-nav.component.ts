@@ -23,7 +23,6 @@ import {AuthenticationConfigService} from "../../services/authentication-config.
 import {AuthenticationType} from "../../shared/enums/authentication-type.enum";
 import {DryRunFormComponent} from "./dry-run-form.component";
 import {TestsigmaLoveComponent} from "./testsigma-love.component";
-import moment from "moment";
 import {UserPreference} from "../../models/user-preference.model";
 import {TestsigmaGitHubStarLoveComponent} from "../../shared/components/webcomponents/testsigma-github-star-love.component";
 import {TestPlanService} from "../../services/test-plan.service";
@@ -63,8 +62,8 @@ export class LeftNavComponent extends BaseComponent implements OnInit,OnDestroy 
   }
 
   ngOnInit() {
-    this.setIntervalToCheckGithubStar();
-    this.checkIfGithubStarIsShown();
+    // this.setIntervalToCheckGithubStar();
+    // this.checkIfGithubStarIsShown();
     this.onBoardingSharedService.getPreferencesEmitter().subscribe((completedEvent: OnBoarding) => {
       if(completedEvent == OnBoarding.TEST_DEVELOPMENT) {
         setTimeout(()=> {
@@ -74,33 +73,33 @@ export class LeftNavComponent extends BaseComponent implements OnInit,OnDestroy 
     })
     this.fetchAuthConfig()
   }
-  GithubStarPopup(){
-    this.clearIntervalIfGitHubStarIsShown();
-    let dialogRef = this.matDialog.open(TestsigmaGitHubStarLoveComponent, {
-      position: {top: '10vh', right: '35vw'},
-      panelClass: ['mat-dialog', 'rds-none','mx-auto'],
-      data: {
-        showTwitter: false,
-        userPreference: this.userPreference
-      }
-    });
-  }
+  // GithubStarPopup(){
+  //   this.clearIntervalIfGitHubStarIsShown();
+  //   let dialogRef = this.matDialog.open(TestsigmaGitHubStarLoveComponent, {
+  //     position: {top: '10vh', right: '35vw'},
+  //     panelClass: ['mat-dialog', 'rds-none','mx-auto'],
+  //     data: {
+  //       showTwitter: false,
+  //       userPreference: this.userPreference
+  //     }
+  //   });
+  // }
 
-  checkIfGithubStarIsShown() {
-    this.userPreferenceService.show().subscribe(res => {
-      this.userPreference = res;
-      const testCaseResults = "test_case_results";
-      if((moment(this.userPreference.createdDate) < moment().subtract(5, 'minute')) &&
-        !this.userPreference?.showedGitHubStar && this.userPreference.clickedSkipForNow<2 && !this.router.url.includes(testCaseResults)) {
-        this.GithubStarPopup();
-      }
+  // checkIfGithubStarIsShown() {
+  //   this.userPreferenceService.show().subscribe(res => {
+  //     this.userPreference = res;
+  //     const testCaseResults = "test_case_results";
+  //     if((moment(this.userPreference.createdDate) < moment().subtract(5, 'minute')) &&
+  //       !this.userPreference?.showedGitHubStar && this.userPreference.clickedSkipForNow<2 && !this.router.url.includes(testCaseResults)) {
+  //       this.GithubStarPopup();
+  //     }
 
-    })
-  }
+  //   })
+  // }
 
-  clearIntervalIfGitHubStarIsShown(){
-      clearInterval(this.autoRefresh);
-  }
+  // clearIntervalIfGitHubStarIsShown(){
+  //     clearInterval(this.autoRefresh);
+  // }
 
   fetchAuthConfig()
   {
@@ -159,19 +158,19 @@ export class LeftNavComponent extends BaseComponent implements OnInit,OnDestroy 
     this.sessionService.logout().subscribe(()=> this.router.navigate(['login']));
   }
 
-  private setIntervalToCheckGithubStar() {
-    this.autoRefresh = setInterval(() => {
-      console.log("autorefresh")
-      if (this.userPreference?.showedGitHubStar) {
-        console.log("remove")
-        this.clearIntervalIfGitHubStarIsShown();
-      } else
-        this.checkIfGithubStarIsShown()
-    }, 60000);
-  }
+  // private setIntervalToCheckGithubStar() {
+  //   this.autoRefresh = setInterval(() => {
+  //     console.log("autorefresh")
+  //     if (this.userPreference?.showedGitHubStar) {
+  //       console.log("remove")
+  //       this.clearIntervalIfGitHubStarIsShown();
+  //     } else
+  //       this.checkIfGithubStarIsShown()
+  //   }, 60000);
+  // }
 
   ngOnDestroy(): void {
-    this.clearIntervalIfGitHubStarIsShown();
+    //this.clearIntervalIfGitHubStarIsShown();
   }
 
   isHoveringItem(itemName) {

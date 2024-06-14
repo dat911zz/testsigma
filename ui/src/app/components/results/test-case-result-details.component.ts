@@ -206,15 +206,15 @@ export class TestCaseResultDetailsComponent extends BaseComponent implements OnI
       this.removeAutoRefresh();
       if(this.userPreference){
         this.testPlanResultService.findAll("createdDate>" + this.userPreference.createdDate + ",result:SUCCESS").subscribe(res => {
-          if(res.content.length>0 && this.userPreference.clickedSkipForNow==1 && !this.userPreference.showedGitHubStar)
-            this.GithubStarPopup();
+          // if(res.content.length>0 && this.userPreference.clickedSkipForNow==1 && !this.userPreference.showedGitHubStar)
+          //   this.GithubStarPopup();
         })
       } else {
         this.userPreferenceService.show().subscribe(userPreference => {
             this.userPreference = userPreference;
           this.testPlanResultService.findAll("createdDate>" + this.userPreference.createdDate + ",result:SUCCESS").subscribe(res => {
-              if (res.content.length>0 && this.userPreference.clickedSkipForNow == 1 && !this.userPreference.showedGitHubStar)
-                this.GithubStarPopup();
+              // if (res.content.length>0 && this.userPreference.clickedSkipForNow == 1 && !this.userPreference.showedGitHubStar)
+              //   this.GithubStarPopup();
             })
           }
         )
@@ -224,17 +224,17 @@ export class TestCaseResultDetailsComponent extends BaseComponent implements OnI
     this.addAutoRefresh();
   }
 
-  GithubStarPopup(){
-    let dialogRef = this.matModal.open(TestsigmaGitHubStarLoveComponent, {
-      position: {top: '10vh', right: '35vw'},
-      panelClass: ['mat-dialog', 'rds-none'],
-      data: {
-        showTwitter: false,
-        userPreference: this.userPreference
-      }
-    });
+  // GithubStarPopup(){
+  //   let dialogRef = this.matModal.open(TestsigmaGitHubStarLoveComponent, {
+  //     position: {top: '10vh', right: '35vw'},
+  //     panelClass: ['mat-dialog', 'rds-none'],
+  //     data: {
+  //       showTwitter: false,
+  //       userPreference: this.userPreference
+  //     }
+  //   });
 
-  }
+  // }
 
   openSummary() {
     //TODO revert that fix compile build error resolved
