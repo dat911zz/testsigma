@@ -9,7 +9,7 @@ for %%I in ("%~dp0..\..") do set "ROOT_FOLDER=%%~fI"
 
 REM Parameters
 set "BUILD_OS_NAME=%1"
-set "OS_PATH_SUFFIX=%2"
+set "OS_PATH_SUFFIX=1.0.0"
 set "VERSION=%3"
 
 echo Generating %OS_PATH_SUFFIX% testsigma build
