@@ -1,0 +1,23 @@
+{
+  "vendor" : "Oracle",
+  "product" : "OpenJDK",
+  "default" : true,
+  "jdk_version_major" : 22,
+  "jdk_version" : "22.0.1",
+  "suggested_sdk_name" : "openjdk-22",
+  "shared_index_aliases" : [ "openjdk-22.0.1", "openjdk-22", "22.0.1", "22" ],
+  "packages" : [ {
+    "os" : "windows",
+    "arch" : "x86_64",
+    "url" : "https://download.java.net/java/GA/jdk22.0.1/c7ec1332f7bb44aeba2eb341ae18aca4/8/GPL/openjdk-22.0.1_windows-x64_bin.zip",
+    "package_type" : "zip",
+    "unpack_prefix_filter" : "jdk-22.0.1",
+    "package_root_prefix" : "jdk-22.0.1",
+    "package_to_java_home_prefix" : "",
+    "archive_file_name" : "openjdk-22.0.1_windows-x64_bin.zip",
+    "install_folder_name" : "openjdk-22.0.1",
+    "archive_size" : 200536892,
+    "unpacked_size" : 334461666,
+    "sha256" : "de7f00fd1bd0d3a4c678fff2681dfad19284d74d357218a4be6f623488d040da"
+  } ]
+}
