@@ -5,3 +5,5 @@ out/**
 bin/**
 logs/**
 *.zip
+deploy/docker/db_data
+deploy/docker/ts_data
