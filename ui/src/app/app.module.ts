@@ -288,6 +288,7 @@ import {TestProjectImportComponent} from "./components/webcomponents/test-projec
 import {ConfirmationModalComponent} from "./shared/components/webcomponents/confirmation-modal.component";
 import {LeftNavHoverComponent} from "./components/webcomponents/left-nav-hover.component";
 import {DashboardGlobalAddComponent} from "./components/webcomponents/dashboard-global-add.component";
+import { PluginsComponent } from './components/plugins/plugins.component';
 
 
 export function momentAdapterFactory() {
@@ -556,7 +557,8 @@ export function HttpLoaderFactory(httpClient: HttpClient) {
     XrayComponent,
     TestProjectImportComponent,
     LeftNavHoverComponent,
-    DashboardGlobalAddComponent
+    DashboardGlobalAddComponent,
+    PluginsComponent
   ],
   imports: [
     BrowserModule,
