@@ -34,6 +34,7 @@ export class AgentFormComponent extends BaseComponent implements OnInit {
   private hostName: String;
   private port: Number;
   private ip: String;
+  public agentURL: string = '';
   public agentUnreachable: boolean;
   public alreadyCreatedAsPrivate: boolean;
   public alreadyCreatedAsPublic: boolean;
@@ -75,7 +76,7 @@ export class AgentFormComponent extends BaseComponent implements OnInit {
         this.addValidations();
       }
     });
-    this.pingAgent();
+    //this.pingAgent();
     this.agentService.findAll('', undefined, undefined).subscribe((res: Page<Agent>) => {
       res.content.forEach(agent  => {
         if (!(!agent.isOnline() || agent.isOutOfSync()) && !this.liveAgentPresent) this.liveAgentPresent = true;
@@ -94,6 +95,9 @@ export class AgentFormComponent extends BaseComponent implements OnInit {
 
   pingAgent() {
     this.loading = true;
+    this.agent.title = this.hostName ? this.hostName : "localhost";
+    this.agent.ipAddress = this.ip ? this.ip : "127.0.0.1";
+    this.agentService.localAgentUrl = "http://localhost:9494";
     if (!this.agentId) {
       this.agentService.ping()
         .subscribe({
@@ -205,5 +209,4 @@ export class AgentFormComponent extends BaseComponent implements OnInit {
     return this.liveAgentPresent ||  this.unableToConnectLocalAgent || this.loading || this.alreadyRegisteredAsPrivate
     || this.alreadyRegisteredAsPublic || (this.duplicateAgent && this.duplicateAgent == this.agent.title)
   }
-
 }

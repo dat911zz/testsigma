@@ -7,19 +7,21 @@ services:
     container_name: mysql
     restart: always
     volumes:
-      - ./db_data:/var/lib/mysql
+      - ./runtime_data/db_data:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: testsigma_opensource
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
     ports:
-      - "3306"
+      - "3306:3307"
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     healthcheck:
       test: out=$$(mysqladmin ping -h localhost -P 3306 -u root --password=root 2>&1); echo $$out | grep 'mysqld is alive' || { echo $$out; exit 1; }
       interval: 1s
       retries: 120
+    networks:
+      - proxy_network
 
   frontend:
     build:
@@ -27,24 +29,48 @@ services:
       dockerfile: Dockerfile
     container_name: angular-app
     volumes:
-      - ../../ui/dist/testsigma-angular:/usr/share/nginx/html
+      - ../../ui/dist/testsigma-angular:/app/dist/testsigma-angular
+    command: ["npx", "ng", "build", "--source-map", "--configuration=docker"]
+    networks:
+      - proxy_network
 
   backend:
     build:
-      context: ../../server
+      context: ../../
       dockerfile: Dockerfile
     container_name: spring-boot-app
+    environment:
+      JAVA_OPTS: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
     ports:
-      - "8080:8080"
-
+      - "9090:9090"
+      - "5005:5005"
+    volumes:
+      - ./runtime_data/ts_data:/opt/app/ts_data
+      - ../../automator:/opt/app/automator
+      - ../../server:/opt/app/server
+      - ./runtime_data/ts_data/file_store:/root/.testsigma/server/file_store
+    depends_on:
+      mysql:
+        condition: service_healthy
+    mem_limit: 1g
+    networks:
+      - proxy_network
+    
   nginx:
     image: nginx:alpine
     container_name: nginx-server
     ports:
       - "80:80"
+      - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx:/etc/nginx
       - ../../ui/dist/testsigma-angular:/usr/share/nginx/html
     depends_on:
       - frontend
       - backend
+    networks:
+      - proxy_network
+
+networks:
+  proxy_network:
+    driver: bridge

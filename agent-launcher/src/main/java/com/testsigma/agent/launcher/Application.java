@@ -28,8 +28,10 @@ public class  Application {
   private static void start() {
     log.info("-------------------- Testsigma Agent - START -------------------");
     try {
+      Thread.sleep(2000);
       File lockFile = new File(Objects.requireNonNull(Config.getDataDir()) + File.separator + "lock");
       File pidFile = new File(Objects.requireNonNull(Config.getDataDir()) + File.separator + "process.pid");
+      log.info("fuck everyone made this shit");
       log.info("Lock File Location: " + lockFile.getAbsolutePath());
       log.info("PID File Location: " + pidFile.getAbsolutePath());
       RandomAccessFile randomAccessFile = new RandomAccessFile(lockFile, "rw");

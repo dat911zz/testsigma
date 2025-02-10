@@ -3,94 +3,79 @@
   <div class="theme-custom-overlay">
     <div class="theme-overlay-container">
       <div class="theme-overlay-header">
-        <div
-          class="theme-overlay-title"
-          [translate]="agentId ? 'agents.edit.title' : 'agents.create'"></div>
-        <button
-          type="button"
-          class="theme-overlay-close"
-          [routerLink]="[(agentId)?'../../../test_plans':'/agents']"
-          data-placement="bottom"
-          [matTooltip]="'pagination.close'|translate">
+        <div class="theme-overlay-title" [translate]="agentId ? 'agents.edit.title' : 'agents.create'"></div>
+        <button type="button" class="theme-overlay-close" [routerLink]="[(agentId)?'../../../test_plans':'/agents']"
+          data-placement="bottom" [matTooltip]="'pagination.close'|translate">
         </button>
       </div>
       <div class="theme-overlay-content">
         <div class="loading-overlay" *ngIf="loading">
           <div class="d-flex flex-column">
             <span class="ts-col-30 mx-auto register-agent"></span>
-            <span class="mx-auto fz-16 rb-medium pt-20"
-                  [translate]="'agents.form.create.registering'"></span>
+            <span class="mx-auto fz-16 rb-medium pt-20" [translate]="'agents.form.create.registering'"></span>
           </div>
         </div>
-        <form
-          class="ts-form" id="agentFormContainer"
-          (keydown.enter)="false"
-          novalidate="novalidate"
-          [formGroup]="agentForm"
-          *ngIf="agent"
-          name="agentForm">
+        <form class="ts-form" id="agentFormContainer" (keydown.enter)="false" novalidate="novalidate"
+          [formGroup]="agentForm" *ngIf="agent" name="agentForm">
           <div [class.loading]="loading">
             <!-- Alert message start -->
-            <div class="note text-danger mb-30"
-                 *ngIf="unableToConnectLocalAgent"
-                 [translate]="'agents.local_agent_unable_to_connect'">
+            <div class="note text-danger mb-30" *ngIf="unableToConnectLocalAgent"
+              [translate]="'agents.local_agent_unable_to_connect'">
             </div>
-            <div class="note text-danger mb-30"
-                 *ngIf="liveAgentPresent && !agentId"
-                 [translate]="'agents.form.active_agent_already_present' | translate">
+            <div class="note text-danger mb-30" *ngIf="liveAgentPresent && !agentId"
+              [translate]="'agents.form.active_agent_already_present' | translate">
             </div>
-            <div class="note text-danger mb-30"
-                 [translate]="'agents.connecting_to_agent'"
-                 *ngIf="connectingToAgent">
+            <div class="note text-danger mb-30" [translate]="'agents.connecting_to_agent'" *ngIf="connectingToAgent">
             </div>
-            <div class="note text-danger mb-30"
-                 [translate]="'agents.form.already_registered_as_public'"
-                 *ngIf="alreadyRegisteredAsPublic && agent.ipAddress !=''">
+            <div class="note text-danger mb-30" [translate]="'agents.form.already_registered_as_public'"
+              *ngIf="alreadyRegisteredAsPublic && agent.ipAddress !=''">
             </div>
-            <div class="note text-danger mb-30"
-                 *ngIf="agentUnreachable">
+            <div class="note text-danger mb-30" *ngIf="agentUnreachable">
               <span [translate]="'agents.form.register.unreachable.failure'"></span>
-               &nbsp;<a
-                  rel="noreferrer nofollow"
-                  href="https://testsigma.com/docs/agent/setup-on-windows-mac-linux/"
-                 target="_blank" [translate]="'message.common.click_here'" class="text-link"></a> or
+              &nbsp;<a rel="noreferrer nofollow" href="https://testsigma.com/docs/agent/setup-on-windows-mac-linux/"
+                target="_blank" [translate]="'message.common.click_here'" class="text-link"></a> or
             </div>
             <div>
               <div class="agent-connect-container pb-50">
                 <div [textContent]="'agents.mobile.recorder.connect_to' | translate "></div>
-                <div [class.active-selection]="!registerRemoteMachine"
-                  class="mx-20 device-item">
+                <div [class.active-selection]="!registerRemoteMachine" class="mx-20 device-item">
                   <i class="fa-tick pr-10"></i>
                   <span [translate]="'agents.create.local_machine'"></span>
                   <i class="fa-desktop pl-10"></i>
                 </div>
               </div>
               <div class="form-group">
-                <input type="text" id="title" name="title" class="form-control"
-                       [(ngModel)]="agent.title"
-                       [formControlName]="['title']"/>
+                <input type="text" id="title" name="title" class="form-control" [(ngModel)]="agent.title"
+                  [formControlName]="['title']" />
                 <label for="title" class="control-label required">
                   <span [translate]="'agents.title_name'"></span>
                 </label>
-                <div
-                  *ngIf="agentForm.get('title').hasError('required') && formSubmitted"
-                  class="error" [translate]="'agents.message.title.required'">
+                <div *ngIf="agentForm.get('title').hasError('required') && formSubmitted" class="error"
+                  [translate]="'agents.message.title.required'">
                 </div>
-                <div
-                  *ngIf="agentForm.get('title').hasError('minlength') && formSubmitted"
-                  class="error" [translate]="'agents.message.title.minlength'">
+                <div *ngIf="agentForm.get('title').hasError('minlength') && formSubmitted" class="error"
+                  [translate]="'agents.message.title.minlength'">
                 </div>
               </div>
+              <!-- <div class="form-group">
+                <input type="text" id="agentURL" name="agentURL" class="form-control" [(ngModel)]="agentURL"
+                  [formControlName]="['agentURL']" (change)="onAgentAddressChange($event)"/>
+                <label for="agentURL" class="control-label">
+                  <span [translate]="'agents.title_agentURL'"></span>
+                </label>
+              </div> -->
             </div>
           </div>
         </form>
       </div>
       <div class="theme-overlay-footer">
-        <button
-          class="theme-btn-clear-default" [routerLink]="[(agentId)?'../../../':'/agents']"
+        <button class="theme-btn-clear-default" [routerLink]="[(agentId)?'../../../':'/agents']"
           [translate]="'btn.common.cancel'"></button>
+        <button class="theme-btn-clear-default" (click)="pingAgent()">
+          <span [translate]="'btn.common.ping'" *ngIf="!loading"></span>
+        </button>
         <button class="theme-btn-primary" (click)="(agentId) ? updateAgent() : saveAgent()"
-                [disabled]="(agentId ? null : disableAgentCreation())">
+          [disabled]="(agentId ? null : disableAgentCreation())">
           <span [translate]="(agentId ? 'btn.common.update' : 'btn.common.save')" *ngIf="!loading"></span>
           <span [translate]="'btn.common.please_wait'" *ngIf="loading"></span>
         </button>
@@ -98,4 +83,3 @@
     </div>
   </div>
 </div>
-

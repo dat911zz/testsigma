@@ -99,7 +99,12 @@ public class PlatformsService {
     if (response.getStatusCode() < 300) {
       return response.getResponseEntity();
     } else {
-      return null;
+      PlatformOsVersion platformOsVersion = new PlatformOsVersion();
+      platformOsVersion.setPlatform(platform);
+      platformOsVersion.setWorkspaceType(workspaceType);
+      platformOsVersion.setVersion(osVersion);
+      platformOsVersion.setDisplayName(platform.name());
+      return platformOsVersion;
     }
   }
 
@@ -164,7 +169,12 @@ public class PlatformsService {
     if (response.getStatusCode() < 300) {
       return response.getResponseEntity();
     } else {
-      return null;
+      PlatformBrowserVersion platformBrowserVersion = new PlatformBrowserVersion();
+      platformBrowserVersion.setPlatform(platform);
+      platformBrowserVersion.setVersion(platform.getVersionPrefix());
+      platformBrowserVersion.setDisplayVersion(browserVersion);
+      platformBrowserVersion.setName(browserName);
+      return platformBrowserVersion;
     }
   }
 

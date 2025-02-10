@@ -56,6 +56,12 @@
       </plugin>
     </plugins>
   </build>
+  <repositories>
+    <repository>
+      <id>central</id>
+      <url>https://repo1.maven.org/maven2/</url>
+    </repository>
+  </repositories>
   <properties>
     <lombok.version>1.18.22</lombok.version>
     <systemtray.version>3.17</systemtray.version>

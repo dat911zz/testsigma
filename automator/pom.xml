@@ -6,7 +6,6 @@
   <version>1.0.0</version>
   <name>Testsigma Automator</name>
   <description>Automator for testsigma</description>
-
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <javax.media.version>2.1.1e</javax.media.version>
@@ -45,6 +44,15 @@
     <jetbrains.annotations.version>22.0.0</jetbrains.annotations.version>
   </properties>
 
+  <repositories>
+    <repository>
+      <id>central</id>
+      <url>https://repo1.maven.org/maven2</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+    </repository>
+  </repositories>
 
   <dependencies>
     <dependency>

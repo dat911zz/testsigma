@@ -28,7 +28,7 @@ public class LinuxBrowsers {
     try {
       ProcessBuilder processBuilder = new ProcessBuilder(command);
       log.debug("Executing command - " + Arrays.toString(command));
-
+      Thread.sleep(5000);
       processBuilder.environment().put("PATH", System.getenv("PATH"));
 
       process = processBuilder.start();

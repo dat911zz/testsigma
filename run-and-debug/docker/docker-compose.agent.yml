@@ -1,0 +1,107 @@
+version: '3.9'
+
+services:  
+  agent_setup:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.Agent.Build
+    container_name: ts-agent-setup
+    environment:
+      # JAVA_OPTS_AGENT: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      # JAVA_OPTS_LAUNCHER: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5006
+      CLOUD_URL: http://backend:9090
+      LOCAL_SERVER_URL: http://backend:9090
+    # ports:
+    #   - "5006:5005"
+    #   - "5007:5006"
+    #   - "8383:8383"
+    #   - "9494:9494"
+    volumes:
+      - ./runtime_data/ts_data:/opt/app/ts_data
+      - ../../automator:/opt/app/automator
+      - ../../agent:/opt/app/agent
+      - ../../agent-launcher:/opt/app/agent-launcher
+    networks:
+      - proxy_network
+  # nginx-farm:
+  #   image: nginx:alpine
+  #   container_name: nginx_agent_farm
+  #   ports:
+  #     - "9494:9494"
+  #   volumes:
+  #     - ./nginx_agent_farm:/etc/nginx
+  #   depends_on:
+  #     - agent
+  #     # - agent2
+  #     # - agent3
+  #   networks:
+  #     - proxy_network
+  agent:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.Agent
+    container_name: ts-agent
+    environment:
+      JAVA_OPTS_AGENT: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      CLOUD_URL: http://backend:9090
+      LOCAL_SERVER_URL: http://backend:9090
+    ports:
+      - "5006:5005"
+      - "9494:9494"
+    volumes:
+      - ./runtime_data/ts_data:/opt/app/ts_data
+      - ../../automator:/opt/app/automator
+      - ../../agent:/opt/app/agent
+      - ../../agent-launcher:/opt/app/agent-launcher
+    networks:
+      - proxy_network
+    depends_on:
+      agent_setup:
+        condition: service_completed_successfully
+  # agent2:
+  #   build:
+  #     context: ../../
+  #     dockerfile: Dockerfile.Agent
+  #   container_name: ts-agent-2
+  #   environment:
+  #     JAVA_OPTS_AGENT: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+  #     CLOUD_URL: http://backend:9090
+  #     LOCAL_SERVER_URL: http://backend:9090
+  #   ports:
+  #     - "5007:5005"
+  #     - "9496:9494"
+  #   volumes:
+  #     - ./runtime_data/ts_data:/opt/app/ts_data
+  #     - ../../automator:/opt/app/automator
+  #     - ../../agent:/opt/app/agent
+  #     - ../../agent-launcher:/opt/app/agent-launcher
+  #   networks:
+  #     - proxy_network
+  #   depends_on:
+  #     agent_setup:
+  #       condition: service_completed_successfully
+  # agent3:
+  #   build:
+  #     context: ../../
+  #     dockerfile: Dockerfile.Agent
+  #   container_name: ts-agent-3
+  #   environment:
+  #     JAVA_OPTS_AGENT: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+  #     CLOUD_URL: http://backend:9090
+  #     LOCAL_SERVER_URL: http://backend:9090
+  #   ports:
+  #     - "5008:5005"
+  #     - "9497:9494"
+  #   volumes:
+  #     - ./runtime_data/ts_data:/opt/app/ts_data
+  #     - ../../automator:/opt/app/automator
+  #     - ../../agent:/opt/app/agent
+  #     - ../../agent-launcher:/opt/app/agent-launcher
+  #   networks:
+  #     - proxy_network
+  #   depends_on:
+  #     agent_setup:
+  #       condition: service_completed_successfully
+networks:
+  proxy_network:
+    driver: bridge

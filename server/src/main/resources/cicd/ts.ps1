@@ -13,15 +13,15 @@
 <# START USER INPUTS..#>
 
 
-$TESTSIGMA_API_KEY="gdhdfhgfhgdfdgfdgkd.dehdeuhiuehduehipdeh"
-$TESTSIGMA_TEST_PLAN_ID="190"
+$TESTSIGMA_API_KEY="512df2d1bdc24274a0f7803793a2bb8d"
+$TESTSIGMA_TEST_PLAN_ID="403"
 $REPORT_FILE_PATH="./junit-report.xml"
 $MAX_WAIT_TIME_FOR_SCRIPT_TO_EXIT=180
 $RUN_TIME_PARAMS=@{}
 <# END USER INPUTS #>
 
-$TESTSIGMA_TEST_PLAN_REST_URL="https://app.testsigma.com/api/v1/test_plan_results"
-$TESTSIGMA_JUNIT_REPORT_URL="https://app.testsigma.com/api/v1/reports/junit"
+$TESTSIGMA_TEST_PLAN_REST_URL="https://local.testsigmaos.com/api/v1/test_plan_results"
+$TESTSIGMA_JUNIT_REPORT_URL="https://local.testsigmaos.com/api/v1/reports/junit"
 
 $POLL_INTERVAL_FOR_RUN_STATUS=5
 $NO_OF_POLLS=($MAX_WAIT_TIME_FOR_SCRIPT_TO_EXIT/$POLL_INTERVAL_FOR_RUN_STATUS)

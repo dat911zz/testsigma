@@ -203,8 +203,11 @@ public class Launcher {
         commandLineParameters.add(listStr);
       }
     }
+    String javaOpts = System.getenv("JAVA_OPTS_LAUNCHER");
+
     List<String> command = new ArrayList<>();
     command.add(getJavaPath());
+    command.add(javaOpts);
     command.addAll(commandLineParameters);
     command.add("-cp");
     command.add(getAgentClassPath());
@@ -281,10 +284,11 @@ public class Launcher {
   }
 
   private String getJavaPath() {
-    String rootDir = System.getProperty("TS_ROOT_DIR");
-    if (StringUtils.isNotBlank(rootDir)) {
-      System.setProperty("java.home", rootDir + File.separator + "jre");
-    }
+//    String rootDir = System.getProperty("TS_ROOT_DIR");
+//
+//    if (StringUtils.isNotBlank(rootDir)) {
+//      System.setProperty("java.home", rootDir + File.separator + "jre");
+//    }
     return System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
   }
 

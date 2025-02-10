@@ -58,5 +58,27 @@ public class AgentWebServerService {
       log.error("Failed to auto register local agent - " + e.getMessage(), e);
     }
   }
+  public void registerAgent(String host, int port) {
+    try {
+      if (!agentConfig.getRegistered() && agentConfig.getLocalAgentRegister()) {
+        log.info("Triggering local agent registration since agent is not registered");
+        agentConfig.setUUID(UUID.randomUUID().toString());
+        agentConfig.saveConfig();
 
+        HttpResponse<String> response = httpClient.get(ServerURLBuilder.registerLocalAgentURL(
+                AgentService.getComputerName(), agentConfig.getLocalServerUrl()), new TypeReference<>() {
+        });
+        if (response.getStatusCode() == HttpStatus.OK.value()) {
+          log.info("Agent register triggered successfully");
+        } else {
+          log.info("Failed to trigger local agent registration. May be server is not running in localhost. " +
+                  "Response code - " + response.getStatusCode() + " , message - " + response.getResponseText());
+        }
+      } else {
+        log.info("Agent already registered...skipping local agent registration");
+      }
+    } catch (Exception e) {
+      log.error("Failed to auto register local agent - " + e.getMessage(), e);
+    }
+  }
 }

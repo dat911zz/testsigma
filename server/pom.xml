@@ -7,7 +7,12 @@
   <artifactId>testsigma-server</artifactId>
   <packaging>jar</packaging>
   <name>Testsigma Server</name>
-
+  <repositories>
+    <repository>
+      <id>central</id>
+      <url>https://repo1.maven.org/maven2/</url>
+    </repository>
+  </repositories>
   <licenses>
     <license>
       <name>The Apache Software License, Version 2.0</name>
