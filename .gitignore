@@ -11,4 +11,5 @@ deploy/docker/ts_data
 /run-and-debug/nginx/ssl/
 *.log
 /Testsigma
-/run-and-debug/v2/db_data
+runtime_data/
+.testsigma_os/linux
