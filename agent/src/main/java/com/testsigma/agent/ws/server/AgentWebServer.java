@@ -69,6 +69,7 @@ public class AgentWebServer {
   }
 
   private void startDefaultConnectors() throws Exception {
+    log.info("Starting to fetch cert...");
     fetchWebServerCertificate();
     startDefaultHttpConnector();
     startDefaultHttpsConnector();
@@ -83,7 +84,8 @@ public class AgentWebServer {
     if (!this.isCertificateFetched) {
       AgentWebServerConfigDTO agentWebServerConfigDTO = agentWebServerService.getWebServerCertificate();
       if (agentWebServerConfigDTO == null) {
-        throw new Exception("Could not fetch agent web server config from Testsigma cloud...");
+        agentWebServerConfigDTO = new AgentWebServerConfigDTO();
+        log.warn("Could not fetch agent web server config from Testsigma cloud...");
       }
 
       this.certificate = getCertificate(agentWebServerConfigDTO);
@@ -116,15 +118,15 @@ public class AgentWebServer {
   private ServerConnector startHttpsConnector(int httpsPort) throws Exception {
     log.info("Starting agent HTTPS connector at port - " + httpsPort);
     ServerConnector serverConnector;
-    SslContextFactory.Server context = new SslContextFactory.Server();
-    KeyStore keyStore = KeyStore.getInstance("PKCS12");
-    try (ByteArrayInputStream certificateStream = new ByteArrayInputStream(this.certificate)) {
-      keyStore.load(certificateStream, new String(this.key, StandardCharsets.UTF_8).toCharArray());
-    }
-    context.setKeyStore(keyStore);
-    context.setKeyStorePassword(new String(this.key, StandardCharsets.UTF_8));
+//    SslContextFactory.Server context = new SslContextFactory.Server();
+//    KeyStore keyStore = KeyStore.getInstance("PKCS12");
+//    try (ByteArrayInputStream certificateStream = new ByteArrayInputStream(this.certificate)) {
+//      keyStore.load(certificateStream, new String(this.key, StandardCharsets.UTF_8).toCharArray());
+//    }
+//    context.setKeyStore(keyStore);
+//    context.setKeyStorePassword(new String(this.key, StandardCharsets.UTF_8));
 
-    serverConnector = new ServerConnector(this.server, context);
+    serverConnector = new ServerConnector(this.server);
     serverConnector.setPort(httpsPort);
     serverConnector.start();
     this.server.addConnector(serverConnector);
