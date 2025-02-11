@@ -93,27 +93,19 @@ public class PlatformsService {
                                                 WorkspaceType workspaceType,
                                                 TestPlanLabType testPlanLabType) throws TestsigmaException {
 
-    com.testsigma.util.HttpResponse<PlatformOsVersion> response = httpClient.get(getPlatformOsVersionUrl(platform,
-      osVersion, workspaceType, testPlanLabType), getHeaders(testPlanLabType), new TypeReference<>() {
-    });
-    if (response.getStatusCode() < 300) {
-      return response.getResponseEntity();
-    } else {
-      return null;
-    }
+    PlatformOsVersion platformOsVersion = new PlatformOsVersion();
+    platformOsVersion.setPlatform(platform);
+    platformOsVersion.setWorkspaceType(workspaceType);
+    platformOsVersion.setVersion(osVersion);
+    return platformOsVersion;
   }
 
   public PlatformOsVersion getPlatformOsVersion(Long platformOsVersionId,
                                                 TestPlanLabType testPlanLabType) throws TestsigmaException {
 
-    com.testsigma.util.HttpResponse<PlatformOsVersion> response = httpClient.get(getPlatformOsVersionUrl(platformOsVersionId,
-        testPlanLabType), getHeaders(testPlanLabType), new TypeReference<>() {
-    });
-    if (response.getStatusCode() < 300) {
-      return response.getResponseEntity();
-    } else {
-      return null;
-    }
+    PlatformOsVersion platformOsVersion = new PlatformOsVersion();
+    platformOsVersion.setId(platformOsVersionId);
+    return platformOsVersion;
   }
 
 
@@ -158,27 +150,21 @@ public class PlatformsService {
                                                           Browsers browserName, String browserVersion,
                                                           TestPlanLabType testPlanLabType) throws TestsigmaException {
 
-    com.testsigma.util.HttpResponse<PlatformBrowserVersion> response = httpClient.get(getBrowserUrl(platform,
-      osVersion, browserName.toString(), browserVersion, testPlanLabType), getHeaders(testPlanLabType), new TypeReference<>() {
-    });
-    if (response.getStatusCode() < 300) {
-      return response.getResponseEntity();
-    } else {
-      return null;
-    }
+    PlatformBrowserVersion platformBrowserVersion = new PlatformBrowserVersion();
+    platformBrowserVersion.setPlatform(platform);
+    platformBrowserVersion.setOsVersion(osVersion);
+    platformBrowserVersion.setVersion(browserVersion);
+    platformBrowserVersion.setDisplayVersion(browserVersion);
+    platformBrowserVersion.setName(browserName);
+    return platformBrowserVersion;
   }
 
   public PlatformBrowserVersion getPlatformBrowserVersion(Long platformBrowserVersionId,
                                                           TestPlanLabType testPlanLabType) throws TestsigmaException {
 
-    com.testsigma.util.HttpResponse<PlatformBrowserVersion> response = httpClient.get(getBrowserUrl(platformBrowserVersionId,
-        testPlanLabType), getHeaders(testPlanLabType), new TypeReference<>() {
-    });
-    if (response.getStatusCode() < 300) {
-      return response.getResponseEntity();
-    } else {
-      return null;
-    }
+    PlatformBrowserVersion platformBrowserVersion = new PlatformBrowserVersion();
+    platformBrowserVersion.setId(platformBrowserVersionId);
+    return platformBrowserVersion;
   }
 
   public List<PlatformScreenResolution> getPlatformScreenResolutions(Platform platform, String osVersion,
@@ -205,7 +191,9 @@ public class PlatformsService {
     if (response.getStatusCode() < 300) {
       return response.getResponseEntity();
     } else {
-      return null;
+      PlatformScreenResolution platformScreenResolution = new PlatformScreenResolution();
+      platformScreenResolution.setId(platformScreenResolutionId);
+      return platformScreenResolution;
     }
   }
 
@@ -242,14 +230,9 @@ public class PlatformsService {
 
   public PlatformDevice getPlatformDevice(Long platformDeviceId,
                                           TestPlanLabType testPlanLabType) throws TestsigmaException {
-    com.testsigma.util.HttpResponse<PlatformDevice> response = httpClient.get(getDeviceUrl(platformDeviceId, testPlanLabType),
-      getHeaders(testPlanLabType), new TypeReference<>() {
-      });
-    if (response.getStatusCode() < 300) {
-      return response.getResponseEntity();
-    } else {
-      return null;
-    }
+    PlatformDevice platformDevice = new PlatformDevice();
+    platformDevice.setId(platformDeviceId);
+    return platformDevice;
   }
 
   public String getDriverPath(Platform platform, String browserVersion, Browsers browsers, String versionFolder) {

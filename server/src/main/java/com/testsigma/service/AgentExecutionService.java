@@ -561,19 +561,19 @@ public class AgentExecutionService {
     if (!(testDevice.getTestPlanLabType().isHybrid() && testDevice.getWorkspaceVersion().getWorkspace().getWorkspaceType().isMobile()) && testDevice.getPlatformDeviceId() != null) {
       settings.setDeviceName(platformsService.getPlatformDevice(testDevice.getPlatformDeviceId(), exeLabType).getName());
     }
-    if (testDevice.getPlatformBrowserVersionId() != null) {
-      PlatformBrowserVersion platformBrowserVersion = platformsService.getPlatformBrowserVersion(testDevice.getPlatformBrowserVersionId(), exeLabType);
-      settings.setBrowserVersion(platformBrowserVersion.getVersion());
-      settings.setBrowser(platformBrowserVersion.getName().name());
-    }
+//    if (testDevice.getPlatformBrowserVersionId() != null) {
+//      PlatformBrowserVersion platformBrowserVersion = platformsService.getPlatformBrowserVersion(testDevice.getPlatformBrowserVersionId(), exeLabType);
+//      settings.setBrowserVersion(platformBrowserVersion.getVersion());
+//      settings.setBrowser(platformBrowserVersion.getName().name());
+//    }
     if (testDevice.getPlatformScreenResolutionId() != null) {
       settings.setResolution(platformsService.getPlatformScreenResolution(testDevice.getPlatformScreenResolutionId(), exeLabType).getResolution());
     }
-    if (testDevice.getPlatformOsVersionId() != null) {
-      PlatformOsVersion platformOsVersion = platformsService.getPlatformOsVersion(testDevice.getPlatformOsVersionId(), exeLabType);
-      settings.setPlatform(platformOsVersion.getPlatform());
-      settings.setOsVersion(platformOsVersion.getVersion());
-    }
+//    if (testDevice.getPlatformOsVersionId() != null) {
+//      PlatformOsVersion platformOsVersion = platformsService.getPlatformOsVersion(testDevice.getPlatformOsVersionId(), exeLabType);
+//      settings.setPlatform(platformOsVersion.getPlatform());
+//      settings.setOsVersion(platformOsVersion.getVersion());
+//    }
     if (exeLabType == TestPlanLabType.Hybrid || exeLabType == TestPlanLabType.PrivateGrid) {
       settings.setBrowser(testDevice.getBrowser());
     }
@@ -1289,7 +1289,7 @@ public class AgentExecutionService {
                                            TestPlanLabType testPlanLabType, Agent agent)
     throws TestsigmaException {
     PlatformOsVersion platformOsVersion = null;
-
+    log.warn("Test =)))))))))))))))))))))))))))))))))))))))))))))");
     if (testPlanLabType == TestPlanLabType.Hybrid) {
       Platform platform = null;
       String osVersion = null;

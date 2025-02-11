@@ -9,3 +9,8 @@ deploy/docker/db_data
 deploy/docker/ts_data
 /run-and-debug/nginx/logs/
 /run-and-debug/nginx/ssl/
+/run-and-debug/docker/runtime_data
+/.testsigma_os
+/agent/android
+/agent/appium
+/agent/ios
