@@ -56,6 +56,7 @@ import {TestDataService} from "../../services/test-data.service";
 import {TestDataSetService} from "../../services/test-data-set.service";
 import {TestDataMapValue} from "../../models/test-data-map-value.model";
 import {ForLoopData} from "../../models/for-loop-data.model";
+import { Pageable } from 'app/shared/models/pageable';
 
 
 @Component({
@@ -2195,7 +2196,9 @@ export class ActionStepFormComponent extends BaseComponent implements OnInit {
       searchName = ",testDataName:*" + term + "*";
     }
     this.isFetchingListData = true;
-    this.testDataService.findAll("versionId:" + this.version.id + searchName).subscribe(res => {
+    let pageable = new Pageable();
+    pageable.pageSize = 10000;
+    this.testDataService.findAll("versionId:" + this.version.id + searchName, undefined, pageable).subscribe(res => {
       if(this.currentTemplate?.htmlGrammar?.toLocaleLowerCase().startsWith("write value")) {
         this.listDataItem = this.getOnlyAssociatedTestDataProfiles(res.content);
         this.setTestDataProfileStatus( this.listDataItem );
