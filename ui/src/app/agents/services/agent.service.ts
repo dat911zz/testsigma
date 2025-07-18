@@ -20,7 +20,7 @@ import {AgentInfo} from "../models/agent-info.model";
   providedIn: 'root'
 })
 export class AgentService {
-  public localAgentUrl: String = "https://local.testsigmaagent.com:9494";
+  public localAgentUrl: String = "https://local.testsigmaos.com";
   constructor(
     private http: HttpClient,
     private httpHeaders: HttpHeadersService,

@@ -30,11 +30,18 @@ import org.apache.http.Header;
 import org.apache.http.HttpHeaders;
 import org.apache.http.message.BasicHeader;
 import org.apache.logging.log4j.ThreadContext;
+import org.bouncycastle.cert.CertIOException;
+import org.bouncycastle.operator.OperatorCreationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.cert.CertificateException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -93,11 +100,12 @@ public class AgentsController {
 
 
   @RequestMapping(path = "/certificate", method = RequestMethod.GET)
-  public AgentWebServerConfigDTO getWebServerCertificate() throws TestsigmaException {
-    HttpResponse<AgentWebServerConfigDTO> response = httpClient.get(testsigmaOSConfigService.getUrl() +
-      URLConstants.TESTSIGMA_OS_PUBLIC_CERTIFICATE_URL, getHeaders(), new TypeReference<>() {
-    });
-    return response.getResponseEntity();
+  public AgentWebServerConfigDTO getWebServerCertificate() throws TestsigmaException, NoSuchAlgorithmException, NoSuchProviderException, CertificateException, OperatorCreationException, CertIOException {
+//    HttpResponse<AgentWebServerConfigDTO> response = httpClient.get(testsigmaOSConfigService.getUrl() +
+//      URLConstants.TESTSIGMA_OS_PUBLIC_CERTIFICATE_URL, getHeaders(), new TypeReference<>() {
+//    });
+//    return response.getResponseEntity();
+    return new AgentWebServerConfigDTO();
   }
 
   @RequestMapping(path = "/{uuid}/driver/executable_path", method = RequestMethod.GET)
