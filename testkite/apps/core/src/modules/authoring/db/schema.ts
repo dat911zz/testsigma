@@ -19,7 +19,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 // Xuôi DAG: authoring đọc dữ liệu identity qua FACADE, không chạm file nội bộ của module đó.
-import { appRole, projects } from "../../identity/index.js";
+import { projects } from "../../identity/index.js";
+// `appRole` là role DB của kernel — lấy từ facade kernel, cũng là cạnh xuôi DAG.
+import { appRole } from "../../kernel/index.js";
 
 const tenantPredicate = sql`team_id = NULLIF(current_setting('app.team_id', true), '')::uuid`;
 

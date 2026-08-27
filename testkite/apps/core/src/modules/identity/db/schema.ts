@@ -4,24 +4,9 @@
  * Mọi bảng tenant-scoped: team_id dẫn đầu index + UNIQUE(team_id, id) làm mỏ neo composite FK.
  */
 import { sql } from "drizzle-orm";
-import {
-  index,
-  pgEnum,
-  pgPolicy,
-  pgRole,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
-
-/**
- * Role mà request-path dùng. PHẢI non-superuser và NOBYPASSRLS:
- * spike 2026-08-27 chứng minh superuser bỏ qua RLS kể cả khi đã FORCE.
- */
-export const APP_ROLE = "testkite_app" as const;
-export const appRole = pgRole(APP_ROLE);
+import { index, pgEnum, pgPolicy, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+// Xuôi DAG: identity → kernel qua FACADE. `appRole` là role DB do kernel sở hữu.
+import { appRole } from "../../kernel/index.js";
 
 /**
  * Vị từ tenant dùng chung. NULLIF là BẮT BUỘC: `RESET app.team_id` để GUC lại

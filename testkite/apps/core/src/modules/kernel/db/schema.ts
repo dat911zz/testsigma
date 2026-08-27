@@ -18,6 +18,18 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
+/**
+ * Role mà request-path dùng. PHẢI non-superuser và NOBYPASSRLS:
+ * spike 2026-08-27 chứng minh superuser bỏ qua RLS kể cả khi đã FORCE.
+ *
+ * Sống ở kernel chứ không identity: đây là hạ tầng DB (song sinh với RELAY_ROLE
+ * ngay dưới), và `kernel/db/tenant.ts` phải `SET LOCAL ROLE` bằng nó. Kernel là
+ * GỐC của DAG (module-dag.json) nên không được import identity — để hằng này ở
+ * identity là buộc kernel import ngược, đúng thứ eslint-boundaries chặn.
+ */
+export const APP_ROLE = "testkite_app" as const;
+export const appRole = pgRole(APP_ROLE);
+
 export const RELAY_ROLE = "testkite_relay" as const;
 export const relayRole = pgRole(RELAY_ROLE);
 

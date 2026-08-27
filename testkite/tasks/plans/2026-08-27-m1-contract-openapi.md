@@ -1472,7 +1472,7 @@ git commit -m "M1 B1: eslint flat config nền + pnpm lint"
 
 **Cách test luật lint (áp dụng cho cả B2 và B3):** file vi phạm mẫu sống thường trú ở `tools/lint-fixtures/`, gương lại đúng cấu trúc thư mục thật (`apps/core/src/modules/<tên>/`) để `boundaries` phân loại chúng đúng như file thật — đã xác minh: fixture ở `tools/lint-fixtures/apps/core/src/modules/kernel/index.ts` được phân loại là module `kernel`. `pnpm lint` không chạm tới chúng vì chỉ nhắm `apps packages`.
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 Tạo `testkite/tools/lint-rules.test.ts`:
 
@@ -1589,7 +1589,7 @@ describe("module-dag.json", () => {
 });
 ```
 
-- [ ] **Step 2: Nối `tools/` vào `pnpm test`, rồi chạy test xác nhận ĐỎ**
+- [x] **Step 2: Nối `tools/` vào `pnpm test`, rồi chạy test xác nhận ĐỎ**
 
 **Không có `testkite/vitest.config.ts`** — mỗi package tự chạy `vitest run` qua `pnpm -r test`, mà `tools/` không phải package trong workspace (`pnpm-workspace.yaml` chỉ có `apps/*` và `packages/*`). Không nối thêm thì hai file test vừa viết KHÔNG BAO GIỜ chạy trong CI.
 
@@ -1605,7 +1605,7 @@ Sửa `scripts` trong `testkite/package.json`:
 Run: `cd testkite && pnpm test:tools`
 Expected: FAIL — `Cannot find module '../module-dag.json'` và fixture chưa tồn tại.
 
-- [ ] **Step 3: Khai DAG dạng dữ liệu**
+- [x] **Step 3: Khai DAG dạng dữ liệu**
 
 Tạo `testkite/module-dag.json`:
 
@@ -1637,7 +1637,7 @@ const dag = Object.fromEntries(
 ) as Record<string, string[]>;
 ```
 
-- [ ] **Step 4: Thêm block boundaries vào config**
+- [x] **Step 4: Thêm block boundaries vào config**
 
 Trong `testkite/eslint.config.mjs`, thêm import ở đầu file:
 
@@ -1691,7 +1691,7 @@ và CHÈN block sau vào mảng `export default [...]`, ngay sau block parser:
 
 **Cú pháp là của boundaries v7, không phải v5/v6.** Dùng `boundaries/dependencies` (không phải `element-types` đã đổi tên), `policies` (không phải `rules`), selector dạng object `{ element: { type, captured } }` (không phải tuple `["module", {...}]`), template `{{...}}` (không phải `${...}`). Sai cú pháp cũ vẫn chạy nhưng in warning và **không bắt gì cả**.
 
-- [ ] **Step 5: Tạo fixture**
+- [x] **Step 5: Tạo fixture**
 
 `testkite/tools/lint-fixtures/apps/core/src/modules/identity/index.ts`:
 
@@ -1738,17 +1738,29 @@ import { MODULE } from "../ai/index.js";
 export const edgeInward = MODULE;
 ```
 
-- [ ] **Step 6: Chạy test, xác nhận XANH**
+- [x] **Step 6: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm test:tools`
 Expected: PASS — 3 test lint-rules + 7 test module-dag.
 
-- [ ] **Step 7: `pnpm lint` vẫn phải XANH (fixture không được lọt vào đường lint chính)**
+- [x] **Step 7: `pnpm lint` vẫn phải XANH (fixture không được lọt vào đường lint chính)**
 
 Run: `cd testkite && pnpm lint`
 Expected: exit 0, không in gì. Nếu nó báo lỗi ở `tools/lint-fixtures/...` nghĩa là script `lint` đang quét quá rộng — script phải là `eslint apps packages`, không phải `eslint .`.
 
-- [ ] **Step 8: Commit**
+> **Kết quả B2:** `pnpm test:tools` → 10 pass (3 lint-rules + 7 module-dag). `pnpm lint` → exit 0; đếm file `eslint apps packages -f json` = **76 file, 0 file fixture** ⇒ fixture nằm ngoài đường lint chính đúng thiết kế. Toàn workspace: **310 pass + 4 skip** (nền 300 + 10 test mới), `pnpm typecheck` exit 0.
+>
+> **Sửa spec — DAG có 13 module, không phải 12.** Test `toHaveLength(12)` trong plan ĐỎ thật: `module-dag.json` và `ownership.json` đều 13 khoá. Đếm lại `docs/SYSTEM_DESIGN.md` §4: nhãn "12 module" đứng ngay trước danh sách liệt kê **13 tên** (kernel, identity, governance, verbs, elements, testdata, authoring, planning, orchestration, results + rìa integrations, ai, mcp). `ownership.json` đã commit từ trước là nguồn có thẩm quyền và nằm ngoài scope sửa ⇒ chốt assertion về **13** kèm comment giải thích "12 module" là TÊN GỌI chứ không phải phép đếm. Test `cùng bộ key với ownership.json` vẫn là tripwire chính.
+>
+> **Bắt được VI PHẠM THẬT có sẵn trong src (không phải fixture):** ngay lần chạy `pnpm lint` đầu tiên, rule nổ ở `apps/core/src/modules/kernel/db/tenant.ts:5` — `import { APP_ROLE } from "../../identity/index.js"`. Comment tại chỗ cho thấy nguyên nhân: tác giả đọc mũi tên `kernel → identity` của §4 là "kernel được import identity", trong khi `module-dag.json` chốt `"kernel": []` — kernel là GỐC, mũi tên chỉ chiều "identity được import kernel". Sửa TỐI THIỂU: dời cặp `APP_ROLE`/`appRole` từ `identity/db/schema.ts` sang `kernel/db/schema.ts` — đúng chỗ, vì nó là song sinh của `RELAY_ROLE`/`relayRole` đã sống sẵn ở đó và `kernel/db/tenant.ts` cần nó để `SET LOCAL ROLE`. Kernel facade export thêm 4 tên; `identity/db/schema.ts` và `authoring/db/schema.ts` lấy `appRole` từ facade kernel (cạnh XUÔI hợp lệ). Không đổi hành vi: chuỗi role vẫn `testkite_app`, glob drizzle `./src/modules/*/db/schema.ts` vẫn phủ cả hai file nên bề mặt schema không đổi, 55 test apps/core (gồm `test/schema/rls.test.ts` và `test/arch/module-boundaries.test.ts`) vẫn xanh.
+>
+> **Chứng minh luật bắt được vi phạm (luật cứng "test đỏ" của lint config):**
+> - Fixture thường trú: `kernel/dag-backward.ts` (ngược DAG) và `results/dag-edge-inward.ts` (lõi → rìa `ai`) đều ĐỎ `boundaries/dependencies`; `results/dag-forward.ts` (results → planning) XANH.
+> - Trên ĐƯỜNG LINT THẬT: tạo tạm `apps/core/src/modules/kernel/__dag_probe.ts` import từ identity → `pnpm lint` ĐỎ, exit 1, message đúng bản DAG. Xoá sau khi đo.
+> - **Đối chứng âm cho `eslint-import-resolver-typescript`** (bẫy đã spike): copy config bỏ đúng khoá `import/resolver`, lint lại chính file `dag-backward.ts` → **exit 0, IM LẶNG CHO QUA**; config thật → exit 1. Resolver là load-bearing, không phải trang trí.
+> - Cú pháp boundaries v7 xác nhận chạy đúng: `boundaries/dependencies` + `policies` + selector object + template `{{from.captured.name}}` render ra tên module thật trong message, không có warning deprecation.
+
+- [x] **Step 8: Commit**
 
 ```bash
 git add testkite/module-dag.json testkite/eslint.config.mjs testkite/package.json testkite/tools/

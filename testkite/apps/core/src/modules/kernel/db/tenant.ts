@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
-// Ranh giới module: kernel → identity là cạnh XUÔI của DAG, nhưng import chéo module
-// PHẢI qua facade `identity/index.js` — không bao giờ với tay vào `identity/db/schema.js`
-// (guard: test/arch/module-boundaries.test.ts).
-import { APP_ROLE } from "../../identity/index.js";
+// Ranh giới module: kernel là GỐC của DAG (module-dag.json) — nó không được import
+// module nào khác, kể cả identity. APP_ROLE vì thế sống trong chính kernel, cạnh
+// RELAY_ROLE (guard: eslint-boundaries + test/arch/module-boundaries.test.ts).
+import { APP_ROLE } from "./schema.js";
 import { assertTenantContext } from "./repo.js";
 import type { TenantContext, TkDb, TkTx } from "./types.js";
 

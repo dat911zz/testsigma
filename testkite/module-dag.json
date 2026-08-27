@@ -1,0 +1,16 @@
+{
+  "$comment": "DAG một chiều 12 module (docs/SYSTEM_DESIGN.md §4). Key = module, value = các module nó ĐƯỢC PHÉP import. Cạnh ngược/ngang KHÔNG có ngoại lệ — dùng domain event qua krn_outbox. eslint-plugin-boundaries đọc file này; tools/module-dag.test.ts giữ nó đồng bộ với ownership.json.",
+  "kernel": [],
+  "identity": ["kernel"],
+  "governance": ["kernel"],
+  "verbs": ["kernel", "identity", "governance"],
+  "elements": ["kernel", "identity", "governance"],
+  "testdata": ["kernel", "identity", "governance"],
+  "authoring": ["kernel", "identity", "governance", "verbs", "elements", "testdata"],
+  "planning": ["kernel", "identity", "governance", "verbs", "elements", "testdata", "authoring"],
+  "orchestration": ["kernel", "identity", "governance", "verbs", "elements", "testdata", "authoring", "planning"],
+  "results": ["kernel", "identity", "governance", "verbs", "elements", "testdata", "authoring", "planning", "orchestration"],
+  "integrations": ["kernel", "identity", "governance", "verbs", "elements", "testdata", "authoring", "planning", "orchestration", "results"],
+  "ai": ["kernel", "identity", "governance", "verbs", "elements", "testdata", "authoring", "planning", "orchestration", "results"],
+  "mcp-gateway": ["kernel", "identity", "governance", "verbs", "elements", "testdata", "authoring", "planning", "orchestration", "results"]
+}
