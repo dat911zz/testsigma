@@ -1,0 +1,16 @@
+{
+  "$comment": "Module → prefix bảng sở hữu DUY NHẤT. Cưỡng chế bằng eslint-boundaries + kiểm tra CI, không phải văn hóa. Module khác muốn dữ liệu: gọi facade (xuôi DAG) hoặc nghe domain event (ngược/ngang).",
+  "kernel": ["krn_", "sec_"],
+  "identity": ["organizations", "teams", "projects", "deleted_teams", "users", "memberships", "team_invites", "idn_", "api_tokens", "mcp_clients", "oauth_grants", "element_proposals"],
+  "governance": ["quota_limits", "gov_", "usage_counters", "usage_ledger", "audit_events"],
+  "verbs": ["action_catalog", "vrb_", "team_action_overlay"],
+  "elements": ["elm_"],
+  "testdata": ["tdt_"],
+  "authoring": ["aut_", "published_step_groups", "published_step_group_versions", "step_group_subscriptions"],
+  "planning": ["pln_"],
+  "orchestration": ["orc_", "job_runs", "egress_policies", "migration_state", "migration_parallel_runs"],
+  "results": ["res_"],
+  "integrations": ["itg_"],
+  "ai": ["ai_"],
+  "mcp-gateway": []
+}

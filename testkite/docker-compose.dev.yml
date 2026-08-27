@@ -1,0 +1,39 @@
+# TestKite dev infra — pnpm dev:infra
+# Nguyên tắc từ blueprint: MỌI container có memory limit tường minh (kể cả dev).
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: dev
+      MYSQL_DATABASE: testkite
+    ports: ["3306:3306"]
+    mem_limit: 1g
+    volumes: [mysql-data:/var/lib/mysql]
+
+  valkey:
+    image: valkey/valkey:8
+    # noeviction + AOF theo blueprint — Valkey là cache của admitted work, flush được sau restore
+    command: ["valkey-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    mem_limit: 256m
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: dev
+      MINIO_ROOT_PASSWORD: devdevdev
+      # Nén transparent CHỈ cho text — ảnh/trace đã nén trong miền codec (blueprint §5.2)
+      MINIO_COMPRESSION_ENABLE: "on"
+      MINIO_COMPRESSION_MIME_TYPES: "application/json,text/*,application/xml"
+    ports: ["9000:9000", "9001:9001"]
+    mem_limit: 512m
+    volumes: [minio-data:/data]
+
+  # TODO(M3): services api + runner khi image build được:
+  #   api:    KHÔNG chứa browser binary (CI cưỡng chế) — mem_limit bắt buộc
+  #   runner: mem_limit 3g, shm_size 1g, cap_drop ALL, seccomp custom, non-root
+
+volumes:
+  mysql-data:
+  minio-data:

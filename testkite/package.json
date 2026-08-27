@@ -1,0 +1,12 @@
+{
+  "name": "testkite",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "dev:infra": "docker compose -f docker-compose.dev.yml up -d"
+  }
+}
