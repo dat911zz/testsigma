@@ -29,9 +29,13 @@ testkite/
 │   ├── contract/      # @testkite/contract — zod là NGUỒN hợp đồng; OpenAPI 3.1 sinh ra + commit
 │   ├── run-compiler/  # @testkite/run-compiler — pure function, 9 phase, golden-tested
 │   └── verb-kit/      # @testkite/verb-kit — op registry (35 verb active; Class.forName đã chết)
+├── tasks/             # BACKLOG theo milestone M0→M9 + open-questions (checklist làm việc)
 ├── ownership.json     # module → prefix bảng (cưỡng chế bằng lint, không phải văn hóa)
 └── docker-compose.dev.yml  # MySQL 8.4 + Valkey 8 + MinIO
 ```
+
+**Bắt đầu từ đâu:** mở [`tasks/README.md`](tasks/README.md) — M0 (vá hệ cũ) đi trước mọi thứ;
+2 câu hỏi trong [`tasks/open-questions.md`](tasks/open-questions.md) đang chặn M1.
 
 ## Quy tắc bất di bất dịch (từ blueprint)
 
