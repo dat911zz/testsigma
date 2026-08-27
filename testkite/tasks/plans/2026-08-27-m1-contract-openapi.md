@@ -252,7 +252,7 @@ git commit -m "M1 A1: contract zod schema element + locator"
 1. Schema đệ quy PHẢI khai type thủ công rồi chú thích `z.ZodType<AuthoredStepDto>` + bọc `z.lazy(...)`. Không có chú thích thì TypeScript không suy được kiểu tự trỏ.
 2. Prop optional trong interface DTO phải viết `?: T | undefined`. Viết `args?: Record<string, string>` là tsc đỏ với `exactOptionalPropertyTypes`.
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 Tạo `testkite/packages/contract/src/schemas/step.test.ts`:
 
@@ -370,12 +370,12 @@ describe("authoredStepSchema — block", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/schemas/step.test.ts`
 Expected: FAIL — không resolve được `./step.js`.
 
-- [ ] **Step 3: Viết implementation tối thiểu**
+- [x] **Step 3: Viết implementation tối thiểu**
 
 Tạo `testkite/packages/contract/src/schemas/step.ts`:
 
@@ -501,17 +501,17 @@ export const authoredStepSchema: z.ZodType<AuthoredStepDto> = z.lazy(() =>
 );
 ```
 
-- [ ] **Step 4: Chạy test, xác nhận XANH**
+- [x] **Step 4: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/schemas/step.test.ts`
 Expected: PASS (13 test).
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Run: `cd testkite && pnpm typecheck`
 Expected: exit 0. Nếu ĐỎ ở `z.ZodType<AuthoredStepDto>` với thông điệp `Type 'undefined' is not assignable`, nghĩa là còn prop optional nào đó thiếu `| undefined` — sửa interface, đừng nới schema.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add testkite/packages/contract/src/schemas/step.ts testkite/packages/contract/src/schemas/step.test.ts
