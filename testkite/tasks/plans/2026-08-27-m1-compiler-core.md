@@ -70,10 +70,10 @@
 
 ## Task 7 — Phase 6+7: stamp + freeze + hash (TDD)
 
-- [ ] Test đỏ: cùng input ⇒ cùng `contentHash` qua 2 lần gọi; đổi 1 arg ⇒ hash đổi; thứ tự key trong object args không ảnh hưởng hash (canonical sort)
-- [ ] Test đỏ: có ≥1 error ⇒ `plan === undefined` + đủ diagnostics
-- [ ] Implement canonicalize (sort keys đệ quy) + SHA-256 (node:crypto) + timeout formula `clamp(90+12×steps,180..900)`; zstd ĐỂ SAU (payload thô — ghi chú planFormatVersion=1 chưa nén)
-- [ ] Commit "M1 T7: freeze + content hash"
+- [x] Test đỏ: cùng input ⇒ cùng `contentHash` qua 2 lần gọi; đổi 1 arg ⇒ hash đổi; thứ tự key trong object args không ảnh hưởng hash (canonical sort)
+- [x] Test đỏ: có ≥1 error ⇒ `plan === undefined` + đủ diagnostics
+- [x] Implement canonicalize (sort keys đệ quy) + SHA-256 (node:crypto) + timeout formula `clamp(90+12×steps,180..900)`; zstd ĐỂ SAU (payload thô — ghi chú planFormatVersion=1 chưa nén)
+- [x] Commit "M1 T7: freeze + content hash"
 
 ## Task 8 — Bộ golden fixtures (hợp đồng T1 của hệ)
 
