@@ -57,10 +57,10 @@
 
 ## Task 5 — Phase 3: bind verb (TDD)
 
-- [ ] Test đỏ: opKey lạ ⇒ `unknown_verb` (GOM: 2 verb lạ ⇒ 2 diagnostics)
-- [ ] Test đỏ: args thiếu param required (zod của verb-kit) ⇒ `verb_args_invalid` kèm ordinal
-- [ ] verb-kit: thêm zod schema args cho web.click/web.enter; helper `validateArgs(opKey, args)`
-- [ ] Implement bind; commit "M1 T5: phase3 verb binding"
+- [x] Test đỏ: opKey lạ ⇒ `unknown_verb` (GOM: 2 verb lạ ⇒ 2 diagnostics)
+- [x] Test đỏ: args thiếu param required (zod của verb-kit) ⇒ `verb_args_invalid` kèm ordinal
+- [x] verb-kit: thêm zod schema args cho web.click/web.enter; helper `validateArgs(opKey, args)`
+- [x] Implement bind; commit "M1 T5: phase3 verb binding"
 
 ## Task 6 — Phase 4+5: element + data/env merge (TDD)
 
