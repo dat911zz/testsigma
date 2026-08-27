@@ -177,6 +177,55 @@ Hai **cổng cứng**: không đụng version framework trước khi lưới an 
 
 ---
 
+## 8. Phương án Go — "chuyển sang ngôn ngữ nhẹ hơn" (bổ sung 27-08-2026)
+
+**Trả lời thẳng: không rewrite sang Go.** Đánh giá bởi đợt workflow thứ hai (9 agent: 3 soi repo, 2 nghiên cứu hệ sinh thái Go 2026 có kiểm chứng nguồn, 3 bảo vệ 3 kịch bản đối lập, 1 phán quyết). Nhưng cuộc điều tra đem về một việc **khẩn cấp tuần này** và đúng **một tài sản Go đáng lấy mà không cần viết dòng Go nào**.
+
+### 8.1. Vì sao full Go rewrite chết trên chính bằng chứng
+
+**Ma trận nền tảng vs khả năng Go (2026, đã kiểm chứng):**
+
+| Nền tảng Testsigma phải chạy test | Go làm được không? |
+|---|---|
+| Desktop Chrome/Edge | ✅ chromedp / go-rod pure-Go, release mới 07/2026 |
+| Desktop Firefox | ❌ Mozilla gỡ CDP khỏi Firefox cuối 2024; client WebDriver duy nhất của Go (tebeka/selenium) **chết từ 11/2021**, còn ở thời Selenium 3 |
+| Desktop Safari | ❌ WebKit dùng giao thức riêng, chưa từng có đường Go |
+| Mobile web Android (Chrome) | ✅ adb forward + CDP |
+| Mobile web iOS (Safari) | ❌ không có đường nào (Remote Web Inspector; các bridge đều C/Node đã deprecated) |
+| Android native | ❌ Appium **không có client Go** nào dùng được (cả 2 dự án cộng đồng tự nhận "not ready for any usage"); phải tự viết client UiAutomator2-server từ số 0 |
+| iOS native | ⚠️ một nửa — go-ios lo device/WDA launch, nhưng client giao thức tap/swipe của WDA phải tự viết |
+
+Ba lý do loại, mỗi lý do một mình đã đủ:
+
+1. **Addon là hard-blocker tuyệt đối.** `AddonService` nạp *bytecode JAR do khách hàng compile* qua `URLClassLoader`; `AddonAction.java:94–265` reflection vào private field của class chưa từng link. Go không có bytecode loader → hoặc phá vỡ mọi addon khách hàng, hoặc giữ một JVM sống bên cạnh (tự phủ định lý do chuyển Go).
+2. **"Một binary, không runtime" là ảo tưởng với sản phẩm này.** Appium là Node.js; driver Android gọi `apksigner` chạy JVM (agent ghim `JAVA_HOME` tại `MobileAutomationServer.java:107`). Rewrite xong thì **JRE + Node vẫn nằm trên đĩa**; thành phần nặng nhất của bundle là runtime Node của Appium (311–424MB), không ngôn ngữ nào thay đổi được.
+3. **Chi phí 45–65 tháng-người** (bản cắt gọt vẫn 28–38) — bằng/vượt con số full-rewrite đã bị loại ở mục 5, để rebuild bằng tay mọi thứ Spring sinh tự động (41 Specification builder, ~298 derived query không có body, 62 mapper) trên codebase 0 test làm đặc tả.
+
+### 8.2. Phát hiện đắt giá nhất — không liên quan ngôn ngữ
+
+⏰ **Bucket S3 vendor VẪN CÒN SỐNG — mirror ngay tuần này.** Kiểm chứng trực tiếp trong phiên đánh giá: `s3://hybrid-staging.testsigma.com` hiện trả **HTTP 200, đọc được ẩn danh**; JRE đóng gói là **Eclipse Temurin 11.0.14.1+1 stock**. Đính chính kết luận trước: installer *hôm nay vẫn build được* — nhưng trên bucket staging của bên thứ ba có thể biến mất bất kỳ lúc nào. JRE tải lại được từ Adoptium, nhưng bản Appium đóng gói, 2 driver zip, 58 binary minicap và `windows-kill.exe` **không tái tạo được ở đúng version ghim**. → Mirror ~4,5GB về storage tự chủ (dưới 1 tuần). Nỗi đau "nặng nề" hóa ra là lỗi chuỗi cung ứng + đóng gói, sửa được bằng Java trong ~3–4 tháng-người.
+
+### 8.3. Chấm điểm ba kịch bản
+
+| | Full Go rewrite | Go agent + Java runner | **Deweight, đừng rewrite** ★ |
+|---|---|---|---|
+| Điểm | 2/10 — loại vĩnh viễn | 6/10 — hoãn, có cổng | **8,5/10 — chọn** |
+| Công sức | 45–65 tháng-người | +6,5–11,5 tháng-người | **+2,75–4,2 tháng-người** |
+| Nội dung | — | Daemon Go ~30MB thay 2 JVM (~250–400MB); engine test chạy trong runner JAR spawn riêng qua seam AppBridge. Chỉ mở lại khi: installer Java xanh cả 3 OS + có device lab + **cam kết văn bản automator không bao giờ port** | Mirror bucket + `fetch-deps.sh` nguồn chính chủ có checksum; jlink/AppCDS thu bundle Linux 871MB→~450–550MB (JRE 324→124→70–95MB); bỏ cây drivers 1,1GB nhờ Selenium Manager; rebase Docker khỏi CentOS 7; **go-ios dưới dạng binary dựng sẵn ghim version** thay cây Python/tidevice 163MB — chỉ sửa argv/stdout tại 4 điểm gọi subprocess Java (~1–1,5 tháng-người, zero dòng Go) |
+
+### 8.4. Lộ trình thay đổi thế nào
+
+Lộ trình 7 giai đoạn ở mục 6 **giữ nguyên toàn bộ**; tổng ngân sách 14–18 → ~**18–24 tháng-người** với các chèn thêm:
+
+- **Chèn trước Phase 0, làm ngay tuần này:** mirror bucket S3 vendor (~4,5GB).
+- **Phase 1 mở rộng:** `fetch-deps.sh` lấy JRE/nginx/platform-tools/Appium từ nguồn chính chủ ghim version + checksum; installer xanh trên máy sạch cả 3 OS, zero credential vendor.
+- **Chèn mới — thu gọn runtime** (+0,5–0,75): JRE-image thay JDK trên Linux/macOS, jlink, AppCDS, `MaxRAMPercentage`, xóa cây drivers 1,1GB.
+- **Chèn mới — swap toolchain iOS** (+1–1,5): go-ios binary ghim version thay tidevice/Python tại 4 điểm gọi subprocess (`IosDeviceCommandExecutor` + `WdaService`/`DeveloperImageService`/`IosDeviceService`); giữ nguyên sleep/retry "gánh tải" của `WdaService`; verify 1 ngày trên thiết bị thật.
+- **Chèn mới — tách runner** (+1,5–2,5, sau khi có test): tách agent thành daemon + runner JAR headless spawn theo test plan — run crash không giết daemon, kill được từng run; biến Go daemon tương lai thành drop-in nếu có ngày cần. Đáng làm *bất kể* quyết định ngôn ngữ.
+- **Cổng cuối viết lại:** full Go — đóng vĩnh viễn; Go agent daemon — lựa chọn hẹp duy nhất sau 3 điều kiện trên; Harvest & Replace vẫn là fallback cấp sản phẩm.
+
+---
+
 ## Phụ lục A — File đáng chú ý nhất
 
 - `server/src/main/java/com/testsigma/service/AgentExecutionService.java` — god class 1.570 dòng, tâm điểm mọi đường chạy test.
@@ -196,4 +245,4 @@ Hai **cổng cứng**: không đụng version framework trước khi lưới an 
 
 ## Phụ lục B — Phương pháp
 
-Kiểm toán thực hiện bằng workflow 12 agent: 7 agent trinh sát song song (server, ui, automator, agent+launcher, hợp đồng liên module, build/deploy, nợ kỹ thuật & bảo mật), 1 agent kiểm chứng độc lập (phát hiện 6 khoảng trống — trong đó có 2 scheduler di-cư vĩnh viễn cả 7 báo cáo bỏ sót — và sửa 2 số liệu sai: 65 migration chứ không phải 157; đếm bổ sung 61 bảng), 3 agent bảo vệ 3 chiến lược đối lập, 1 vòng phán quyết chấm chéo có kiểm chứng lại bằng chứng trong source. Mọi con số then chốt trong báo cáo đều được xác minh trực tiếp trên mã nguồn tại commit `a6155d0`.
+Kiểm toán thực hiện bằng 2 đợt workflow, tổng 21 agent. **Đợt 1 (mục 1–7):** 7 agent trinh sát song song (server, ui, automator, agent+launcher, hợp đồng liên module, build/deploy, nợ kỹ thuật & bảo mật), 1 agent kiểm chứng độc lập (phát hiện 6 khoảng trống — trong đó có 2 scheduler di-cư vĩnh viễn cả 7 báo cáo bỏ sót — và sửa 2 số liệu sai: 65 migration chứ không phải 157; đếm bổ sung 61 bảng), 3 agent bảo vệ 3 chiến lược đối lập, 1 vòng phán quyết chấm chéo. **Đợt 2 (mục 8 — phương án Go):** 3 agent kiểm kê mức khóa JVM trong repo (đếm từng call site reflection/classloading, từng thư viện Java-only), 2 agent nghiên cứu hệ sinh thái Go 2026 (kiểm chứng nguồn và ngày release của chromedp/go-rod/tebeka-selenium/playwright-go/go-ios…), 3 agent bảo vệ 3 kịch bản Go đối lập, 1 vòng phán quyết có tái xác minh bằng chứng — gồm cả kiểm tra trực tiếp bucket S3 vendor còn trả HTTP 200. Mọi con số then chốt trong báo cáo đều được xác minh trực tiếp trên mã nguồn tại commit `a6155d0`.
