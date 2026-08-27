@@ -88,4 +88,6 @@
 
 ## Task 10 — (Plan riêng kế tiếp) kernel Drizzle pg + tenancy + outbox
 
-- [ ] Viết plan `2026-XX-XX-m1-kernel-db.md` (cần Testcontainers PG) — KHÔNG gộp vào plan này (ranh giới reviewer rõ)
+- [x] Viết plan `2026-08-27-m1-kernel-db.md` — KHÔNG gộp vào plan này (ranh giới reviewer rõ).
+      Testcontainers ĐÃ LOẠI sau spike thật (sandbox không có docker daemon); chốt phương án lai
+      PGlite (unit schema/RLS) + Postgres thật cho test concurrency, CI `services: postgres:17`.
