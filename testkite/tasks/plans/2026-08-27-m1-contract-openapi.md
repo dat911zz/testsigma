@@ -2320,12 +2320,14 @@ thành:
       dùng `@asteasolutions/zod-to-openapi`) (hash: <hash-A1>…<hash-A6>)
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add testkite/tasks/M1-kernel-contracts-compiler.md
 git commit -m "M1: tick checklist contract/OpenAPI + toolchain"
 ```
+
+Commit thật: `26fc9bb` (gồm cả `tasks/README.md` — M1 chuyển 🟡 → 🟢 vì mọi dòng checklist đã `[x]`).
 
 ---
 
