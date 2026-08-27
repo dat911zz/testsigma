@@ -24,6 +24,7 @@ export const PLAN_FORMAT_VERSION = 1;
 export type CompileErrorCode =
   | "prereq_cycle"
   | "prereq_depth_exceeded"
+  | "prereq_missing"
   | "step_group_depth_exceeded"
   | "unknown_verb"
   | "verb_args_invalid"
