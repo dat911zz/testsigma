@@ -16,3 +16,11 @@ export { MissingTenantContextError, TenantRepo, assertTenantContext } from "./db
 export { createDb, type DbHandle } from "./db/client.js";
 export type { TenantContext, TkDb, TkTx } from "./db/types.js";
 export { loadEnv, parseEnv, envSchema, type KernelEnv } from "./env.js";
+export { enqueueOutbox, type OutboxEvent } from "./outbox/writer.js";
+export {
+  runRelayOnce,
+  type OutboxRecord,
+  type Publisher,
+  type RelayOptions,
+  type RelayResult,
+} from "./outbox/relay.js";
