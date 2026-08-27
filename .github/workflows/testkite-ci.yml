@@ -42,6 +42,14 @@ jobs:
         working-directory: testkite
         run: pnpm test
 
+      # zod là NGUỒN hợp đồng; packages/contract/openapi.json chỉ là ĐẦU RA đã commit.
+      # Regen tại chỗ rồi `git diff --exit-code`: sửa schema mà quên `pnpm openapi:gen`
+      # ⇒ CI đỏ kèm diff. Kiểm chứng cục bộ 2026-08-27: thêm một chữ vào OPENAPI_INFO
+      # .description ⇒ exit 1 in ra đúng dòng lệch; trả nguyên trạng ⇒ exit 0.
+      - name: Gate — OpenAPI spec drift (regen phải không đổi byte nào)
+        working-directory: testkite
+        run: pnpm openapi:check
+
       - name: Gate — no browser in API image (apps/core must stay browser-free)
         run: |
           grep -rE "playwright|puppeteer|chromium" testkite/apps/core/src --include='*.ts' && exit 1 || true

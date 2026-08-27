@@ -19,13 +19,30 @@ export const locatorSchema = z.object({
 export const ELEMENT_STATUSES = ["ready", "pending_locator"] as const;
 export const elementStatusSchema = z.enum(ELEMENT_STATUSES);
 
-export const elementSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  status: elementStatusSchema,
-  /** ≥1: element không locator không thể bind ở phase 4 — chặn tại biên API. */
-  locators: z.array(locatorSchema).min(1),
-});
+export const elementSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    status: elementStatusSchema,
+    /**
+     * Rỗng CHỈ hợp lệ khi `status = pending_locator` — đúng nghĩa "chưa chụp được"
+     * (fixture err-element-pending-locator.json của compiler mang y hình dạng này).
+     * `ready` mà không locator là lời hứa suông: phase 4 không bind nổi ⇒ chặn ở biên.
+     */
+    locators: z.array(locatorSchema),
+  })
+  .superRefine((element, ctx) => {
+    if (element.status === "ready" && element.locators.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.too_small,
+        minimum: 1,
+        type: "array",
+        inclusive: true,
+        path: ["locators"],
+        message: "element status=ready phải có ít nhất 1 locator",
+      });
+    }
+  });
 
 export interface LocatorDto {
   kind: string;

@@ -35,8 +35,14 @@ describe("elementSchema", () => {
     expect(elementSchema.safeParse({ ...ok, status: "draft" }).success).toBe(false);
   });
 
-  it("từ chối locators rỗng — element không locator là dữ liệu vô nghĩa", () => {
+  it("từ chối element READY mà không locator — 'ready' là lời hứa bind được ở phase 4", () => {
     expect(elementSchema.safeParse({ ...ok, locators: [] }).success).toBe(false);
+  });
+
+  it("nhận element pending_locator CHƯA có locator nào — đúng nghĩa 'chưa chụp được'", () => {
+    // Fixture err-element-pending-locator.json (hợp đồng đã chốt của compiler) mang
+    // đúng hình dạng này; compiler mới là bên phát diagnostic `element_pending_locator`.
+    expect(elementSchema.safeParse({ ...ok, status: "pending_locator", locators: [] }).success).toBe(true);
   });
 
   it("GOM mọi issue chứ không dừng ở lỗi đầu", () => {

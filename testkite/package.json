@@ -9,6 +9,8 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "openapi:gen": "pnpm -F @testkite/contract openapi:gen",
+    "openapi:check": "pnpm openapi:gen && git diff --exit-code -- packages/contract/openapi.json",
     "dev:infra": "docker compose -f docker-compose.dev.yml up -d"
   },
   "devDependencies": {

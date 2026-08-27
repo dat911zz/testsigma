@@ -1252,7 +1252,7 @@ git commit -m "M1 A5: sinh OpenAPI 3.1 từ zod (zod-openapi 4.2.4) + commit spe
 
 **Vì sao có test conformance:** schema contract và type snapshot của compiler là hai bản mô tả CÙNG một hình dạng. Cách rẻ và thật nhất để chứng minh chúng chưa lệch: bắt 20+ fixture authoring có sẵn của golden suite đi qua `compileSnapshotSchema`. Fixture là dữ liệu thật compiler đang ăn — nếu schema hẹp hơn thực tế, test đỏ ngay.
 
-- [ ] **Step 1: Viết test conformance ĐỎ**
+- [x] **Step 1: Viết test conformance ĐỎ**
 
 Tạo `testkite/packages/run-compiler/src/contract-conformance.test.ts`:
 
@@ -1298,12 +1298,12 @@ describe("contract ⇄ compiler conformance", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận nó THẬT SỰ chạy (có thể ĐỎ)**
+- [x] **Step 2: Chạy test, xác nhận nó THẬT SỰ chạy (có thể ĐỎ)**
 
 Run: `cd testkite && pnpm -F @testkite/run-compiler exec vitest run src/contract-conformance.test.ts`
 Expected: chạy 33 test (31 fixture `.json` không phải `.golden.json`, + 2 test khung). Nếu fixture nào đỏ, đọc issue in ra rồi NỚI SCHEMA CHO ĐÚNG THỰC TẾ (ví dụ có fixture `targetCaseIds` rỗng, hoặc element không locator) — sửa file schema ở A1–A4, KHÔNG sửa fixture: fixture là hợp đồng đã chốt của compiler.
 
-- [ ] **Step 3: Thêm script gate vào workspace root**
+- [x] **Step 3: Thêm script gate vào workspace root**
 
 Trong `scripts` của `testkite/package.json`, thêm:
 
@@ -1312,14 +1312,16 @@ Trong `scripts` của `testkite/package.json`, thêm:
 "openapi:check": "pnpm openapi:gen && git diff --exit-code -- packages/contract/openapi.json"
 ```
 
-- [ ] **Step 4: Chứng minh gate BẮT ĐƯỢC drift (đây là \"test\" của gate)**
+- [x] **Step 4: Chứng minh gate BẮT ĐƯỢC drift (đây là \"test\" của gate)**
 
 ```bash
 cd testkite
 # 1. Sạch thì phải xanh:
 pnpm openapi:check; echo "clean -> $?"
 # 2. Cố tình làm schema lệch khỏi spec commit:
-sed -i 's/description: "Catalog schema authoring-facing/description: "DRIFT PROBE Catalog schema authoring-facing/' packages/contract/src/openapi.ts
+sed -i 's/^    "Catalog schema authoring-facing/    "DRIFT PROBE Catalog schema authoring-facing/' packages/contract/src/openapi.ts
+# 2b. CHỐT CỬA: probe không sửa được nguồn thì bước 2 chứng minh con số 0.
+git diff --quiet -- packages/contract/src/openapi.ts && { echo "PROBE KHÔNG SỬA ĐƯỢC NGUỒN — dừng"; exit 9; }
 pnpm openapi:check; echo "drifted -> $?"
 # 3. Trả lại nguyên trạng:
 git checkout -- packages/contract/src/openapi.ts packages/contract/openapi.json
@@ -1328,7 +1330,9 @@ pnpm openapi:check; echo "restored -> $?"
 
 Expected: `clean -> 0`, `drifted -> 1` (kèm diff của `openapi.json` in ra), `restored -> 0`. Nếu `drifted -> 0` thì gate là đồ trang trí — dừng lại và sửa script trước khi đi tiếp.
 
-- [ ] **Step 5: Thêm bước vào CI**
+> **Sửa lúc thực thi:** sed bản đầu (`'s/description: "Catalog schema…'`) KHÔNG khớp file thật — prettier ngắt `description:` và chuỗi thành hai dòng, nên probe là no-op và cho `drifted -> 0` (gate vô can). Đã đổi pattern sang neo dòng chuỗi + thêm bước 2b khẳng định probe thật sự sửa nguồn. Chạy lại: `clean -> 0`, `drifted -> 1` kèm diff `info.description`, `restored -> 0`.
+
+- [x] **Step 5: Thêm bước vào CI**
 
 Trong `.github/workflows/testkite-ci.yml`, chèn NGAY SAU bước `Test` (trước bước `Gate — no browser in API image`):
 
@@ -1338,12 +1342,19 @@ Trong `.github/workflows/testkite-ci.yml`, chèn NGAY SAU bước `Test` (trư�
         run: pnpm openapi:check
 ```
 
-- [ ] **Step 6: Chạy toàn bộ**
+- [x] **Step 6: Chạy toàn bộ**
 
 Run: `cd testkite && pnpm typecheck && pnpm test && pnpm openapi:check`
 Expected: exit 0 cả ba.
 
-- [ ] **Step 7: Commit**
+> **Kết quả A6:** conformance chạy 33 test và ĐỎ 3 — schema A1/A2 hẹp hơn thực tế fixture, đã NỚI SCHEMA (không đụng fixture) theo đúng chỉ dẫn Step 2:
+> - `elementSchema.locators` bỏ `.min(1)` cứng, thay bằng `superRefine`: chỉ `status = ready` mới đòi ≥1 locator. `pending_locator` + `locators: []` là dữ liệu thật (`err-element-pending-locator.json`) và compiler mới là bên phát `element_pending_locator`.
+> - `while.maxIterations` thành optional (`?: number | undefined`), khớp `AuthoredStep` của compiler (`maxIterations?: number`). `err-while-without-max-iterations.json` + `err-gather-all-not-first-fail.json` đòi compiler gom diagnostic một lượt; chặn 400 ở biên sẽ cắt mất lô đó.
+> - Hai test cũ khẳng định độ chặt sai đã được viết lại (ĐỎ trước, code sau) và bổ sung test element `pending_locator` không locator.
+> - `openapi.json` regen theo (mất `minItems: 1` ở `Element.locators`, mất `maxIterations` khỏi `required` của nhánh `while`) và commit cùng — chính gate đã bắt được drift này trước khi commit.
+> - Đếm test sau A6: contract 55, run-compiler 178, verb-kit 12, apps/core 55 (+4 skip) — `pnpm typecheck`, `pnpm test`, `pnpm openapi:check` đều exit 0.
+
+- [x] **Step 7: Commit**
 
 ```bash
 git add testkite/package.json testkite/packages/run-compiler/src/contract-conformance.test.ts .github/workflows/testkite-ci.yml

@@ -49,8 +49,13 @@ export interface WhileStepDto {
   kind: "while";
   ordinal: number;
   renderedSentence: string;
-  /** BẮT BUỘC: while không trần lặp là while vô hạn (compiler: while_without_max_iterations). */
-  maxIterations: number;
+  /**
+   * KHÔNG bắt buộc ở biên API: while không trần lặp là dữ liệu authoring có thật,
+   * và người phán nó là COMPILER (diagnostic `while_without_max_iterations`,
+   * fixture err-while-without-max-iterations.json). Trả 400 ở đây sẽ cắt mất lô
+   * diagnostic gom-một-lượt mà tác giả cần để sửa mọi lỗi trong một vòng.
+   */
+  maxIterations?: number | undefined;
   children: AuthoredStepDto[];
 }
 
@@ -107,7 +112,7 @@ export const authoredStepSchema: z.ZodType<AuthoredStepDto> = z.lazy(() =>
     z.object({
       kind: z.literal("while"),
       ...stepCommon,
-      maxIterations: z.number().int().positive(),
+      maxIterations: z.number().int().positive().optional(),
       children: z.array(authoredStepSchema),
     }),
     z.object({

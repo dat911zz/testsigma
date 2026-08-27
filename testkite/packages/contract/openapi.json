@@ -46,8 +46,7 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Locator"
-            },
-            "minItems": 1
+            }
           }
         },
         "required": [
@@ -225,7 +224,6 @@
               "kind",
               "ordinal",
               "renderedSentence",
-              "maxIterations",
               "children"
             ]
           },

@@ -58,10 +58,14 @@ describe("authoredStepSchema — block", () => {
     ).toBe(false);
   });
 
-  it("từ chối while thiếu maxIterations — while không trần là while vô hạn", () => {
+  it("NHẬN while thiếu maxIterations — trần lặp là phán quyết của compiler, không phải của biên API", () => {
+    // `while` không trần vẫn là dữ liệu authoring HỢP LỆ: compiler bắt nó và phát
+    // `while_without_max_iterations` (fixture err-while-without-max-iterations.json).
+    // Chặn ở đây bằng 400 là cướp mất lô diagnostic gom-một-lượt mà tác giả cần
+    // (err-gather-all-not-first-fail.json đòi 8 code trong CÙNG một lần compile).
     expect(
       authoredStepSchema.safeParse({ kind: "while", ordinal: 1, renderedSentence: "x", children: [action] }).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("nhận while có maxIterations", () => {
