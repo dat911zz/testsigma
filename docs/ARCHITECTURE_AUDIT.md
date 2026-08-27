@@ -309,6 +309,30 @@ Maintainer xác nhận người viết test hằng ngày là **QA thuần no-cod
 3. **Use case đáng tiền nhất cho solo maintainer:** bảo trì estate — triage kết quả chạy đêm (đọc failure + screenshot, đề xuất sửa locator thành draft), gộp step trùng thành step group, dọn 2.159 element. Chạy batch/định kỳ với ngân sách token cố định; hết ngân sách → QA làm tay như cũ, không bị động.
 4. **Công sức:** MCP server v1 ~2–4 tuần + mở API ~1–2 tuần → **~1–1,5 tháng-người**, làm ngay sau Phase 0, song song lộ trình nâng framework (MCP là process Node riêng, không đụng code Java). Model mặc định: Claude Opus 5 (`claude-opus-5`, $5/$25 per MTok); khối lượng lớn dùng Batch API (−50%). Tiên quyết: Phase 0 xong (CSRF + xoay API key mặc định) — không đấu AI vào server còn mở toang.
 
+### 9.7. Đường E — Rewrite lõi theo census (bổ sung 27-08-2026)
+
+> Bối cảnh: maintainer đặt lại câu hỏi rewrite với 2 điều kiện mới: chỉ rewrite **luồng nghiệp vụ cốt lõi** (không parity), tích hợp cởi mở hơn, và hệ cũ được phép chạy nội bộ tạm ~6 tháng làm fallback.
+
+**Vì sao đây KHÔNG phải phương án đã bị loại:** thứ bị loại là rewrite-để-ngang-bằng (218 endpoint, 4 nền tảng, recorder, addon, device lab — 8–15 năm-người). Census chứng minh phần *thực dùng* chỉ là: web-only, ~35 verb, 1 workspace, 0 addon → rewrite đúng phần đó là xây một sản phẩm nội bộ nhỏ **~25–30k LOC TypeScript** thay cho 178k LOC — trong tầm với một người có 6–9 tháng.
+
+**Bản đồ luồng cốt lõi → thiết kế mới (một ngôn ngữ TS cho tất cả):**
+
+| Luồng | Hệ cũ | Thiết kế mới |
+|---|---|---|
+| Soạn test | contentEditable 2.310 dòng + execCommand; catalog 586 câu → reflection | Step-builder có cấu trúc (autocomplete + element picker); catalog ~35 verb là data, validate khi lưu; QA vẫn no-code |
+| Chạy test | God class 1.570 dòng → automator JAR / agent poll 3s → Selenium + driver manager | API → BullMQ → **worker container Playwright**; không agent, không driver manager; auto-wait xóa ~4.700 step think/wait |
+| Kết quả | 5 tầng bảng + UI polling | Bảng gọn + SSE push + screenshot object storage + **trace Playwright** mỗi run |
+| Element | 2.159 locator, tạo bằng recorder | Import nguyên vẹn; picker dựa Playwright codegen (tùy QA có phụ thuộc recorder không) |
+| Data-driven | 149 profile + XLS (POI 3.15) | Giữ khái niệm; exceljs; 214 case → parameterized |
+| Prereq/group/if/loop | Ngữ nghĩa ngầm, không tài liệu (92% case dùng prereq) | Ngữ nghĩa tường minh, log rõ; 51 group = hàm tái dùng |
+| Lập lịch | @Scheduled poll + thread pool vô hạn | BullMQ repeatable jobs |
+| Tích hợp ("cởi mở") | 18 class cứng + addon JAR (RCE) + vendor SaaS | **OpenAPI ngày 1 + webhooks + MCP native + PAT**; mở rộng bằng HTTP, không bao giờ bằng nạp JAR |
+| Auth | JWT cookie + CSRF off + secrets plaintext | Session + Google OAuth, secrets qua env, CSRF bật |
+
+**Kế hoạch 6–9 tháng:** (0) tuần 1–3: **Phase-0-lite hệ cũ bắt buộc** (cert, telemetry, scheduler, backup — fallback chỉ tồn tại nếu bom đã tháo) + schema mới + OpenAPI v0 + **prototype step-builder cho QA thử ngay tuần 3** (cổng adoption đi trước engine); (1) tháng 1–2: engine (~35 verb trên Playwright, parser theo cột `data` của catalog) + importer 15 bảng — **cột mốc go/no-go: chạy 1 suite thật từ data thật ở CLI, diff với hệ cũ; trượt quá 1 tháng → quay về A+D, mất ~2 tháng**; (2) tháng 3–4: API + UI authoring ~10–15 màn; (3) tháng 5: scheduling + webhooks + MCP native (đường D nhập vào đây); (4) tháng 6–9: parallel-run, diff, cutover theo suite, hệ cũ read-only giữ lịch sử.
+
+**So sánh chốt:** A+D = 12–15 tháng-người rải 2 năm, rủi ro thấp, Java ở lại; E = ~7–10 tháng-người dồn 6–9 tháng, rủi ro solo-slip + adoption step-builder + tái hiện hành vi ngầm engine cũ, kết quả là codebase TS ~25–30k LOC của chính mình, MCP-native, Java nghỉ hưu. Với bề mặt thực dùng ~5% + fallback 6 tháng + cổng thoát tháng 2, E là **canh bạc hợp lý có cửa thoát**, điều kiện: scope sắt máu (không mobile/addon/recorder-v1/multi-version), prototype QA tuần 3, tôn trọng cổng tháng 2.
+
 ---
 
 ## Phụ lục A — File đáng chú ý nhất
