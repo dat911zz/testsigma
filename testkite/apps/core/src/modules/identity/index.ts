@@ -8,3 +8,8 @@
  *  - Repository phải khởi tạo với TenantContext (fail-closed) — xem lớp cách ly L1.
  */
 export const MODULE = "identity" as const;
+
+// Facade công khai của identity. Module khác (authoring, planning, ...) chỉ được
+// import từ file này — không bao giờ với tay vào `./db/schema.js`.
+export { projects } from "./db/schema.js";
+export { APP_ROLE, appRole } from "./db/schema.js";

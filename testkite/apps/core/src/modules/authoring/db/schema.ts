@@ -18,7 +18,8 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { appRole, projects } from "../../identity/db/schema.js";
+// Xuôi DAG: authoring đọc dữ liệu identity qua FACADE, không chạm file nội bộ của module đó.
+import { appRole, projects } from "../../identity/index.js";
 
 const tenantPredicate = sql`team_id = NULLIF(current_setting('app.team_id', true), '')::uuid`;
 
