@@ -76,8 +76,9 @@ function toOutboxRecord(row: Record<string, unknown>, id: bigint): OutboxRecord 
  * đấu nối BullMQ thật là việc M3.
  *
  * `claimed` là số row câu SELECT trả về; `published + failed` có thể NHỎ HƠN khi một
- * relay khác đang giữ khoá row (SKIP LOCKED bỏ qua, không chờ) — hiệu số đó chính là
- * phần việc thuộc về instance kia, không phải lỗi.
+ * relay khác đang giữ khoá row (SKIP LOCKED bỏ qua, không chờ) hoặc đã tiêu thụ xong
+ * row đó (NOT EXISTS trong câu khoá) — hiệu số đó chính là phần việc thuộc về instance
+ * kia, không phải lỗi.
  */
 export async function runRelayOnce(
   db: TkDb,
@@ -111,11 +112,24 @@ export async function runRelayOnce(
       const done = await db.transaction(async (tx): Promise<boolean> => {
         // Khoá lại đúng row này; SKIP LOCKED để relay thứ hai đi tiếp row khác
         // thay vì xếp hàng chờ.
+        //
+        // NOT EXISTS PHẢI lặp lại ở đây, không chỉ ở câu SELECT batch: danh sách
+        // candidate được chốt TRƯỚC mọi transaction nên nó là snapshot CŨ. Relay
+        // khác cùng consumer có thể đã publish + COMMIT consumed cho row này rồi
+        // NHẢ khoá trong lúc ta còn xử lý các row trước đó — khi đó SKIP LOCKED
+        // không skip (row hết khoá) và ta sẽ publish lần hai. Câu này chạy trong
+        // transaction riêng nên snapshot READ COMMITTED của nó thấy được commit
+        // đó ⇒ 0 row ⇒ bỏ qua đúng.
         const locked = rowsOf(
           await tx.execute(sql`
-            SELECT id FROM krn_outbox WHERE id = ${String(id)} FOR UPDATE SKIP LOCKED`),
+            SELECT o.id FROM krn_outbox o
+            WHERE o.id = ${String(id)}
+              AND NOT EXISTS (
+                SELECT 1 FROM krn_outbox_consumed c
+                WHERE c.outbox_id = o.id AND c.consumer = ${opts.consumer})
+            FOR UPDATE SKIP LOCKED`),
         );
-        if (locked.length === 0) return false; // relay khác đang cầm — bỏ qua
+        if (locked.length === 0) return false; // relay khác đang cầm hoặc đã xong — bỏ qua
         await publish(rec);
         await tx.execute(sql`
           INSERT INTO krn_outbox_consumed (outbox_id, consumer)

@@ -1,10 +1,12 @@
 /**
  * Relay outbox — vòng đọc `krn_outbox` rồi giao cho một `Publisher` tiêm từ ngoài.
  *
- * Hai tính chất được canh gác ở đây:
+ * Ba tính chất được canh gác ở đây:
  *  1. IDEMPOTENT theo cặp (outbox_id, consumer) — chạy lại không publish lại,
  *     nhưng consumer khác vẫn nhận được cùng event.
- *  2. AT-LEAST-ONCE — publish ném ⇒ không đánh dấu consumed, tăng attempts, lùi
+ *  2. IDEMPOTENT cả khi danh sách candidate đã CŨ — event bị relay khác cùng consumer
+ *     đánh dấu consumed *sau* câu SELECT batch thì không được publish lần hai.
+ *  3. AT-LEAST-ONCE — publish ném ⇒ không đánh dấu consumed, tăng attempts, lùi
  *     available_at; một event hỏng không chặn phần còn lại của batch.
  *
  * GIỚI HẠN ĐÃ BIẾT: PGlite chỉ có MỘT connection ⇒ KHÔNG tồn tại tranh chấp khoá,
@@ -16,6 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { enqueueOutbox } from "../../src/modules/kernel/outbox/writer.js";
 import { runRelayOnce, type OutboxRecord } from "../../src/modules/kernel/outbox/relay.js";
 import { withTenant } from "../../src/modules/kernel/db/tenant.js";
+import type { TkDb } from "../../src/modules/kernel/db/types.js";
 import { makeTestDb, type TestDb } from "../harness/pglite.js";
 
 let t: TestDb;
@@ -45,6 +48,33 @@ async function seed(n: number): Promise<void> {
     for (let i = 0; i < n; i += 1) {
       await enqueueOutbox(tx, { teamId: teamA }, { topic: `t${i}`, payload: { i } });
     }
+  });
+}
+
+/**
+ * Bọc `db` để chèn sự kiện của MỘT RELAY KHÁC vào đúng cửa sổ đua: sau khi câu SELECT
+ * batch đã chốt danh sách candidate, trước khi transaction khoá row đầu tiên chạy.
+ *
+ * Vì sao phải bọc: PGlite chỉ có một connection nên không dựng được hai `runRelayOnce`
+ * chạy song song thật (mọi query xếp hàng qua transaction-mutex; gọi query lồng bên
+ * trong một transaction sẽ khoá chết). Wrapper này tái hiện ĐÚNG trạng thái DB mà relay
+ * B để lại trên Postgres thật: consumed đã COMMIT và row đã HẾT khoá — nên
+ * `FOR UPDATE SKIP LOCKED` của relay A không skip, và chỉ điều kiện NOT EXISTS
+ * ngay trong câu khoá mỗi-row mới chặn được publish lần hai.
+ */
+function raceBeforeFirstTx(base: TkDb, otherRelayCommits: () => Promise<void>): TkDb {
+  let fired = false;
+  return new Proxy(base, {
+    get(target, prop, receiver): unknown {
+      if (prop !== "transaction") return Reflect.get(target, prop, receiver);
+      return async (fn: Parameters<TkDb["transaction"]>[0]): Promise<unknown> => {
+        if (!fired) {
+          fired = true;
+          await otherRelayCommits();
+        }
+        return target.transaction(fn);
+      };
+    },
   });
 }
 
@@ -84,6 +114,27 @@ describe("runRelayOnce", () => {
     );
     expect(res).toEqual({ claimed: 0, published: 0, failed: 0 });
     expect(seen).toEqual([]);
+  });
+
+  it("IDEMPOTENT: relay khác cùng consumer consume xong SAU câu SELECT batch ⇒ không publish lại", async () => {
+    await seed(2);
+    const seen: string[] = [];
+    const raced = raceBeforeFirstTx(t.db, async () => {
+      // Relay B: publish xong t1 và COMMIT consumed. Row t1 KHÔNG còn bị khoá.
+      await t.db.execute(sql`
+        INSERT INTO krn_outbox_consumed (outbox_id, consumer)
+        SELECT id, 'relay-1' FROM krn_outbox WHERE topic = 't1'`);
+    });
+    const res = await runRelayOnce(
+      raced,
+      async (r) => {
+        seen.push(r.topic);
+      },
+      { consumer: "relay-1" },
+    );
+    expect(seen).toEqual(["t0"]);
+    expect(res).toEqual({ claimed: 2, published: 1, failed: 0 });
+    expect(await consumedCount()).toBe(2);
   });
 
   it("consumer khác vẫn nhận được cùng event (PK ghép outbox_id+consumer)", async () => {
