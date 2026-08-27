@@ -11,17 +11,17 @@
       transactional outbox writer + relay skeleton; zod-validate env (exit-on-invalid)
 - [ ] **contract:** zod schemas cho case/step/element/run + sinh OpenAPI 3.1, commit spec,
       CI fail khi regen drift
-- [ ] **run-plan schema:** RunPlan/ChainPlan/CasePlan/StepPlan hoàn chỉnh + canonicalize + SHA-256 + zstd
-      + `planFormatVersion`
+- [x] **run-plan schema:** RunPlan/ChainPlan/CasePlan/StepPlan hoàn chỉnh + canonicalize + SHA-256 + zstd
+      + `planFormatVersion` (zstd để planFormatVersion=2) (hash: 6a64ff2)
 - [x] **compiler phase 1:** resolve chuỗi prereq — cycle check, depth ≤ 5, ghim revision
       ('ready' cho schedule/CI, 'latest' cho ad-hoc author)
 - [x] **compiler phase 2:** nở step group (local ≤ 5 tầng), if/loop → cây block,
       data-driven fan-out + `expected_to_fail`
-- [ ] **compiler phase 3–5:** bind verb vào registry (GOM mọi lỗi), element → LocatorSet
-      (`pending_locator` ⇒ diagnostic), merge data/env với `$secretRef`
-- [ ] **compiler phase 6–7:** stamp policy/tenant + freeze; mọi `CompileErrorCode` có fixture âm
-- [ ] **Golden tests (T1):** cùng input ⇒ cùng `content_hash`; bộ fixture phủ mọi construct
-      (prereq chain, group lồng, if, for, data-driven)
+- [x] **compiler phase 3–5:** bind verb vào registry (GOM mọi lỗi), element → LocatorSet
+      (`pending_locator` ⇒ diagnostic), merge data/env với `$secretRef` (hash: 98cabed, c242e82)
+- [x] **compiler phase 6–7:** stamp policy/tenant + freeze; mọi `CompileErrorCode` có fixture âm (hash: 6a64ff2)
+- [x] **Golden tests (T1):** cùng input ⇒ cùng `content_hash`; bộ fixture phủ mọi construct
+      (prereq chain, group lồng, if, for, data-driven) (hash: 7c5ca5c)
 - [ ] Schema tenancy migration: organizations/teams/projects/users/memberships +
       composite-FK pattern mẫu cho một bảng asset đầu tiên
 
