@@ -3,7 +3,32 @@
  * Blueprint §3: organizations (1 row) → teams (= TENANT) → projects → tài sản.
  * Mọi bảng tenant-scoped: team_id dẫn đầu index + UNIQUE(team_id, id) làm mỏ neo composite FK.
  */
-import { index, pgEnum, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  index,
+  pgEnum,
+  pgPolicy,
+  pgRole,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+/**
+ * Role mà request-path dùng. PHẢI non-superuser và NOBYPASSRLS:
+ * spike 2026-08-27 chứng minh superuser bỏ qua RLS kể cả khi đã FORCE.
+ */
+export const APP_ROLE = "testkite_app" as const;
+export const appRole = pgRole(APP_ROLE);
+
+/**
+ * Vị từ tenant dùng chung. NULLIF là BẮT BUỘC: `RESET app.team_id` để GUC lại
+ * thành chuỗi rỗng (không phải NULL) ⇒ ''::uuid ném 22P02 thay vì fail-closed.
+ * Đã kiểm chứng trên PG 16.13 thật và PGlite 18.3.
+ */
+const tenantPredicate = sql`team_id = NULLIF(current_setting('app.team_id', true), '')::uuid`;
 
 export const membershipRole = pgEnum("membership_role", [
   "instance_operator",
@@ -35,8 +60,19 @@ export const teams = pgTable(
     status: teamStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique("teams_org_slug_unique").on(t.orgId, t.slug), index("teams_org_idx").on(t.orgId)],
-);
+  (t) => [
+    unique("teams_org_slug_unique").on(t.orgId, t.slug),
+    index("teams_org_idx").on(t.orgId),
+    // teams: cột khoá tenant là `id` chứ không phải `team_id`.
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: sql`id = NULLIF(current_setting('app.team_id', true), '')::uuid`,
+      withCheck: sql`id = NULLIF(current_setting('app.team_id', true), '')::uuid`,
+    }),
+  ],
+).enableRLS();
 
 export const projects = pgTable(
   "projects",
@@ -54,8 +90,15 @@ export const projects = pgTable(
     unique("projects_team_id_unique").on(t.teamId, t.id),
     unique("projects_team_slug_unique").on(t.teamId, t.slug),
     index("projects_team_idx").on(t.teamId),
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: tenantPredicate,
+      withCheck: tenantPredicate,
+    }),
   ],
-);
+).enableRLS();
 
 /** users là toàn cục (một người có thể ở nhiều team) — KHÔNG tenant-scoped. */
 export const users = pgTable("users", {
@@ -82,5 +125,12 @@ export const memberships = pgTable(
     unique("memberships_team_id_unique").on(t.teamId, t.id),
     unique("memberships_team_user_unique").on(t.teamId, t.userId),
     index("memberships_team_idx").on(t.teamId),
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: tenantPredicate,
+      withCheck: tenantPredicate,
+    }),
   ],
-);
+).enableRLS();
