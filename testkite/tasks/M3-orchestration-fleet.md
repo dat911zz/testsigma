@@ -1,11 +1,11 @@
 # M3 — Orchestration + Fleet (4 tuần đầu của track này = xóa sổ lớp lỗi OOM)
 
-> Căn cứ: blueprint §5 (fleet 2 mặt phẳng, 4 tầng trần bộ nhớ, lease MySQL duy nhất).
+> Căn cứ: blueprint §5 (fleet 2 mặt phẳng, 4 tầng trần bộ nhớ, lease Postgres duy nhất).
 > Track fleet chạy song song với M2 nếu có kỹ sư thứ hai.
 
 ## Checklist
 
-- [ ] `job_runs` = queue of record (status/lane/job_kind/lease_epoch/attempt) + migration
+- [ ] `job_runs` = queue of record trên Postgres — claim bằng `FOR UPDATE SKIP LOCKED` (status/lane/job_kind/lease_epoch/attempt) + migration
 - [ ] Dispatcher v1 **FIFO** (leader-elect qua cờ, tick 250ms, fan-out 200/tick, dead-man alert)
       — fair-share DRR để M5
 - [ ] Worker (`apps/runner`): claim = conditional UPDATE bump `lease_epoch` (0 rows = bỏ);

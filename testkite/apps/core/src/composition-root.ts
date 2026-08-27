@@ -7,7 +7,7 @@
  *   edge (integrations, ai, mcp-gateway) chỉ phụ thuộc vào trong.
  *
  * Gọi ngược/ngang = domain event qua transactional outbox (krn_outbox,
- * ghi cùng transaction MySQL) → relay → BullMQ events → handler idempotent.
+ * ghi cùng transaction Postgres) → relay → BullMQ events → handler idempotent.
  * `import ... from "bullmq"` bị lint CẤM ngoài kernel/relay/dispatcher.
  */
 

@@ -1,15 +1,20 @@
-# Câu hỏi mở — cần maintainer chốt
+# Câu hỏi mở — cập nhật sau vòng hỏi-đáp 27-08-2026
 
-⚠️ **2 câu CHẶN M1:**
-1. **Nhân sự:** +1 kỹ sư fleet (lịch 9 tháng) hay solo (~12 tháng)?
-2. **Hạ tầng:** cloud (~$900–1.000/th all-in lúc go-live) hay tự host Hetzner-class (~$350–450, ~6× rẻ phần compute)? — quyết trước khi provision M3.
+✅ **Đã chốt (xem bảng đầu blueprint):** nhân sự (+1 kỹ sư fleet, 9 tháng) · hạ tầng (tự host) ·
+DB (**PostgreSQL 17**) · go-live 2–5 team · app đích chịu tải tốt · UI song ngữ vi+en (i18n từ đầu) ·
+auth (email nội bộ + generic OIDC SSO) · retention (kết quả vĩnh viễn + partition tháng; ảnh/trace ≤30 ngày).
 
-Còn lại:
-3. Chạy `SELECT entity_type, COUNT(*) FROM test_plans GROUP BY entity_type` (+ test_suites) trên production — chốt kích thước migrate M7.
-4. Chính sách lịch sử kết quả: 90 ngày full + rollup vĩnh viễn — xác nhận.
-5. Pilot 200 chain đo giây/chain thật TRƯỚC khi mua máy (giả định 75s đang gánh mọi con số sizing).
-6. Mobile native vĩnh viễn ngoài scope — xác nhận trước khi schema ship (cột Appium bỏ không migrate).
-7. Trần ngân sách AI/tháng lúc go-live ($200 trong opex là placeholder).
+## Còn lại (không chặn M1, chốt dần theo milestone)
+
+1. **IdP cụ thể cho SSO** (Keycloak / AD FS / Google Workspace / khác?) — cần trước M2 phần OIDC connector.
+2. **Env đích để chạy test là gì:** staging clone hay production thật? (ảnh hưởng chính sách egress,
+   tài khoản test, và rủi ro dây bẩn dữ liệu) — cần trước M3 pilot.
+3. Pool tài khoản test: danh sách + cơ chế cấp phát (lease per-chain) — cần trước M3 pilot.
+4. Chạy `SELECT entity_type, COUNT(*) FROM test_plans GROUP BY entity_type` (+ test_suites)
+   trên production — chốt bộ suite/plan thật cho M7.
+5. Pilot 200 chain đo giây/chain thật TRƯỚC khi mua/thuê máy (giả định 75s gánh mọi sizing) — đầu M3.
+6. Mobile native vĩnh viễn ngoài scope — xác nhận lần cuối trước khi schema ship (M1).
+7. Trần ngân sách AI/tháng lúc go-live — cần trước M5.
 8. Chính sách quản trị catalog step-group công bố — trước khi team thứ 2 subscribe.
-9. `test_devices.prerequisite_test_devices_id`: audit xác nhận không plan production nào dùng trước khi bỏ.
-10. UI cũ có từng surface review workflow chưa (review_submitted_at chưa từng persist) — ảnh hưởng truyền thông rollout.
+9. `test_devices.prerequisite_test_devices_id`: audit xác nhận không plan production nào dùng (M7).
+10. UI cũ có từng surface review workflow chưa — chỉ ảnh hưởng truyền thông rollout (M8).

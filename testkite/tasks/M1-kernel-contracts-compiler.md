@@ -7,7 +7,7 @@
 
 - [ ] `pnpm install` + toolchain: tsconfig refs, eslint (+ eslint-boundaries theo `ownership.json`,
       madge --circular, lint cấm `bullmq` ngoài kernel), vitest, CI cơ bản (typecheck + test mỗi PR)
-- [ ] **kernel:** Drizzle + drizzle-kit; migration đầu tiên: bộ ba tenancy + `krn_outbox`/`krn_outbox_consumed`;
+- [ ] **kernel:** Drizzle (driver pg, PostgreSQL 17) + drizzle-kit; migration đầu tiên: bộ ba tenancy + `krn_outbox`/`krn_outbox_consumed`;
       transactional outbox writer + relay skeleton; zod-validate env (exit-on-invalid)
 - [ ] **contract:** zod schemas cho case/step/element/run + sinh OpenAPI 3.1, commit spec,
       CI fail khi regen drift

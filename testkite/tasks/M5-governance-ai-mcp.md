@@ -1,4 +1,4 @@
-# M5 — Quota/Fair-share · AI drafts · MCP
+# M5 — Quota/Fair-share · AI drafts · MCP  ⚠️ GA-BLOCKING (go-live 2–5 team)
 
 > Căn cứ: blueprint §3 (quota 6 chỉ số, 5 điểm cưỡng chế), §9.6 đường D (AI 3 tầng), S4/S5.
 

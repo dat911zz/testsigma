@@ -2,7 +2,8 @@
 
 > Căn cứ: blueprint §3 (multitenancy 3 lớp, 6 vai, token ∩ role), §2 (aut_*), §4 (concurrency).
 
-- [ ] Identity: users/memberships/api_tokens (SHA-256 + prefix, bắt buộc expiry) + login + Google OAuth
+- [ ] Identity: users/memberships/api_tokens (SHA-256 + prefix, bắt buộc expiry) + email/password nội bộ + **generic OIDC SSO connector** (IdP cụ thể: xem open-questions)
+- [ ] Cách ly L2.5: **Postgres RLS** policy theo team_id trên nhóm bảng asset (bổ sung composite FK, không thay thế)
 - [ ] RBAC: ma trận quyền TypeScript 6 vai; scope hiệu lực = token.scopes ∩ rolePerms mỗi request
       (cache 60s; action HIGH bỏ cache); danh sách never-grantable
 - [ ] Cách ly L1: repository base đòi TenantContext (fail-closed) + lint cấm query builder thô

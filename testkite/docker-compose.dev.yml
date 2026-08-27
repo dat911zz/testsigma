@@ -1,14 +1,14 @@
 # TestKite dev infra — pnpm dev:infra
 # Nguyên tắc từ blueprint: MỌI container có memory limit tường minh (kể cả dev).
 services:
-  mysql:
-    image: mysql:8.4
+  postgres:
+    image: postgres:17
     environment:
-      MYSQL_ROOT_PASSWORD: dev
-      MYSQL_DATABASE: testkite
-    ports: ["3306:3306"]
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: testkite
+    ports: ["5432:5432"]
     mem_limit: 1g
-    volumes: [mysql-data:/var/lib/mysql]
+    volumes: [pg-data:/var/lib/postgresql/data]
 
   valkey:
     image: valkey/valkey:8
@@ -35,5 +35,5 @@ services:
   #   runner: mem_limit 3g, shm_size 1g, cap_drop ALL, seccomp custom, non-root
 
 volumes:
-  mysql-data:
+  pg-data:
   minio-data:

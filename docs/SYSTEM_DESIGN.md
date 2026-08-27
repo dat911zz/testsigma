@@ -7,7 +7,7 @@
 **TestKite = con diều.** Tên được chọn vì nó kể đúng câu chuyện kỹ thuật của hệ thống:
 
 - **Diều = nhẹ** — linh hồn của fleet runner: sandbox nhẹ, container Playwright + chromium-headless-shell, sinh ra để chấm dứt lớp lỗi OOM của hệ cũ.
-- **Sợi dây diều = control plane** — diều bay cao nhưng dây luôn nằm trong tay: MySQL là queue + lease authority duy nhất, dispatcher giữ kiểm soát mọi con diều; đứt dây (host chết) thì bump epoch, requeue, không con diều nào ghi được verdict lậu (409 STALE_EPOCH).
+- **Sợi dây diều = control plane** — diều bay cao nhưng dây luôn nằm trong tay: PostgreSQL là queue + lease authority duy nhất, dispatcher giữ kiểm soát mọi con diều; đứt dây (host chết) thì bump epoch, requeue, không con diều nào ghi được verdict lậu (409 STALE_EPOCH).
 - **Thả nhiều diều = spawn nhiều sandbox** — mỗi worker container là một con diều; muốn bay nhiều hơn thì thả thêm diều (thêm host), không phải làm một con diều to hơn.
 - **Diều bay nhờ gió** — "làn gió mới" là lý do maintainer chọn rewrite ngay từ đầu.
 - Thực dụng: dễ đọc cả tiếng Việt lẫn tiếng Anh, vibe thân thiện kiểu EasyTest nhưng không vô danh, không đụng thương hiệu QA nào (né hẳn `Sigma*`); tại thời điểm chọn tên, `testkite` và `kite-test` đều trống trên npm registry.
@@ -16,9 +16,22 @@
 > **Phương pháp:** workflow 9 agent / 4 pha — 3 trinh sát (domain từ schema thật + ngữ nghĩa runtime, migrate, pháp y OOM), 3 thiết kế (multitenancy, module lõi, fleet phân tán), 1 thẩm định 10 kịch bản nghiệp vụ, 1 critic (8 mâu thuẫn + 6 khoảng trống), 1 tổng kiến trúc sư chốt. Mọi claim then chốt xác minh trực tiếp trong source tại `a6155d0`.
 > **Ngày:** 2026-08-27.
 
+## Quyết định vòng hỏi-đáp trước spec (27-08-2026, maintainer chốt trực tiếp)
+
+| # | Câu hỏi | Quyết định | Hệ quả thiết kế |
+|---|---|---|---|
+| 1 | Nhân sự | **+1 kỹ sư fleet — lịch 9 tháng** | 2 track song song: fleet (M3 phần runner) vs compiler/API |
+| 2 | Hạ tầng | **Tự host / máy công ty** | Sizing theo Hetzner-class ~$350–450/th; trigger chi phí k8s gần như không bao giờ kích |
+| 3 | Database | **PostgreSQL** (đổi so blueprint MySQL 8.4) | Drizzle driver pg; queue-of-record dùng `FOR UPDATE SKIP LOCKED` (pattern job-queue kinh điển của PG — tốt hơn bản MySQL); **RLS thành lớp cách ly L2.5** bổ sung composite-FK; partition declarative cho bảng result; importer từ dump MySQL cũ thành ETL cross-engine (map kiểu dữ liệu/collation — thêm ~1 tuần M7); docker-compose đổi postgres:17 |
+| 4 | Số team go-live | **2–5 team ngay từ đầu** | M5 (fair-share + quota + onboarding) là GA-blocking đúng nghĩa; fleet khởi điểm 3 host; onboarding tested với ≥2 team thật trước cutover |
+| 5 | App đích chịu tải | **Thoải mái (app prod hàng triệu user)** | Giữ nguyên sizing 24–66 context; yêu cầu còn lại: pool tài khoản test lease per-chain |
+| 6 | Ngôn ngữ UI | **Song ngữ vi+en, i18n từ đầu** | +2–3 tuần setup i18n (M3–M4 phần UI); câu verb NLP giữ tiếng Anh khớp catalog, nhãn UI song ngữ |
+| 7 | Auth | **SSO + email nội bộ** | Email/password + **generic OIDC connector** (phủ Keycloak/AD FS/Google Workspace); IdP cụ thể là câu hỏi mở còn lại |
+| 8 | Retention | **Kết quả test VĨNH VIỄN; ảnh/artifact tối đa 30 ngày** | Đổi so blueprint (90d full): res_* rows giữ mãi → partition theo tháng bắt buộc từ v1 + rollup summaries; lifecycle object store: mọi ảnh/trace ≤30d (failure cũng vậy — `failure_context` JSON trong DB là bản ghi debug vĩnh viễn) |
+
 ## Tóm tắt điều hành
 
-Monolith TypeScript 12 module trên DAG một chiều + **Run Compiler** sinh run-plan bất biến content-hashed + **fleet runner 2 mặt phẳng với 4 tầng trần bộ nhớ**. Tenant = team (org → team → project), cách ly 3 lớp độc lập. Stack: Node 22, Fastify 5 + zod (OpenAPI sinh từ zod, CI chặn drift), Drizzle + MySQL 8.4, BullMQ 5 + Valkey, Playwright chromium-headless-shell, React 19 + Vite, Vitest + Testcontainers.
+Monolith TypeScript 12 module trên DAG một chiều + **Run Compiler** sinh run-plan bất biến content-hashed + **fleet runner 2 mặt phẳng với 4 tầng trần bộ nhớ**. Tenant = team (org → team → project), cách ly 3 lớp độc lập. Stack: Node 22, Fastify 5 + zod (OpenAPI sinh từ zod, CI chặn drift), Drizzle + PostgreSQL 17, BullMQ 5 + Valkey, Playwright chromium-headless-shell, React 19 + Vite, Vitest + Testcontainers.
 
 **Công sức thật: ~15–18 tháng-người** (baseline 7–10 + multitenancy 3,0 + fairness/quota 1,5 + fleet hardening 2,5 + capture/cutover/DR từ kịch bản 2,25 + migrate 0,75 − cắt giảm 1,0). **9 tháng lịch nếu có thêm 1 kỹ sư lo fleet; ~12 tháng solo.** Quyết trước M1.
 
@@ -34,7 +47,7 @@ Xếp theo mức đóng góp:
 
 **Quyết định 27-08-2026 — KHÔNG vá hệ cũ (clean break):** maintainer chốt chuyển mới hoàn toàn, không bảo trì hệ gốc nữa — mọi hạng mục "stopgap tuần 1" (semaphore, tắt scheduler, mem cap) bị loại khỏi kế hoạch; pháp y OOM ở trên giữ lại làm *căn cứ thiết kế* cho fleet mới, không phải việc phải làm. Rủi ro nhận có chủ đích: hệ cũ giữ nguyên trạng (kể cả OOM) tới cutover; nếu nó sập không phục hồi trước khi migrate xong thì mất nguồn parallel-run. Bảo hiểm tối thiểu (bảo vệ **dữ liệu**, không phải bảo trì **hệ**): `mysqldump` tự động hằng đêm từ ngoài vào DB cũ — việc này nằm trong M7, không đụng code gốc.
 
-**Hệ mới làm lớp lỗi này không-thể-viết-ra:** năng lực chạy = thuộc tính hạ tầng (M container × K context), admission ở MySQL trước khi BullMQ thấy job; API image không chứa browser (CI grep layer manifest); mọi job nền là one-shot có completion persist; CI từ chối manifest thiếu memory limit; soak T7 chạy đêm chứng minh lại liên tục.
+**Hệ mới làm lớp lỗi này không-thể-viết-ra:** năng lực chạy = thuộc tính hạ tầng (M container × K context), admission ở Postgres trước khi BullMQ thấy job; API image không chứa browser (CI grep layer manifest); mọi job nền là one-shot có completion persist; CI từ chối manifest thiếu memory limit; soak T7 chạy đêm chứng minh lại liên tục.
 
 ## 2. Mô hình nghiệp vụ & migrate
 
@@ -42,14 +55,14 @@ Xếp theo mức đóng góp:
 - **Bí ẩn 7.344 suite/7.112 plan:** `DryTestPlansController.create()` đúc row "Dry run "+timestamp với discriminator `ADHOC_*` mỗi lần chạy nháp → là khí thải. Heuristic migrate: chỉ lấy `entity_type IS NULL OR IN ('TEST_SUITE','TEST_PLAN')` (+ loại phòng thủ tên `Dry run %`). Bộ thật dự kiến vài trăm.
 - **Prereq không phải "chạy case này trước":** set prereq → hệ cũ *chèn vật lý* case login vào trước case phụ thuộc trong mọi suite chứa nó (`TestSuiteService.java:265`); suite chạy tuần tự trên MỘT session WebDriver liên tục nên cookie sống sang case sau; gate `checkTestCasePrerequisiteFailure` chỉ tra kết quả trong cùng suite-run. Hệ mới: prereq = primitive hạng nhất của **case chain** (đơn vị job), bỏ side-effect chèn suite. Chuỗi validate cycle-free, depth ≤ 5 (giữ luật cũ).
 
-**Domain mới ~58 bảng** (prefix theo module; bảng tenant nào cũng có team_id dẫn đầu index + UNIQUE(team_id,id) + composite FK):
+**Domain mới ~58 bảng, PostgreSQL** (prefix theo module; bảng tenant nào cũng có team_id dẫn đầu index + UNIQUE(team_id,id) + composite FK):
 - Identity (hệ cũ KHÔNG có bảng user/role nào): organizations, teams, projects, users, memberships, api_tokens (hash + scope ∩ role mỗi request), mcp_clients, element_proposals.
 - Governance: quota_limits (6 chỉ số), gov_quota_reservations, usage_ledger (append-only là sự thật, Redis hot path), audit_events (partition tháng, 400 ngày).
 - Catalog: action_catalog toàn cục (35 active + 551 archived; op registry trong code — Class.forName chết), elm_screens/elm_elements (FK thật thay tên chuỗi; create_type; pending_locator), tdt_profiles/rows (giữ expected_to_fail).
 - Authoring: aut_cases (giữ is_step_group một-bảng; đủ 5 timestamp workflow — vá dead-DTO cũ), aut_steps (36→27 cột: bỏ 6 addon_* + 3 for_loop_* vestigial — đã xác minh NULL; + subscription_id XOR step_group_case_id), aut_step_loops (for_step_conditions 1:1 — engine loop thật), aut_rest_steps, aut_case_revisions (snapshot zstd append-only), aut_tags (team-scoped).
 - Planning: pln_suites/suite_cases (giữ position), pln_plans (thành run-config; ADHOC_* chết), pln_run_targets (test_devices tái sinh web-only — cột Appium chết), pln_environments (**project-scoped, base_url BẮT BUỘC**, secret_refs thay password inline), pln_schedules (BullMQ repeatable + jitter 0–15ph).
 - Sharing: published_step_groups/versions (snapshot bất biến), step_group_subscriptions (ghim version — không bao giờ auto-advance).
-- Orchestration: orc_runs, orc_run_plans (content_hash, zstd, planFormatVersion), **job_runs = queue-of-record + lease authority duy nhất** (status, lane, job_kind, lease_owner/epoch/expires, attempt, consecutive_oom_count), orc_workers, egress_policies, migration_state, migration_parallel_runs.
+- Orchestration: orc_runs, orc_run_plans (content_hash, zstd, planFormatVersion), **job_runs = queue-of-record + lease authority duy nhất (PG `FOR UPDATE SKIP LOCKED`)** (status, lane, job_kind, lease_owner/epoch/expires, attempt, consecutive_oom_count), orc_workers, egress_policies, migration_state, migration_parallel_runs.
 - Results 5→3 tầng: job_runs → res_case_results (iteration nuốt bảng data-driven; attempt; **engine CHECK — chỉ engine có layout thật ghi verdict**) → res_step_results (+failure_context JSON ≤32KB). res_artifacts theo attempt; res_advisory_signals (không có cột verdict — structural).
 
 **Trình tự migrate (offline; hệ cũ không bao giờ bị ghi):** tenancy trio → lookups + env (bóc base_url; không parse được → operator điền) → screens/elements/testdata → cases+steps+loops+rest (resolve tên element → FK; fail → pending_locator + report) → suites/plans qua heuristic → **results: 90 ngày full fidelity, cũ hơn → rollup; screenshot/trace cũ không copy** → schedules cuối. **Xác minh:** row-count invariant + **compile toàn bộ case migrate, yêu cầu zero ERROR** + diff 50 chain mẫu. **Cutover per-suite đảo ngược được (clean break — KHÔNG sửa code hệ cũ):** freeze bằng tầng DB — `REVOKE INSERT/UPDATE/DELETE` trên user MySQL của app cũ trong cửa sổ copy, mutation-count trước/sau chứng minh freeze giữ, xong thì GRANT lại → `migration_state old|parallel|new` (parallel = scheduler MỚI bắn cả 2 stack, hệ cũ chỉ bị *gọi* qua REST API sẵn có; differ `(case, step ordinal)→verdict` + lọc flake N=3) → flip; rollback = flip ngược. DB mới disposable tới khi suite đầu vào 'new'.
@@ -57,7 +70,7 @@ Xếp theo mức đóng góp:
 ## 3. Multitenancy
 
 - **Phân cấp:** organizations (1 row) → **teams = tenant** (cách ly, quota, RBAC, đơn vị fairness) → projects → tài sản. workspace_versions không port.
-- **Cách ly 3 lớp:** L1 repository base fail-closed đòi TenantContext (lint cấm query builder thô ngoài `modules/*/db/repo.ts`); L2 composite FK `(team_id, parent)` toàn đồ thị — ghi chéo tenant fail tại InnoDB; L3 bộ CI cross-tenant sinh từ OpenAPI: token team B + id team A ⇒ **404, không bao giờ 403**. Trigger xem lại T1–T5 có văn bản (T3: leak thật → đánh giá Postgres+RLS ngay).
+- **Cách ly 3 lớp (+L2.5 RLS của Postgres):** L1 repository base fail-closed đòi TenantContext (lint cấm query builder thô ngoài `modules/*/db/repo.ts`); L2 composite FK `(team_id, parent)` toàn đồ thị — ghi chéo tenant fail tại InnoDB; L3 bộ CI cross-tenant sinh từ OpenAPI: token team B + id team A ⇒ **404, không bao giờ 403**. Trigger xem lại T1–T5 có văn bản (T3: leak thật → đánh giá Postgres+RLS ngay).
 - **RBAC 6 vai** (instance_operator, org_admin, team_admin, author, runner, viewer) — ma trận TS, không bảng grants; org_admin không đọc tài sản team mặc nhiên (break-glass audit HIGH); runner = trigger+read (CI không sửa được test); four-eyes = người-sửa-cuối-không-tự-promote. Token: 1 team, SHA-256, bắt buộc hạn, scope ∩ role mỗi request. Never-grantable: secret:write, quota:set, element:write (→ element:propose), token:issue:service, team:purge.
 - **Quota 6 chỉ số, 5 điểm cưỡng chế** (enqueue 429 chỉ cho API/UI — fan-out schedule miễn, đậu ở MySQL; dispatch cap; metering 60s; pre-PUT artifact với trần 2GB/run + sampling theo failure-signature; pre-flight AI). Chạm trần: chặn cái mới, **run đang bay luôn chạy nốt**.
 - **Chia sẻ:** element copy-on-share kèm provenance; step group publish/subscribe ghim version bất biến (frozen snapshot — zero đọc chéo lúc chạy); data/env/secret không bao giờ share. Onboarding 1 transaction idempotent (kèm seed egress allowlist từ base_url, observe 14 ngày). Offboarding: suspend → archive (≥30d, export) → purge (2 chữ ký, chặn khi còn subscriber).
@@ -73,7 +86,7 @@ Xếp theo mức đóng góp:
 
 ## 5. Fleet runner phân tán
 
-- **2 mặt phẳng.** Control: Core API + dispatcher (leader, tick 250ms) + relay + **MySQL (queue + lease duy nhất)** + Valkey (cache admitted — flush được) + MinIO. Data: N host, mỗi host: `ts-workers.slice` (MemoryHigh 80%/Max 88%) chứa `ts-worker@1..M` (container uid 10001, cap-drop ALL, seccomp userfaultfd-denied, read-only rootfs, shm 1g, swap off) + `runnerd` ~800 LOC TS (heartbeat 5s, PSI watermark, drain — chết cũng không ảnh hưởng data path). Host không mở cổng inbound; lệnh đi theo heartbeat response. **Sandbox Chromium BẬT** — không bao giờ --no-sandbox.
+- **2 mặt phẳng.** Control: Core API + dispatcher (leader, tick 250ms) + relay + **PostgreSQL (queue + lease duy nhất, SKIP LOCKED)** + Valkey (cache admitted — flush được) + MinIO. Data: N host, mỗi host: `ts-workers.slice` (MemoryHigh 80%/Max 88%) chứa `ts-worker@1..M` (container uid 10001, cap-drop ALL, seccomp userfaultfd-denied, read-only rootfs, shm 1g, swap off) + `runnerd` ~800 LOC TS (heartbeat 5s, PSI watermark, drain — chết cũng không ảnh hưởng data path). Host không mở cổng inbound; lệnh đi theo heartbeat response. **Sandbox Chromium BẬT** — không bao giờ --no-sandbox.
 - **4 tầng trần bộ nhớ:** L0 slice host; L1 container 3GB (K=4; interactive 2GB K=2), pids 512, cpus 2.0; **L2 cgroup lồng cho browser: memory.max = container−400MB, oom_score_adj Node −500 / Chromium +500 — kernel giết đúng Chromium, Node SỐNG, đọc memory.events, quy tội context RSS cao nhất, tự báo infra-error{browser_oom, epoch}** — container tự chẩn đoán; L3 per-context 350MB soft/500MB hard poll 5s. Shedding 75/85/92%; watermark host GREEN/AMBER/RED theo PSI. Bán kính nổ = 1 container = 4 chain cùng tenant — không bao giờ API/MySQL/tenant khác. Trace buffer trên NVMe XFS quota 2GB/worker (không tmpfs — tmpfs tính vào memory cgroup). Recycle: context/chain; browser 50 context/45ph/1.4GB/crash; container 500 job/12h/rss-floor>130%.
 - **Lease:** claim = conditional UPDATE bump lease_epoch (0 rows = bỏ); heartbeat reap (nghi 15s, chết 30s) → bump + requeue đầu hàng team; zombie ghi verdict = 409 STALE_EPOCH; đọc theo MAX(attempt), row attempt cũ giữ 7 ngày.
 - **2 lane:** interactive = worker riêng pre-warm mỗi host, **miễn tenant-pinning** (context/chain, rủi ro chấp nhận cho std tier; tenant gắn cờ gvisor có pool riêng), SLO p95 chờ <3s / click-tới-step <5s; batch tenant-pinned khi giữ context; work-stealing chỉ khi interactive rỗng >120s.
@@ -125,7 +138,7 @@ Quy đổi sau tầng sâu: mode `failure` 2–3GB → **~1–1,5GB/tháng**; mo
 
 - **M1:** kernel, contracts, **compiler core + golden (xây ĐẦU TIÊN)**, schema tenancy. (Hệ cũ: clean break — không vá gì, xem §1.)
 - **M2:** identity/RBAC/audit/token + CI cách ly; authoring + revision/review.
-- **M3:** queue MySQL, dispatcher FIFO, worker + memory governance L1–L3 + lease, fleet systemd 2 host, results 3 tầng + SSE. *(4 tuần đầu track fleet = xóa sổ lớp lỗi OOM.)*
+- **M3:** queue Postgres (SKIP LOCKED), dispatcher FIFO, worker + memory governance L1–L3 + lease, fleet systemd 2 host, results 3 tầng + SSE. *(4 tuần đầu track fleet = xóa sổ lớp lỗi OOM.)*
 - **M4:** elements + capture + verify; 35 op + engine golden; testdata; planning (base_url, cổng health, schedule + jitter).
 - **M5:** quota/metering, fair-share ON, lanes + supersession; AI drafts bind element; MCP.
 - **M6:** webhooks, egress observe, dashboard/alert, DR + **diễn tập restore đầu tiên**, soak T7 chạy đêm.
