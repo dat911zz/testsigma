@@ -12,7 +12,10 @@
 - [ ] **Cổng T8: compile TOÀN BỘ case đã migrate — zero ERROR**; danh sách case kẹt verb chưa port
       ra TRƯỚC cutover (mỗi verb ~nửa ngày)
 - [ ] Diff 50 chain mẫu compiled-plan với kỳ vọng tay
-- [ ] Freeze patch hệ cũ (~50 dòng filter ts.migration.readonly, non-GET ⇒ 503) + mutation-count proof
+- [ ] **mysqldump tự động hằng đêm từ ngoài vào DB cũ** (bảo hiểm dữ liệu — clean break nên đây là
+      điểm chạm duy nhất, không sửa code gốc) + 1 lần diễn tập restore vào scratch
+- [ ] Freeze không-sửa-code: `REVOKE INSERT/UPDATE/DELETE` user MySQL của app cũ trong cửa sổ copy
+      + mutation-count trước/sau chứng minh freeze giữ; GRANT lại khi xong
 - [ ] migration_state per-suite (old|parallel|new) + routing schedule bắn 2 stack + 
       migration_parallel_runs + **differ** (case, step ordinal)→verdict, map 5→3 tầng, flake filter N=3
 

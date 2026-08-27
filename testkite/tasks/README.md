@@ -4,9 +4,12 @@ Nguồn sự thật: [`../../docs/SYSTEM_DESIGN.md`](../../docs/SYSTEM_DESIGN.md
 Mỗi milestone một file, mỗi file có **mục tiêu → checklist → exit criteria**. Đánh dấu `- [x]` khi xong,
 kèm hash commit bên cạnh. TODO trong code gắn tag `TODO(M<n>)` khớp đúng file ở đây.
 
+> **Quyết định 27-08-2026 — CLEAN BREAK:** không vá/bảo trì hệ cũ nữa (M0 đã xóa khỏi kế hoạch).
+> Hệ cũ giữ nguyên trạng tới cutover, chỉ bị *đọc* (dump DB) và *gọi* (REST khi parallel-run) —
+> không bao giờ bị sửa. Bảo hiểm dữ liệu duy nhất: mysqldump hằng đêm từ ngoài (nằm trong M7).
+
 | File | Nội dung | Trạng thái |
 |---|---|---|
-| [M0](M0-old-system-stopgaps.md) | **Vá hệ cũ sống 6–9 tháng** (OOM stopgaps + tháo bom vendor) — làm TRƯỚC mọi thứ | 🔴 chưa bắt đầu |
 | [M1](M1-kernel-contracts-compiler.md) | Kernel, contracts, **compiler core + golden (xây đầu tiên)**, schema tenancy | 🟡 scaffold xong |
 | [M2](M2-identity-authoring.md) | Identity/RBAC/audit/token + CI cách ly · Authoring + revision/review | 🔴 |
 | [M3](M3-orchestration-fleet.md) | Queue MySQL, dispatcher, worker + memory governance, fleet systemd 2 host, results + SSE | 🔴 |

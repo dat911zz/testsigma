@@ -34,8 +34,8 @@ testkite/
 └── docker-compose.dev.yml  # MySQL 8.4 + Valkey 8 + MinIO
 ```
 
-**Bắt đầu từ đâu:** mở [`tasks/README.md`](tasks/README.md) — M0 (vá hệ cũ) đi trước mọi thứ;
-2 câu hỏi trong [`tasks/open-questions.md`](tasks/open-questions.md) đang chặn M1.
+**Bắt đầu từ đâu:** mở [`tasks/README.md`](tasks/README.md) — bắt đầu thẳng M1 (clean break:
+không vá/bảo trì hệ cũ); 2 câu hỏi trong [`tasks/open-questions.md`](tasks/open-questions.md) đang chặn M1.
 
 ## Quy tắc bất di bất dịch (từ blueprint)
 

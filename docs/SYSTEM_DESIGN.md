@@ -32,7 +32,7 @@ Xếp theo mức đóng góp:
 2. **Bug "năm 3922":** `OldResultMigrationScheduler` dùng `new Timestamp(2022,10,8,…)` (years-since-1900 ⇒ năm 3922) → mốc cắt khớp mọi bản ghi vĩnh viễn; mỗi 3 phút re-scan toàn bộ step-result FOR_LOOP qua join 4 bảng `JSON_EXTRACT` không index được, đệ quy, N+1, không cờ hoàn thành. Tải tăng đơn điệu theo tuổi dữ liệu.
 3. **Không trần nào tồn tại:** `start.sh:63` không `-Xmx`; compose không `mem_limit`; và heap cap không đủ vì Chrome native nằm ngoài JVM — OOM killer giết bừa (cả mysqld/nginx). Phụ: POI DOM-based + multipart 500MB, upload pool 100 thread, Hikari mặc định, open-in-view=true.
 
-**Bản vá tuần 1 cho hệ cũ (bắt buộc, mua ổn định cho cả chương trình):** Semaphore 2–4 slot tại `pushEnvironmentToLab`; fixed pool nhỏ thay cached pool; **tắt hẳn** OldResultMigrationScheduler + short-circuit TestDataMigrationScheduler; `-XX:MaxRAMPercentage=50 -XX:+ExitOnOutOfMemoryError` + `mem_limit`; nếu được: trỏ `remoteServerURL` sang container standalone-chrome riêng.
+**Quyết định 27-08-2026 — KHÔNG vá hệ cũ (clean break):** maintainer chốt chuyển mới hoàn toàn, không bảo trì hệ gốc nữa — mọi hạng mục "stopgap tuần 1" (semaphore, tắt scheduler, mem cap) bị loại khỏi kế hoạch; pháp y OOM ở trên giữ lại làm *căn cứ thiết kế* cho fleet mới, không phải việc phải làm. Rủi ro nhận có chủ đích: hệ cũ giữ nguyên trạng (kể cả OOM) tới cutover; nếu nó sập không phục hồi trước khi migrate xong thì mất nguồn parallel-run. Bảo hiểm tối thiểu (bảo vệ **dữ liệu**, không phải bảo trì **hệ**): `mysqldump` tự động hằng đêm từ ngoài vào DB cũ — việc này nằm trong M7, không đụng code gốc.
 
 **Hệ mới làm lớp lỗi này không-thể-viết-ra:** năng lực chạy = thuộc tính hạ tầng (M container × K context), admission ở MySQL trước khi BullMQ thấy job; API image không chứa browser (CI grep layer manifest); mọi job nền là one-shot có completion persist; CI từ chối manifest thiếu memory limit; soak T7 chạy đêm chứng minh lại liên tục.
 
@@ -52,7 +52,7 @@ Xếp theo mức đóng góp:
 - Orchestration: orc_runs, orc_run_plans (content_hash, zstd, planFormatVersion), **job_runs = queue-of-record + lease authority duy nhất** (status, lane, job_kind, lease_owner/epoch/expires, attempt, consecutive_oom_count), orc_workers, egress_policies, migration_state, migration_parallel_runs.
 - Results 5→3 tầng: job_runs → res_case_results (iteration nuốt bảng data-driven; attempt; **engine CHECK — chỉ engine có layout thật ghi verdict**) → res_step_results (+failure_context JSON ≤32KB). res_artifacts theo attempt; res_advisory_signals (không có cột verdict — structural).
 
-**Trình tự migrate (offline; hệ cũ không bao giờ bị ghi):** tenancy trio → lookups + env (bóc base_url; không parse được → operator điền) → screens/elements/testdata → cases+steps+loops+rest (resolve tên element → FK; fail → pending_locator + report) → suites/plans qua heuristic → **results: 90 ngày full fidelity, cũ hơn → rollup; screenshot/trace cũ không copy** → schedules cuối. **Xác minh:** row-count invariant + **compile toàn bộ case migrate, yêu cầu zero ERROR** + diff 50 chain mẫu. **Cutover per-suite đảo ngược được:** freeze filter ~50 dòng (`ts.migration.readonly`) có mutation-count proof → `migration_state old|parallel|new` (parallel = bắn cả 2 stack, differ `(case, step ordinal)→verdict` + lọc flake N=3) → flip; rollback = flip ngược. DB mới disposable tới khi suite đầu vào 'new'.
+**Trình tự migrate (offline; hệ cũ không bao giờ bị ghi):** tenancy trio → lookups + env (bóc base_url; không parse được → operator điền) → screens/elements/testdata → cases+steps+loops+rest (resolve tên element → FK; fail → pending_locator + report) → suites/plans qua heuristic → **results: 90 ngày full fidelity, cũ hơn → rollup; screenshot/trace cũ không copy** → schedules cuối. **Xác minh:** row-count invariant + **compile toàn bộ case migrate, yêu cầu zero ERROR** + diff 50 chain mẫu. **Cutover per-suite đảo ngược được (clean break — KHÔNG sửa code hệ cũ):** freeze bằng tầng DB — `REVOKE INSERT/UPDATE/DELETE` trên user MySQL của app cũ trong cửa sổ copy, mutation-count trước/sau chứng minh freeze giữ, xong thì GRANT lại → `migration_state old|parallel|new` (parallel = scheduler MỚI bắn cả 2 stack, hệ cũ chỉ bị *gọi* qua REST API sẵn có; differ `(case, step ordinal)→verdict` + lọc flake N=3) → flip; rollback = flip ngược. DB mới disposable tới khi suite đầu vào 'new'.
 
 ## 3. Multitenancy
 
@@ -123,7 +123,7 @@ Quy đổi sau tầng sâu: mode `failure` 2–3GB → **~1–1,5GB/tháng**; mo
 
 ## 7. Lộ trình 9 tháng (với kỹ sư fleet; solo giãn M3–M6 → ~12 tháng)
 
-- **M1:** tuần 1 vá hệ cũ (semaphore + tắt 2 scheduler + mem cap); kernel, contracts, **compiler core + golden (xây ĐẦU TIÊN)**, schema tenancy.
+- **M1:** kernel, contracts, **compiler core + golden (xây ĐẦU TIÊN)**, schema tenancy. (Hệ cũ: clean break — không vá gì, xem §1.)
 - **M2:** identity/RBAC/audit/token + CI cách ly; authoring + revision/review.
 - **M3:** queue MySQL, dispatcher FIFO, worker + memory governance L1–L3 + lease, fleet systemd 2 host, results 3 tầng + SSE. *(4 tuần đầu track fleet = xóa sổ lớp lỗi OOM.)*
 - **M4:** elements + capture + verify; 35 op + engine golden; testdata; planning (base_url, cổng health, schedule + jitter).
