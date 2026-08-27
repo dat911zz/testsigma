@@ -101,6 +101,15 @@ Giữ trải nghiệm "gallery ảnh từng step" của hệ cũ (thứ QA no-co
 
 **Số liệu quy đổi (52.900 step/đêm):** kiểu cũ PNG-mọi-step ≈ 15GB/đêm ≈ **460GB/tháng**; TestKite mode `all` (WebP+dedup) ≈ 1,3GB/đêm ≈ **~38GB/tháng (~12× rẻ hơn)** — bật được nếu team thật sự muốn; mode mặc định `failure` (fail-rate 3–5%) ≈ **2–3GB/tháng**. Trace của failure vốn đã chứa film strip nên gallery step + trace bổ trợ nhau, không trùng chi phí đáng kể.
 
+**Tầng nén sâu — chấp nhận UI lazy/hiển thị dần (bổ sung):** Lưu ý nền tảng: MinIO có nén transparent server-side nhưng dùng **S2 (họ Snappy), không phải zstd**, và mặc định **tự loại trừ ảnh** — nén lossless trên JPEG/WebP đã entropy-coded cho ~0%; "nén sâu" cho ảnh chỉ tồn tại trong miền codec (lossy). Bật MinIO compression chỉ cho object text (json/xml/log); zstd app-layer đã dùng cho run plan/revision. Bậc thang nén sâu cho ảnh, đổi bằng UX lazy:
+
+1. **ThumbHash placeholder (~30 byte, lưu ngay trong row `res_step_results`)** — gallery render *tức thì* toàn placeholder mờ, ảnh thật lazy-load theo IntersectionObserver khi cuộn tới. Perceived speed còn nhanh hơn hệ cũ.
+2. **Thumbnail 240px WebP (~2–4KB) cho gallery; ảnh full chỉ tải khi click.** 95% lượt xem gallery không bao giờ chạm ảnh full → băng thông đọc giảm ~10×.
+3. **Cold-tier re-encode AVIF q45, max-width 1024** (one-shot job trên control plane khi ảnh chuyển warm→cold — không bao giờ trên worker): thêm 30–50% nhỏ hơn WebP. AVIF decode chậm hơn tí = đúng chỗ "show dần dần" chấp nhận được.
+4. **(Nâng cao, optional cho mode `all`) đóng chuỗi screenshot per-chain thành video AV1/VP9 keyframe thưa:** các step liên tiếp gần giống nhau → inter-frame compression ăn sâu hơn dedup exact-hash nhiều (chuỗi 30 ảnh ~1MB WebP → ~100–300KB video); UI seek theo timestamp map step→frame. Đổi lại: seek chậm hơn, mapping phức tạp hơn — chỉ đáng khi có team bật `all` lâu dài.
+
+Quy đổi sau tầng sâu: mode `failure` 2–3GB → **~1–1,5GB/tháng**; mode `all` 38GB → **~15–20GB (AVIF cold)** → **~5–8GB (video-pack)**. Thứ tự triển khai: (1)+(2) vào v1 UI (rẻ, thuần frontend+thumbnail job), (3) khi có lifecycle, (4) chỉ khi nhu cầu thật.
+
 ## 6. 10 kịch bản nghiệp vụ — kết quả thẩm định
 
 7/10 lộ GAP vòng đầu, toàn bộ đã vá thành hạng mục build bắt buộc: S1 authoring → **element capture service** (micro-job Playwright+CDP stream ứng viên locator có chấm điểm + endpoint verify — hệ cũ có 13 controller recorder, không thể giảm element thành CRUD gõ tay); S3 → cổng health + abort-sớm theo failure signature; S4 → AI apply có stage resolve element (reference lạ → pending_locator chặn promote); S5 → element:write never-grantable → element:propose + failure_context có schema cho LLM; S6 → concurrency_group supersession; S7 → cỗ máy cutover per-suite; S8 → egress seed trong transaction onboard; S10 → runbook DR đầy đủ (RPO≤5ph/RTO 4h, quarantine job đang bay thành `unknown_after_restore` TRƯỚC khi reaper chạy, flush Valkey, reconciler artifact 2 chiều, recount quota, drill mỗi quý). S2/S9 PASS từ đầu.
