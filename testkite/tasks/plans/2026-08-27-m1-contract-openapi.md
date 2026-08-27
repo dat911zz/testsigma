@@ -531,7 +531,7 @@ git commit -m "M1 A2: contract zod schema step (union 6 kind, đệ quy)"
 - Consumes: `elementSchema`/`ElementDto` (A1), `authoredStepSchema`/`AuthoredStepDto` (A2).
 - Produces: `authoredCaseSchema`, `dataRowSchema`, `dataProfileSchema`, `envSchema`, `compileSnapshotSchema`; types `AuthoredCaseDto`, `DataRowDto`, `DataProfileDto`, `EnvDto`, `CompileSnapshotDto`. Task A5 đăng ký tất cả vào `components.schemas`; Task A6 dùng `compileSnapshotSchema` trong test conformance.
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 Tạo `testkite/packages/contract/src/schemas/case.test.ts`:
 
@@ -628,12 +628,12 @@ describe("compileSnapshotSchema", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/schemas/case.test.ts`
 Expected: FAIL — không resolve được `./case.js`.
 
-- [ ] **Step 3: Viết implementation tối thiểu**
+- [x] **Step 3: Viết implementation tối thiểu**
 
 Tạo `testkite/packages/contract/src/schemas/case.ts`:
 
@@ -736,17 +736,17 @@ export * from "./step.js";
 export * from "./case.js";
 ```
 
-- [ ] **Step 4: Chạy test, xác nhận XANH**
+- [x] **Step 4: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/schemas/`
 Expected: PASS — 3 file test, tổng ≥ 28 test.
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Run: `cd testkite && pnpm typecheck`
 Expected: exit 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add testkite/packages/contract/src/schemas/case.ts testkite/packages/contract/src/schemas/case.test.ts testkite/packages/contract/src/schemas/index.ts
