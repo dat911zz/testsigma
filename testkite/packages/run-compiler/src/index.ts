@@ -69,7 +69,7 @@ export interface CasePlan {
 export interface StepPlan {
   readonly ordinal: number;
   readonly opKey: string; // đã validate với @testkite/verb-kit
-  readonly args: Record<string, string>; // secret = "$secretRef:<name>"
+  readonly args: Record<string, string>; // data/env đã merge; secret VẪN là "$secret:<name>"
   readonly renderedSentence: string; // câu NLP hiển thị cho QA trong kết quả
 }
 

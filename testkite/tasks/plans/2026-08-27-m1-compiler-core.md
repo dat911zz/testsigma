@@ -64,9 +64,9 @@
 
 ## Task 6 — Phase 4+5: element + data/env merge (TDD)
 
-- [ ] Test đỏ: elementRef → LocatorSet trong StepPlan; element `pending_locator` ⇒ `element_pending_locator`; ref lạ ⇒ `element_not_found`
-- [ ] Test đỏ: arg `$secret:NAME` giữ nguyên dạng ref, NAME không có trong env.secretNames ⇒ `secret_ref_unknown`; KHÔNG bao giờ inline giá trị
-- [ ] Implement; commit "M1 T6: phase4-5 element + data merge"
+- [x] Test đỏ: elementRef → LocatorSet trong StepPlan; element `pending_locator` ⇒ `element_pending_locator`; ref lạ ⇒ `element_not_found`
+- [x] Test đỏ: arg `$secret:NAME` giữ nguyên dạng ref, NAME không có trong env.secretNames ⇒ `secret_ref_unknown`; KHÔNG bao giờ inline giá trị
+- [x] Implement; commit "M1 T6: phase4-5 element + data merge"
 
 ## Task 7 — Phase 6+7: stamp + freeze + hash (TDD)
 
