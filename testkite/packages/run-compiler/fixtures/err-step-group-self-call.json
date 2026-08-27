@@ -1,0 +1,72 @@
+{
+  "name": "err-step-group-self-call",
+  "description": "Group tự gọi chính mình ⇒ cùng step_group_depth_exceeded (cycle bị bắt qua trần độ sâu)",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "step_group_depth_exceeded"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "calls-recursive-group"
+    ],
+    "cases": {
+      "grp-recursive": {
+        "id": "grp-recursive",
+        "revisionId": "rev-grp-recursive-001",
+        "name": "grp-recursive",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-x",
+            "renderedSentence": "Click on el-x"
+          },
+          {
+            "ordinal": 2,
+            "kind": "step_group",
+            "stepGroupCaseId": "grp-recursive",
+            "renderedSentence": "Run step group grp-recursive"
+          }
+        ]
+      },
+      "calls-recursive-group": {
+        "id": "calls-recursive-group",
+        "revisionId": "rev-calls-recursive-group-001",
+        "name": "calls-recursive-group",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "grp-recursive",
+            "renderedSentence": "Run step group grp-recursive"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-x": {
+        "id": "el-x",
+        "name": "el-x",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-x"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

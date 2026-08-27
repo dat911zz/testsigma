@@ -1,0 +1,118 @@
+{
+  "name": "block-if",
+  "description": "Node `if` giữ nguyên dạng cây (worker mới quyết nhánh) + conditionExpected đi vào plan",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "promo-banner"
+    ],
+    "cases": {
+      "promo-banner": {
+        "id": "promo-banner",
+        "revisionId": "rev-promo-banner-001",
+        "name": "promo-banner",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-open-promo",
+            "renderedSentence": "Click on el-open-promo"
+          },
+          {
+            "ordinal": 2,
+            "kind": "if",
+            "conditionExpected": [
+              "SUCCESS"
+            ],
+            "children": [
+              {
+                "ordinal": 1,
+                "kind": "action",
+                "verbOpKey": "web.click",
+                "args": {},
+                "elementId": "el-promo-close",
+                "renderedSentence": "Click on el-promo-close"
+              },
+              {
+                "ordinal": 2,
+                "kind": "action",
+                "verbOpKey": "web.enter",
+                "args": {
+                  "value": "SUMMER25"
+                },
+                "elementId": "el-promo-code",
+                "renderedSentence": "Enter SUMMER25 in el-promo-code field"
+              }
+            ],
+            "renderedSentence": "If previous step is SUCCESS"
+          },
+          {
+            "ordinal": 3,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-continue",
+            "renderedSentence": "Click on el-continue"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-open-promo": {
+        "id": "el-open-promo",
+        "name": "el-open-promo",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-open-promo"
+          }
+        ]
+      },
+      "el-promo-close": {
+        "id": "el-promo-close",
+        "name": "el-promo-close",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-promo-close"
+          }
+        ]
+      },
+      "el-promo-code": {
+        "id": "el-promo-code",
+        "name": "el-promo-code",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-promo-code"
+          }
+        ]
+      },
+      "el-continue": {
+        "id": "el-continue",
+        "name": "el-continue",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-continue"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "name": "err-prereq-missing",
+  "description": "prereq trỏ case không có trong snapshot ⇒ prereq_missing",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "prereq_missing"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "orphan-checkout"
+    ],
+    "cases": {
+      "orphan-checkout": {
+        "id": "orphan-checkout",
+        "revisionId": "rev-orphan-checkout-001",
+        "name": "orphan-checkout",
+        "isStepGroup": false,
+        "prereqCaseId": "ghost-login",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-place-order",
+            "renderedSentence": "Click on el-place-order"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-place-order": {
+        "id": "el-place-order",
+        "name": "el-place-order",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-place-order"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

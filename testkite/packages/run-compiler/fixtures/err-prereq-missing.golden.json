@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "caseId": "orphan-checkout",
+      "code": "prereq_missing",
+      "message": "Prereq \"ghost-login\" của \"orphan-checkout\" không tồn tại trong snapshot",
+      "severity": "error"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "name": "element-full-locator-set",
+  "description": "Element đủ locator (4 chiến lược) ⇒ LocatorSet ghim vào plan, worker không tra lại bảng element",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "open-account-menu"
+    ],
+    "cases": {
+      "open-account-menu": {
+        "id": "open-account-menu",
+        "revisionId": "rev-open-account-menu-001",
+        "name": "open-account-menu",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-account-menu",
+            "renderedSentence": "Click on el-account-menu"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-account-menu": {
+        "id": "el-account-menu",
+        "name": "Account menu (header)",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "test-id",
+            "value": "account-menu"
+          },
+          {
+            "kind": "css",
+            "value": "header nav [data-qa='account']"
+          },
+          {
+            "kind": "xpath",
+            "value": "//header//nav//button[@data-qa='account']"
+          },
+          {
+            "kind": "text",
+            "value": "Tài khoản của tôi"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

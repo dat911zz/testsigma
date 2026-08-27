@@ -1,0 +1,52 @@
+{
+  "name": "err-element-not-found",
+  "description": "elementId không có trong snapshot ⇒ element_not_found (hệ cũ chỉ lộ lỗi này khi browser đã mở)",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "element_not_found"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "click-ghost-element"
+    ],
+    "cases": {
+      "click-ghost-element": {
+        "id": "click-ghost-element",
+        "revisionId": "rev-click-ghost-element-001",
+        "name": "click-ghost-element",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-deleted-yesterday",
+            "renderedSentence": "Click on el-deleted-yesterday"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-signin": {
+        "id": "el-signin",
+        "name": "el-signin",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-signin"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

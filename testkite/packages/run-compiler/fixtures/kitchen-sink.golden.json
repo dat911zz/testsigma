@@ -1,0 +1,577 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "ks-bootstrap",
+            "expectedToFail": false,
+            "revisionId": "rev-ks-bootstrap-001",
+            "steps": [
+              {
+                "args": {
+                  "body": "{\"reset\":true}",
+                  "method": "POST",
+                  "url": "https://api.shop.example.com/v1/reset"
+                },
+                "children": [],
+                "groupPath": [],
+                "kind": "rest",
+                "ordinal": 1,
+                "renderedSentence": "Call POST $env:apiBase"
+              }
+            ]
+          },
+          {
+            "caseId": "ks-login",
+            "expectedToFail": false,
+            "revisionId": "rev-ks-login-001",
+            "steps": [
+              {
+                "args": {
+                  "value": "svc-qa@shop.example.com"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-username",
+                  "elementName": "el-username",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-username"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 1,
+                "renderedSentence": "Enter $env:serviceAccount in el-username field"
+              },
+              {
+                "args": {
+                  "value": "$secret:LOGIN_PASSWORD"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-password",
+                  "elementName": "el-password",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-password"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 2,
+                "renderedSentence": "Enter $secret:LOGIN_PASSWORD in el-password field"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-signin",
+                  "elementName": "el-signin",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-signin"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 3,
+                "renderedSentence": "Click on el-signin"
+              }
+            ]
+          },
+          {
+            "caseId": "ks-checkout",
+            "expectedToFail": false,
+            "iterationLabel": "order-standard",
+            "revisionId": "rev-ks-checkout-001",
+            "steps": [
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {},
+                    "groupPath": [
+                      "grp-header-nav",
+                      "grp-dismiss-noise"
+                    ],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-toast-close",
+                      "elementName": "el-toast-close",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-toast-close"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 1,
+                    "renderedSentence": "Click on el-toast-close"
+                  }
+                ],
+                "groupPath": [
+                  "grp-header-nav",
+                  "grp-dismiss-noise"
+                ],
+                "kind": "while",
+                "maxIterations": 5,
+                "ordinal": 1,
+                "renderedSentence": "While banner is visible (max 5)"
+              },
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {},
+                    "groupPath": [
+                      "grp-header-nav",
+                      "grp-dismiss-noise"
+                    ],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-cookie-ok",
+                      "elementName": "el-cookie-ok",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-cookie-ok"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 1,
+                    "renderedSentence": "Click on el-cookie-ok"
+                  }
+                ],
+                "conditionExpected": [
+                  "SUCCESS",
+                  "SKIPPED"
+                ],
+                "groupPath": [
+                  "grp-header-nav",
+                  "grp-dismiss-noise"
+                ],
+                "kind": "if",
+                "ordinal": 2,
+                "renderedSentence": "If previous step is SUCCESS/SKIPPED"
+              },
+              {
+                "args": {},
+                "groupPath": [
+                  "grp-header-nav"
+                ],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-menu",
+                  "elementName": "Main menu",
+                  "locators": [
+                    {
+                      "kind": "test-id",
+                      "value": "main-menu"
+                    },
+                    {
+                      "kind": "css",
+                      "value": "header nav button.menu"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-menu"
+              },
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {
+                      "value": "$data:sku"
+                    },
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-sku",
+                      "elementName": "el-sku",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-sku"
+                        }
+                      ]
+                    },
+                    "opKey": "web.enter",
+                    "ordinal": 1,
+                    "renderedSentence": "Enter $data:sku in el-sku field"
+                  },
+                  {
+                    "args": {},
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-add-to-cart",
+                      "elementName": "el-add-to-cart",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-add-to-cart"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 2,
+                    "renderedSentence": "Click on el-add-to-cart"
+                  }
+                ],
+                "groupPath": [],
+                "kind": "for",
+                "loopRows": [
+                  {
+                    "expectedToFail": false,
+                    "label": "sku-basic",
+                    "values": {
+                      "sku": "SKU-0001"
+                    }
+                  },
+                  {
+                    "expectedToFail": false,
+                    "label": "sku-bundle",
+                    "values": {
+                      "sku": "SKU-0042"
+                    }
+                  }
+                ],
+                "ordinal": 2,
+                "renderedSentence": "For each row of p-skus"
+              },
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {
+                      "value": "SUMMER25"
+                    },
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-coupon",
+                      "elementName": "el-coupon",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-coupon"
+                        }
+                      ]
+                    },
+                    "opKey": "web.enter",
+                    "ordinal": 1,
+                    "renderedSentence": "Enter $data:coupon in el-coupon field"
+                  },
+                  {
+                    "args": {},
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-apply-coupon",
+                      "elementName": "el-apply-coupon",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-apply-coupon"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 2,
+                    "renderedSentence": "Click on el-apply-coupon"
+                  }
+                ],
+                "conditionExpected": [
+                  "SUCCESS"
+                ],
+                "groupPath": [],
+                "kind": "if",
+                "ordinal": 3,
+                "renderedSentence": "If previous step is SUCCESS"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-place-order",
+                  "elementName": "el-place-order",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-place-order"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 4,
+                "renderedSentence": "Click on el-place-order"
+              }
+            ]
+          },
+          {
+            "caseId": "ks-checkout",
+            "expectedToFail": true,
+            "iterationLabel": "order-rejected-coupon",
+            "revisionId": "rev-ks-checkout-001",
+            "steps": [
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {},
+                    "groupPath": [
+                      "grp-header-nav",
+                      "grp-dismiss-noise"
+                    ],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-toast-close",
+                      "elementName": "el-toast-close",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-toast-close"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 1,
+                    "renderedSentence": "Click on el-toast-close"
+                  }
+                ],
+                "groupPath": [
+                  "grp-header-nav",
+                  "grp-dismiss-noise"
+                ],
+                "kind": "while",
+                "maxIterations": 5,
+                "ordinal": 1,
+                "renderedSentence": "While banner is visible (max 5)"
+              },
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {},
+                    "groupPath": [
+                      "grp-header-nav",
+                      "grp-dismiss-noise"
+                    ],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-cookie-ok",
+                      "elementName": "el-cookie-ok",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-cookie-ok"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 1,
+                    "renderedSentence": "Click on el-cookie-ok"
+                  }
+                ],
+                "conditionExpected": [
+                  "SUCCESS",
+                  "SKIPPED"
+                ],
+                "groupPath": [
+                  "grp-header-nav",
+                  "grp-dismiss-noise"
+                ],
+                "kind": "if",
+                "ordinal": 2,
+                "renderedSentence": "If previous step is SUCCESS/SKIPPED"
+              },
+              {
+                "args": {},
+                "groupPath": [
+                  "grp-header-nav"
+                ],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-menu",
+                  "elementName": "Main menu",
+                  "locators": [
+                    {
+                      "kind": "test-id",
+                      "value": "main-menu"
+                    },
+                    {
+                      "kind": "css",
+                      "value": "header nav button.menu"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-menu"
+              },
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {
+                      "value": "$data:sku"
+                    },
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-sku",
+                      "elementName": "el-sku",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-sku"
+                        }
+                      ]
+                    },
+                    "opKey": "web.enter",
+                    "ordinal": 1,
+                    "renderedSentence": "Enter $data:sku in el-sku field"
+                  },
+                  {
+                    "args": {},
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-add-to-cart",
+                      "elementName": "el-add-to-cart",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-add-to-cart"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 2,
+                    "renderedSentence": "Click on el-add-to-cart"
+                  }
+                ],
+                "groupPath": [],
+                "kind": "for",
+                "loopRows": [
+                  {
+                    "expectedToFail": false,
+                    "label": "sku-basic",
+                    "values": {
+                      "sku": "SKU-0001"
+                    }
+                  },
+                  {
+                    "expectedToFail": false,
+                    "label": "sku-bundle",
+                    "values": {
+                      "sku": "SKU-0042"
+                    }
+                  }
+                ],
+                "ordinal": 2,
+                "renderedSentence": "For each row of p-skus"
+              },
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {
+                      "value": "EXPIRED-2019"
+                    },
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-coupon",
+                      "elementName": "el-coupon",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-coupon"
+                        }
+                      ]
+                    },
+                    "opKey": "web.enter",
+                    "ordinal": 1,
+                    "renderedSentence": "Enter $data:coupon in el-coupon field"
+                  },
+                  {
+                    "args": {},
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-apply-coupon",
+                      "elementName": "el-apply-coupon",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-apply-coupon"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 2,
+                    "renderedSentence": "Click on el-apply-coupon"
+                  }
+                ],
+                "conditionExpected": [
+                  "SUCCESS"
+                ],
+                "groupPath": [],
+                "kind": "if",
+                "ordinal": 3,
+                "renderedSentence": "If previous step is SUCCESS"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-place-order",
+                  "elementName": "el-place-order",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-place-order"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 4,
+                "renderedSentence": "Click on el-place-order"
+              }
+            ]
+          }
+        ],
+        "chainKey": "ks-checkout",
+        "stepCount": 28,
+        "timeoutSeconds": 426
+      }
+    ],
+    "contentHash": "8ec3396ca262a9b0542c8a5f2ed95905b303365434668d81014a5b327d1c08b8",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

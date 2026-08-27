@@ -1,0 +1,121 @@
+{
+  "name": "data-driven-3-rows-expected-to-fail",
+  "description": "Case data-driven 3 hàng ⇒ 3 iteration (label từ row); hàng expected_to_fail giữ cờ trong plan",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "login-matrix"
+    ],
+    "cases": {
+      "login-matrix": {
+        "id": "login-matrix",
+        "revisionId": "rev-login-matrix-001",
+        "name": "login-matrix",
+        "isStepGroup": false,
+        "dataProfileId": "p-logins",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "$data:username"
+            },
+            "elementId": "el-username",
+            "renderedSentence": "Enter $data:username in el-username field"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "$secret:LOGIN_PASSWORD"
+            },
+            "elementId": "el-password",
+            "renderedSentence": "Enter $secret:LOGIN_PASSWORD in el-password field"
+          },
+          {
+            "ordinal": 3,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-signin",
+            "renderedSentence": "Click on el-signin"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-username": {
+        "id": "el-username",
+        "name": "el-username",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-username"
+          }
+        ]
+      },
+      "el-password": {
+        "id": "el-password",
+        "name": "el-password",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-password"
+          }
+        ]
+      },
+      "el-signin": {
+        "id": "el-signin",
+        "name": "el-signin",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-signin"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {
+      "p-logins": {
+        "id": "p-logins",
+        "rows": [
+          {
+            "label": "standard-user",
+            "expectedToFail": false,
+            "values": {
+              "username": "qa@shop.example.com"
+            }
+          },
+          {
+            "label": "unicode-user",
+            "expectedToFail": false,
+            "values": {
+              "username": "kiểm.thử@shop.example.com"
+            }
+          },
+          {
+            "label": "locked-user",
+            "expectedToFail": true,
+            "values": {
+              "username": "locked@shop.example.com"
+            }
+          }
+        ]
+      }
+    },
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": [
+        "LOGIN_PASSWORD"
+      ]
+    }
+  }
+}

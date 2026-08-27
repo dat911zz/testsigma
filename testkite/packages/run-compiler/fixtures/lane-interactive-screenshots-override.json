@@ -1,0 +1,51 @@
+{
+  "name": "lane-interactive-screenshots-override",
+  "description": "lane=interactive + override screenshots=none ⇒ policy đóng dấu vào plan (override thắng mặc định lane)",
+  "expect": "plan",
+  "lane": "interactive",
+  "screenshots": "none",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "quick-smoke"
+    ],
+    "cases": {
+      "quick-smoke": {
+        "id": "quick-smoke",
+        "revisionId": "rev-quick-smoke-001",
+        "name": "quick-smoke",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-signin",
+            "renderedSentence": "Click on el-signin"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-signin": {
+        "id": "el-signin",
+        "name": "el-signin",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-signin"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

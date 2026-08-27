@@ -1,0 +1,120 @@
+{
+  "name": "group-inline-flat",
+  "description": "Step group 3 step được INLINE phẳng vào case, giữ renderedSentence gốc + provenance groupPath",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "cart-review"
+    ],
+    "cases": {
+      "grp-open-cart": {
+        "id": "grp-open-cart",
+        "revisionId": "rev-grp-open-cart-001",
+        "name": "Group: mở giỏ hàng",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-menu",
+            "renderedSentence": "Click on el-menu"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-cart",
+            "renderedSentence": "Click on el-cart"
+          },
+          {
+            "ordinal": 3,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-cart-expand",
+            "renderedSentence": "Click on el-cart-expand"
+          }
+        ]
+      },
+      "cart-review": {
+        "id": "cart-review",
+        "revisionId": "rev-cart-review-001",
+        "name": "cart-review",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "grp-open-cart",
+            "renderedSentence": "Run step group grp-open-cart"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-place-order",
+            "renderedSentence": "Click on el-place-order"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-menu": {
+        "id": "el-menu",
+        "name": "el-menu",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-menu"
+          }
+        ]
+      },
+      "el-cart": {
+        "id": "el-cart",
+        "name": "el-cart",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-cart"
+          }
+        ]
+      },
+      "el-cart-expand": {
+        "id": "el-cart-expand",
+        "name": "el-cart-expand",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-cart-expand"
+          }
+        ]
+      },
+      "el-place-order": {
+        "id": "el-place-order",
+        "name": "el-place-order",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-place-order"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

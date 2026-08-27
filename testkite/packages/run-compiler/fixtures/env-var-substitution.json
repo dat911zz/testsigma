@@ -1,0 +1,93 @@
+{
+  "name": "env-var-substitution",
+  "description": "`$env:` khai báo được thay bằng giá trị; ref trỏ tên KHÔNG biết thì giữ nguyên (không phải lỗi)",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "search-catalog"
+    ],
+    "cases": {
+      "search-catalog": {
+        "id": "search-catalog",
+        "revisionId": "rev-search-catalog-001",
+        "name": "search-catalog",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "$env:searchTerm"
+            },
+            "elementId": "el-search",
+            "renderedSentence": "Enter $env:searchTerm in el-search field"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "$env:couponNotDeclaredHere"
+            },
+            "elementId": "el-coupon",
+            "renderedSentence": "Enter $env:couponNotDeclaredHere in el-coupon field"
+          },
+          {
+            "ordinal": 3,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-search-go",
+            "renderedSentence": "Click on el-search-go"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-search": {
+        "id": "el-search",
+        "name": "el-search",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-search"
+          }
+        ]
+      },
+      "el-coupon": {
+        "id": "el-coupon",
+        "name": "el-coupon",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-coupon"
+          }
+        ]
+      },
+      "el-search-go": {
+        "id": "el-search-go",
+        "name": "el-search-go",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-search-go"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {
+        "searchTerm": "áo khoác gió"
+      },
+      "secretNames": []
+    }
+  }
+}

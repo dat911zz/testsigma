@@ -1,0 +1,18 @@
+{
+  "diagnostics": [
+    {
+      "caseId": "legacy-verbs",
+      "code": "unknown_verb",
+      "message": "Verb \"web.selectDropdown\" không có trong registry @testkite/verb-kit — chưa port hoặc sai op key",
+      "severity": "error",
+      "stepOrdinal": 1
+    },
+    {
+      "caseId": "legacy-verbs",
+      "code": "unknown_verb",
+      "message": "Verb \"mobile.swipeUp\" không có trong registry @testkite/verb-kit — chưa port hoặc sai op key",
+      "severity": "error",
+      "stepOrdinal": 3
+    }
+  ]
+}

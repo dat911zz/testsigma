@@ -1,0 +1,154 @@
+{
+  "name": "err-prereq-depth-exceeded",
+  "description": "6 tổ tiên ⇒ prereq_depth_exceeded (trần là 5)",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "prereq_depth_exceeded"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "d6-target"
+    ],
+    "cases": {
+      "d0": {
+        "id": "d0",
+        "revisionId": "rev-d0-001",
+        "name": "d0",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-x",
+            "renderedSentence": "Click on el-x"
+          }
+        ]
+      },
+      "d1": {
+        "id": "d1",
+        "revisionId": "rev-d1-001",
+        "name": "d1",
+        "isStepGroup": false,
+        "prereqCaseId": "d0",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-x",
+            "renderedSentence": "Click on el-x"
+          }
+        ]
+      },
+      "d2": {
+        "id": "d2",
+        "revisionId": "rev-d2-001",
+        "name": "d2",
+        "isStepGroup": false,
+        "prereqCaseId": "d1",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-x",
+            "renderedSentence": "Click on el-x"
+          }
+        ]
+      },
+      "d3": {
+        "id": "d3",
+        "revisionId": "rev-d3-001",
+        "name": "d3",
+        "isStepGroup": false,
+        "prereqCaseId": "d2",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-x",
+            "renderedSentence": "Click on el-x"
+          }
+        ]
+      },
+      "d4": {
+        "id": "d4",
+        "revisionId": "rev-d4-001",
+        "name": "d4",
+        "isStepGroup": false,
+        "prereqCaseId": "d3",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-x",
+            "renderedSentence": "Click on el-x"
+          }
+        ]
+      },
+      "d5": {
+        "id": "d5",
+        "revisionId": "rev-d5-001",
+        "name": "d5",
+        "isStepGroup": false,
+        "prereqCaseId": "d4",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-x",
+            "renderedSentence": "Click on el-x"
+          }
+        ]
+      },
+      "d6-target": {
+        "id": "d6-target",
+        "revisionId": "rev-d6-target-001",
+        "name": "d6-target",
+        "isStepGroup": false,
+        "prereqCaseId": "d5",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-x",
+            "renderedSentence": "Click on el-x"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-x": {
+        "id": "el-x",
+        "name": "el-x",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-x"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

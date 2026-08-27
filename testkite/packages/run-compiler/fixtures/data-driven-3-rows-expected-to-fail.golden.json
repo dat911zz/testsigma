@@ -1,0 +1,223 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "login-matrix",
+            "expectedToFail": false,
+            "iterationLabel": "standard-user",
+            "revisionId": "rev-login-matrix-001",
+            "steps": [
+              {
+                "args": {
+                  "value": "qa@shop.example.com"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-username",
+                  "elementName": "el-username",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-username"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 1,
+                "renderedSentence": "Enter $data:username in el-username field"
+              },
+              {
+                "args": {
+                  "value": "$secret:LOGIN_PASSWORD"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-password",
+                  "elementName": "el-password",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-password"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 2,
+                "renderedSentence": "Enter $secret:LOGIN_PASSWORD in el-password field"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-signin",
+                  "elementName": "el-signin",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-signin"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 3,
+                "renderedSentence": "Click on el-signin"
+              }
+            ]
+          },
+          {
+            "caseId": "login-matrix",
+            "expectedToFail": false,
+            "iterationLabel": "unicode-user",
+            "revisionId": "rev-login-matrix-001",
+            "steps": [
+              {
+                "args": {
+                  "value": "kiểm.thử@shop.example.com"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-username",
+                  "elementName": "el-username",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-username"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 1,
+                "renderedSentence": "Enter $data:username in el-username field"
+              },
+              {
+                "args": {
+                  "value": "$secret:LOGIN_PASSWORD"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-password",
+                  "elementName": "el-password",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-password"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 2,
+                "renderedSentence": "Enter $secret:LOGIN_PASSWORD in el-password field"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-signin",
+                  "elementName": "el-signin",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-signin"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 3,
+                "renderedSentence": "Click on el-signin"
+              }
+            ]
+          },
+          {
+            "caseId": "login-matrix",
+            "expectedToFail": true,
+            "iterationLabel": "locked-user",
+            "revisionId": "rev-login-matrix-001",
+            "steps": [
+              {
+                "args": {
+                  "value": "locked@shop.example.com"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-username",
+                  "elementName": "el-username",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-username"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 1,
+                "renderedSentence": "Enter $data:username in el-username field"
+              },
+              {
+                "args": {
+                  "value": "$secret:LOGIN_PASSWORD"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-password",
+                  "elementName": "el-password",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-password"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 2,
+                "renderedSentence": "Enter $secret:LOGIN_PASSWORD in el-password field"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-signin",
+                  "elementName": "el-signin",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-signin"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 3,
+                "renderedSentence": "Click on el-signin"
+              }
+            ]
+          }
+        ],
+        "chainKey": "login-matrix",
+        "stepCount": 9,
+        "timeoutSeconds": 198
+      }
+    ],
+    "contentHash": "b15cf9ba632a2855cfdc4812f3c73ae3f1ced39b049a3b4f1dd0e1076c8da209",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

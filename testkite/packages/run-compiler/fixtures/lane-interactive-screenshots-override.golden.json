@@ -1,0 +1,50 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "quick-smoke",
+            "expectedToFail": false,
+            "revisionId": "rev-quick-smoke-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-signin",
+                  "elementName": "el-signin",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-signin"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-signin"
+              }
+            ]
+          }
+        ],
+        "chainKey": "quick-smoke",
+        "stepCount": 1,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "adbf33291060512975505e1aadda5b13565cbcac7769adc8520ec0fca29c5e42",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "interactive",
+      "retry": "infra-only",
+      "screenshots": "none"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "name": "err-prereq-cycle",
+  "description": "A prereq B, B prereq A ⇒ prereq_cycle, không sinh plan",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "prereq_cycle"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "case-a"
+    ],
+    "cases": {
+      "case-a": {
+        "id": "case-a",
+        "revisionId": "rev-case-a-001",
+        "name": "case-a",
+        "isStepGroup": false,
+        "prereqCaseId": "case-b",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-a",
+            "renderedSentence": "Click on el-a"
+          }
+        ]
+      },
+      "case-b": {
+        "id": "case-b",
+        "revisionId": "rev-case-b-001",
+        "name": "case-b",
+        "isStepGroup": false,
+        "prereqCaseId": "case-a",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-b",
+            "renderedSentence": "Click on el-b"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-a": {
+        "id": "el-a",
+        "name": "el-a",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-a"
+          }
+        ]
+      },
+      "el-b": {
+        "id": "el-b",
+        "name": "el-b",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-b"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "search-catalog",
+            "expectedToFail": false,
+            "revisionId": "rev-search-catalog-001",
+            "steps": [
+              {
+                "args": {
+                  "value": "áo khoác gió"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-search",
+                  "elementName": "el-search",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-search"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 1,
+                "renderedSentence": "Enter $env:searchTerm in el-search field"
+              },
+              {
+                "args": {
+                  "value": "$env:couponNotDeclaredHere"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-coupon",
+                  "elementName": "el-coupon",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-coupon"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 2,
+                "renderedSentence": "Enter $env:couponNotDeclaredHere in el-coupon field"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-search-go",
+                  "elementName": "el-search-go",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-search-go"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 3,
+                "renderedSentence": "Click on el-search-go"
+              }
+            ]
+          }
+        ],
+        "chainKey": "search-catalog",
+        "stepCount": 3,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "cf3b89a0c3d299a9869378ec29d5a61fa317d066dbd4d0788043efa59f3dc7e8",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

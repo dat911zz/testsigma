@@ -1,0 +1,110 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "cart-review",
+            "expectedToFail": false,
+            "revisionId": "rev-cart-review-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [
+                  "grp-open-cart"
+                ],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-menu",
+                  "elementName": "el-menu",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-menu"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-menu"
+              },
+              {
+                "args": {},
+                "groupPath": [
+                  "grp-open-cart"
+                ],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-cart",
+                  "elementName": "el-cart",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-cart"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-cart"
+              },
+              {
+                "args": {},
+                "groupPath": [
+                  "grp-open-cart"
+                ],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-cart-expand",
+                  "elementName": "el-cart-expand",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-cart-expand"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 3,
+                "renderedSentence": "Click on el-cart-expand"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-place-order",
+                  "elementName": "el-place-order",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-place-order"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-place-order"
+              }
+            ]
+          }
+        ],
+        "chainKey": "cart-review",
+        "stepCount": 4,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "ea862c4819090828afb66aabb987e8f1508eb870cc213b9bb78985764ace1113",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

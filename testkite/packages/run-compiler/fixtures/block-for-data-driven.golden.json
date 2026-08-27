@@ -1,0 +1,120 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "bulk-add-to-cart",
+            "expectedToFail": false,
+            "revisionId": "rev-bulk-add-to-cart-001",
+            "steps": [
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {
+                      "value": "$data:sku"
+                    },
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-sku",
+                      "elementName": "el-sku",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-sku"
+                        }
+                      ]
+                    },
+                    "opKey": "web.enter",
+                    "ordinal": 1,
+                    "renderedSentence": "Enter $data:sku in el-sku field"
+                  },
+                  {
+                    "args": {},
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-add-to-cart",
+                      "elementName": "el-add-to-cart",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-add-to-cart"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 2,
+                    "renderedSentence": "Click on el-add-to-cart"
+                  }
+                ],
+                "groupPath": [],
+                "kind": "for",
+                "loopRows": [
+                  {
+                    "expectedToFail": false,
+                    "label": "sku-basic",
+                    "values": {
+                      "sku": "SKU-0001"
+                    }
+                  },
+                  {
+                    "expectedToFail": false,
+                    "label": "sku-bundle",
+                    "values": {
+                      "sku": "SKU-0042"
+                    }
+                  },
+                  {
+                    "expectedToFail": false,
+                    "label": "sku-oversize",
+                    "values": {
+                      "sku": "SKU-9999"
+                    }
+                  }
+                ],
+                "ordinal": 1,
+                "renderedSentence": "For each row of p-skus"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-cart",
+                  "elementName": "el-cart",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-cart"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-cart"
+              }
+            ]
+          }
+        ],
+        "chainKey": "bulk-add-to-cart",
+        "stepCount": 4,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "e3a0e8e9bf5be3e18e8fefc752b6b0f037515f627cc2757504d032ed12341b25",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

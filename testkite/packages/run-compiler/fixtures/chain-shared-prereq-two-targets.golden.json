@@ -1,0 +1,136 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "login",
+            "expectedToFail": false,
+            "revisionId": "rev-login-001",
+            "steps": [
+              {
+                "args": {
+                  "value": "qa@shop.example.com"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-username",
+                  "elementName": "el-username",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-username"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 1,
+                "renderedSentence": "Enter qa@shop.example.com in el-username field"
+              }
+            ]
+          },
+          {
+            "caseId": "view-cart",
+            "expectedToFail": false,
+            "revisionId": "rev-view-cart-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-cart",
+                  "elementName": "el-cart",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-cart"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-cart"
+              }
+            ]
+          }
+        ],
+        "chainKey": "view-cart",
+        "stepCount": 2,
+        "timeoutSeconds": 180
+      },
+      {
+        "cases": [
+          {
+            "caseId": "login",
+            "expectedToFail": false,
+            "revisionId": "rev-login-001",
+            "steps": [
+              {
+                "args": {
+                  "value": "qa@shop.example.com"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-username",
+                  "elementName": "el-username",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-username"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 1,
+                "renderedSentence": "Enter qa@shop.example.com in el-username field"
+              }
+            ]
+          },
+          {
+            "caseId": "view-wishlist",
+            "expectedToFail": false,
+            "revisionId": "rev-view-wishlist-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-wishlist",
+                  "elementName": "el-wishlist",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-wishlist"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-wishlist"
+              }
+            ]
+          }
+        ],
+        "chainKey": "view-wishlist",
+        "stepCount": 2,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "017636c64301efac2d33f181161fd2d64e6099ac80bc9d20e085ccba8892151a",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

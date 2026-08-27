@@ -1,0 +1,148 @@
+{
+  "name": "group-nested-depth-3",
+  "description": "Group lồng 3 tầng (outer → mid → inner): groupPath tích luỹ đủ 3 id, vẫn dưới trần 5",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "nested-groups"
+    ],
+    "cases": {
+      "grp-inner": {
+        "id": "grp-inner",
+        "revisionId": "rev-grp-inner-001",
+        "name": "grp-inner",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-inner",
+            "renderedSentence": "Click on el-inner"
+          }
+        ]
+      },
+      "grp-mid": {
+        "id": "grp-mid",
+        "revisionId": "rev-grp-mid-001",
+        "name": "grp-mid",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "grp-inner",
+            "renderedSentence": "Run step group grp-inner"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-mid",
+            "renderedSentence": "Click on el-mid"
+          }
+        ]
+      },
+      "grp-outer": {
+        "id": "grp-outer",
+        "revisionId": "rev-grp-outer-001",
+        "name": "grp-outer",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "grp-mid",
+            "renderedSentence": "Run step group grp-mid"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-outer",
+            "renderedSentence": "Click on el-outer"
+          }
+        ]
+      },
+      "nested-groups": {
+        "id": "nested-groups",
+        "revisionId": "rev-nested-groups-001",
+        "name": "nested-groups",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "grp-outer",
+            "renderedSentence": "Run step group grp-outer"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-done",
+            "renderedSentence": "Click on el-done"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-inner": {
+        "id": "el-inner",
+        "name": "el-inner",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-inner"
+          }
+        ]
+      },
+      "el-mid": {
+        "id": "el-mid",
+        "name": "el-mid",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-mid"
+          }
+        ]
+      },
+      "el-outer": {
+        "id": "el-outer",
+        "name": "el-outer",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-outer"
+          }
+        ]
+      },
+      "el-done": {
+        "id": "el-done",
+        "name": "el-done",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-done"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

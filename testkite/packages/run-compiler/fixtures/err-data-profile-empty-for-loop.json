@@ -1,0 +1,62 @@
+{
+  "name": "err-data-profile-empty-for-loop",
+  "description": "Vòng `for` trỏ profile không có trong snapshot ⇒ data_profile_empty kèm ordinal của vòng",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "data_profile_empty"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "loop-over-ghost-profile"
+    ],
+    "cases": {
+      "loop-over-ghost-profile": {
+        "id": "loop-over-ghost-profile",
+        "revisionId": "rev-loop-over-ghost-profile-001",
+        "name": "loop-over-ghost-profile",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "for",
+            "loopDataProfileId": "p-deleted-profile",
+            "children": [
+              {
+                "ordinal": 1,
+                "kind": "action",
+                "verbOpKey": "web.enter",
+                "args": {
+                  "value": "$data:sku"
+                },
+                "elementId": "el-sku",
+                "renderedSentence": "Enter $data:sku in el-sku field"
+              }
+            ],
+            "renderedSentence": "For each row of p-deleted-profile"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-sku": {
+        "id": "el-sku",
+        "name": "el-sku",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-sku"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

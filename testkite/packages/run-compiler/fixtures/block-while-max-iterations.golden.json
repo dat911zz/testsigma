@@ -1,0 +1,78 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "dismiss-toasts",
+            "expectedToFail": false,
+            "revisionId": "rev-dismiss-toasts-001",
+            "steps": [
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {},
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-toast-close",
+                      "elementName": "el-toast-close",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-toast-close"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 1,
+                    "renderedSentence": "Click on el-toast-close"
+                  }
+                ],
+                "groupPath": [],
+                "kind": "while",
+                "maxIterations": 8,
+                "ordinal": 1,
+                "renderedSentence": "While banner is visible (max 8)"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-continue",
+                  "elementName": "el-continue",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-continue"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-continue"
+              }
+            ]
+          }
+        ],
+        "chainKey": "dismiss-toasts",
+        "stepCount": 3,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "a675b20c10033b453d368b73be9959e8c1f70e0458e0b3eea35847a7df0da5f2",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

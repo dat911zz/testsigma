@@ -77,8 +77,8 @@
 
 ## Task 8 — Bộ golden fixtures (hợp đồng T1 của hệ)
 
-- [ ] `fixtures/` ≥ 20 case: mỗi construct 1 dương; mỗi `CompileErrorCode` ≥ 1 âm; 1 fixture "kitchen-sink" (prereq chain + group + if + for + data-driven)
-- [ ] Golden runner: snapshot JSON plan (đã canonical) so khớp file `.golden.json`; script `pnpm -F @testkite/run-compiler test:golden -u` để update có chủ đích
+- [x] `fixtures/` ≥ 20 case: mỗi construct 1 dương; mỗi `CompileErrorCode` ≥ 1 âm; 1 fixture "kitchen-sink" (prereq chain + group + if + for + data-driven)
+- [x] Golden runner: snapshot JSON plan (đã canonical) so khớp file `.golden.json`; script `pnpm -F @testkite/run-compiler test:golden -u` để update có chủ đích
 - [ ] Commit "M1 T8: golden suite"
 
 ## Task 9 — CI

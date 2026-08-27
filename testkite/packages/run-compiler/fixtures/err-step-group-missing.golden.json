@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "caseId": "calls-ghost-group",
+      "code": "step_group_missing",
+      "message": "Step group \"grp-ghost\" không tồn tại trong snapshot",
+      "severity": "error",
+      "stepOrdinal": 2
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "name": "err-data-profile-empty-case",
+  "description": "Case data-driven trỏ profile 0 hàng ⇒ data_profile_empty (không có iteration nào để chạy)",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "data_profile_empty"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "login-matrix-empty"
+    ],
+    "cases": {
+      "login-matrix-empty": {
+        "id": "login-matrix-empty",
+        "revisionId": "rev-login-matrix-empty-001",
+        "name": "login-matrix-empty",
+        "isStepGroup": false,
+        "dataProfileId": "p-empty",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "$data:username"
+            },
+            "elementId": "el-username",
+            "renderedSentence": "Enter $data:username in el-username field"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-username": {
+        "id": "el-username",
+        "name": "el-username",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-username"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {
+      "p-empty": {
+        "id": "p-empty",
+        "rows": []
+      }
+    },
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "caseId": "d6-target",
+      "code": "prereq_depth_exceeded",
+      "message": "Chuỗi prereq của \"d6-target\" có 6 tổ tiên — vượt trần 5",
+      "severity": "error"
+    }
+  ]
+}

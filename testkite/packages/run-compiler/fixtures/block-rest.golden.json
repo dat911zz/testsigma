@@ -1,0 +1,62 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "seed-via-api",
+            "expectedToFail": false,
+            "revisionId": "rev-seed-via-api-001",
+            "steps": [
+              {
+                "args": {
+                  "body": "{\"seed\":true}",
+                  "method": "POST",
+                  "url": "https://api.shop.example.com/v1/seed"
+                },
+                "children": [],
+                "groupPath": [],
+                "kind": "rest",
+                "ordinal": 1,
+                "renderedSentence": "Call POST $env:apiBase"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-refresh",
+                  "elementName": "el-refresh",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-refresh"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-refresh"
+              }
+            ]
+          }
+        ],
+        "chainKey": "seed-via-api",
+        "stepCount": 2,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "c1fe2c81f9e888b660e380a2292eb34efaad76ffa694b4ae87e50ec71394fa78",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

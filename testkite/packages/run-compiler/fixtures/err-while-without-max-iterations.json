@@ -1,0 +1,59 @@
+{
+  "name": "err-while-without-max-iterations",
+  "description": "while không khai maxIterations ⇒ while_without_max_iterations (không trần lặp = vé treo vô hạn)",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "while_without_max_iterations"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "unbounded-while"
+    ],
+    "cases": {
+      "unbounded-while": {
+        "id": "unbounded-while",
+        "revisionId": "rev-unbounded-while-001",
+        "name": "unbounded-while",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "while",
+            "children": [
+              {
+                "ordinal": 1,
+                "kind": "action",
+                "verbOpKey": "web.click",
+                "args": {},
+                "elementId": "el-toast-close",
+                "renderedSentence": "Click on el-toast-close"
+              }
+            ],
+            "renderedSentence": "While toast is visible"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-toast-close": {
+        "id": "el-toast-close",
+        "name": "el-toast-close",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-toast-close"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

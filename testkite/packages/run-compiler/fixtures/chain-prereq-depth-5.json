@@ -1,0 +1,191 @@
+{
+  "name": "chain-prereq-depth-5",
+  "description": "Đúng 5 tổ tiên — trần kế thừa của hệ cũ, hợp lệ (6 mới là lỗi)",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "target-checkout"
+    ],
+    "cases": {
+      "a0-bootstrap": {
+        "id": "a0-bootstrap",
+        "revisionId": "rev-a0-bootstrap-001",
+        "name": "a0-bootstrap",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-start",
+            "renderedSentence": "Click on el-start"
+          }
+        ]
+      },
+      "a1-accept-cookies": {
+        "id": "a1-accept-cookies",
+        "revisionId": "rev-a1-accept-cookies-001",
+        "name": "a1-accept-cookies",
+        "isStepGroup": false,
+        "prereqCaseId": "a0-bootstrap",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-cookie-ok",
+            "renderedSentence": "Click on el-cookie-ok"
+          }
+        ]
+      },
+      "a2-login": {
+        "id": "a2-login",
+        "revisionId": "rev-a2-login-001",
+        "name": "a2-login",
+        "isStepGroup": false,
+        "prereqCaseId": "a1-accept-cookies",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "qa@shop.example.com"
+            },
+            "elementId": "el-username",
+            "renderedSentence": "Enter qa@shop.example.com in el-username field"
+          }
+        ]
+      },
+      "a3-select-store": {
+        "id": "a3-select-store",
+        "revisionId": "rev-a3-select-store-001",
+        "name": "a3-select-store",
+        "isStepGroup": false,
+        "prereqCaseId": "a2-login",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-store",
+            "renderedSentence": "Click on el-store"
+          }
+        ]
+      },
+      "a4-fill-cart": {
+        "id": "a4-fill-cart",
+        "revisionId": "rev-a4-fill-cart-001",
+        "name": "a4-fill-cart",
+        "isStepGroup": false,
+        "prereqCaseId": "a3-select-store",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-cart",
+            "renderedSentence": "Click on el-cart"
+          }
+        ]
+      },
+      "target-checkout": {
+        "id": "target-checkout",
+        "revisionId": "rev-target-checkout-001",
+        "name": "target-checkout",
+        "isStepGroup": false,
+        "prereqCaseId": "a4-fill-cart",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-place-order",
+            "renderedSentence": "Click on el-place-order"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-start": {
+        "id": "el-start",
+        "name": "el-start",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-start"
+          }
+        ]
+      },
+      "el-cookie-ok": {
+        "id": "el-cookie-ok",
+        "name": "el-cookie-ok",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-cookie-ok"
+          }
+        ]
+      },
+      "el-username": {
+        "id": "el-username",
+        "name": "el-username",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-username"
+          }
+        ]
+      },
+      "el-store": {
+        "id": "el-store",
+        "name": "el-store",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-store"
+          }
+        ]
+      },
+      "el-cart": {
+        "id": "el-cart",
+        "name": "el-cart",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-cart"
+          }
+        ]
+      },
+      "el-place-order": {
+        "id": "el-place-order",
+        "name": "el-place-order",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-place-order"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

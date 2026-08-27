@@ -1,0 +1,389 @@
+{
+  "name": "kitchen-sink",
+  "description": "Tổng hợp: prereq chain 2 tầng + group lồng + if + for + while + rest + data-driven 2 hàng + secret + env + multi-locator",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "ks-checkout"
+    ],
+    "cases": {
+      "grp-dismiss-noise": {
+        "id": "grp-dismiss-noise",
+        "revisionId": "rev-grp-dismiss-noise-001",
+        "name": "Group: dọn banner/toast",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "while",
+            "maxIterations": 5,
+            "children": [
+              {
+                "ordinal": 1,
+                "kind": "action",
+                "verbOpKey": "web.click",
+                "args": {},
+                "elementId": "el-toast-close",
+                "renderedSentence": "Click on el-toast-close"
+              }
+            ],
+            "renderedSentence": "While banner is visible (max 5)"
+          },
+          {
+            "ordinal": 2,
+            "kind": "if",
+            "conditionExpected": [
+              "SUCCESS",
+              "SKIPPED"
+            ],
+            "children": [
+              {
+                "ordinal": 1,
+                "kind": "action",
+                "verbOpKey": "web.click",
+                "args": {},
+                "elementId": "el-cookie-ok",
+                "renderedSentence": "Click on el-cookie-ok"
+              }
+            ],
+            "renderedSentence": "If previous step is SUCCESS/SKIPPED"
+          }
+        ]
+      },
+      "grp-header-nav": {
+        "id": "grp-header-nav",
+        "revisionId": "rev-grp-header-nav-001",
+        "name": "Group: điều hướng header",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "grp-dismiss-noise",
+            "renderedSentence": "Run step group grp-dismiss-noise"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-menu",
+            "renderedSentence": "Click on el-menu"
+          }
+        ]
+      },
+      "ks-bootstrap": {
+        "id": "ks-bootstrap",
+        "revisionId": "rev-ks-bootstrap-001",
+        "name": "ks-bootstrap",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "rest",
+            "args": {
+              "method": "POST",
+              "url": "$env:apiBase",
+              "body": "{\"reset\":true}"
+            },
+            "renderedSentence": "Call POST $env:apiBase"
+          }
+        ]
+      },
+      "ks-login": {
+        "id": "ks-login",
+        "revisionId": "rev-ks-login-001",
+        "name": "ks-login",
+        "isStepGroup": false,
+        "prereqCaseId": "ks-bootstrap",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "$env:serviceAccount"
+            },
+            "elementId": "el-username",
+            "renderedSentence": "Enter $env:serviceAccount in el-username field"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "$secret:LOGIN_PASSWORD"
+            },
+            "elementId": "el-password",
+            "renderedSentence": "Enter $secret:LOGIN_PASSWORD in el-password field"
+          },
+          {
+            "ordinal": 3,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-signin",
+            "renderedSentence": "Click on el-signin"
+          }
+        ]
+      },
+      "ks-checkout": {
+        "id": "ks-checkout",
+        "revisionId": "rev-ks-checkout-001",
+        "name": "ks-checkout",
+        "isStepGroup": false,
+        "prereqCaseId": "ks-login",
+        "dataProfileId": "p-orders",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "grp-header-nav",
+            "renderedSentence": "Run step group grp-header-nav"
+          },
+          {
+            "ordinal": 2,
+            "kind": "for",
+            "loopDataProfileId": "p-skus",
+            "children": [
+              {
+                "ordinal": 1,
+                "kind": "action",
+                "verbOpKey": "web.enter",
+                "args": {
+                  "value": "$data:sku"
+                },
+                "elementId": "el-sku",
+                "renderedSentence": "Enter $data:sku in el-sku field"
+              },
+              {
+                "ordinal": 2,
+                "kind": "action",
+                "verbOpKey": "web.click",
+                "args": {},
+                "elementId": "el-add-to-cart",
+                "renderedSentence": "Click on el-add-to-cart"
+              }
+            ],
+            "renderedSentence": "For each row of p-skus"
+          },
+          {
+            "ordinal": 3,
+            "kind": "if",
+            "conditionExpected": [
+              "SUCCESS"
+            ],
+            "children": [
+              {
+                "ordinal": 1,
+                "kind": "action",
+                "verbOpKey": "web.enter",
+                "args": {
+                  "value": "$data:coupon"
+                },
+                "elementId": "el-coupon",
+                "renderedSentence": "Enter $data:coupon in el-coupon field"
+              },
+              {
+                "ordinal": 2,
+                "kind": "action",
+                "verbOpKey": "web.click",
+                "args": {},
+                "elementId": "el-apply-coupon",
+                "renderedSentence": "Click on el-apply-coupon"
+              }
+            ],
+            "renderedSentence": "If previous step is SUCCESS"
+          },
+          {
+            "ordinal": 4,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-place-order",
+            "renderedSentence": "Click on el-place-order"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-toast-close": {
+        "id": "el-toast-close",
+        "name": "el-toast-close",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-toast-close"
+          }
+        ]
+      },
+      "el-cookie-ok": {
+        "id": "el-cookie-ok",
+        "name": "el-cookie-ok",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-cookie-ok"
+          }
+        ]
+      },
+      "el-menu": {
+        "id": "el-menu",
+        "name": "Main menu",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "test-id",
+            "value": "main-menu"
+          },
+          {
+            "kind": "css",
+            "value": "header nav button.menu"
+          }
+        ]
+      },
+      "el-username": {
+        "id": "el-username",
+        "name": "el-username",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-username"
+          }
+        ]
+      },
+      "el-password": {
+        "id": "el-password",
+        "name": "el-password",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-password"
+          }
+        ]
+      },
+      "el-signin": {
+        "id": "el-signin",
+        "name": "el-signin",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-signin"
+          }
+        ]
+      },
+      "el-sku": {
+        "id": "el-sku",
+        "name": "el-sku",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-sku"
+          }
+        ]
+      },
+      "el-add-to-cart": {
+        "id": "el-add-to-cart",
+        "name": "el-add-to-cart",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-add-to-cart"
+          }
+        ]
+      },
+      "el-coupon": {
+        "id": "el-coupon",
+        "name": "el-coupon",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-coupon"
+          }
+        ]
+      },
+      "el-apply-coupon": {
+        "id": "el-apply-coupon",
+        "name": "el-apply-coupon",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-apply-coupon"
+          }
+        ]
+      },
+      "el-place-order": {
+        "id": "el-place-order",
+        "name": "el-place-order",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-place-order"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {
+      "p-skus": {
+        "id": "p-skus",
+        "rows": [
+          {
+            "label": "sku-basic",
+            "expectedToFail": false,
+            "values": {
+              "sku": "SKU-0001"
+            }
+          },
+          {
+            "label": "sku-bundle",
+            "expectedToFail": false,
+            "values": {
+              "sku": "SKU-0042"
+            }
+          }
+        ]
+      },
+      "p-orders": {
+        "id": "p-orders",
+        "rows": [
+          {
+            "label": "order-standard",
+            "expectedToFail": false,
+            "values": {
+              "coupon": "SUMMER25"
+            }
+          },
+          {
+            "label": "order-rejected-coupon",
+            "expectedToFail": true,
+            "values": {
+              "coupon": "EXPIRED-2019"
+            }
+          }
+        ]
+      }
+    },
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {
+        "apiBase": "https://api.shop.example.com/v1/reset",
+        "serviceAccount": "svc-qa@shop.example.com"
+      },
+      "secretNames": [
+        "LOGIN_PASSWORD"
+      ]
+    }
+  }
+}

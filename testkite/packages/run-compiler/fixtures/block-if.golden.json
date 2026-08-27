@@ -1,0 +1,118 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "promo-banner",
+            "expectedToFail": false,
+            "revisionId": "rev-promo-banner-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-open-promo",
+                  "elementName": "el-open-promo",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-open-promo"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-open-promo"
+              },
+              {
+                "args": {},
+                "children": [
+                  {
+                    "args": {},
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-promo-close",
+                      "elementName": "el-promo-close",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-promo-close"
+                        }
+                      ]
+                    },
+                    "opKey": "web.click",
+                    "ordinal": 1,
+                    "renderedSentence": "Click on el-promo-close"
+                  },
+                  {
+                    "args": {
+                      "value": "SUMMER25"
+                    },
+                    "groupPath": [],
+                    "kind": "action",
+                    "locators": {
+                      "elementId": "el-promo-code",
+                      "elementName": "el-promo-code",
+                      "locators": [
+                        {
+                          "kind": "css",
+                          "value": "#el-promo-code"
+                        }
+                      ]
+                    },
+                    "opKey": "web.enter",
+                    "ordinal": 2,
+                    "renderedSentence": "Enter SUMMER25 in el-promo-code field"
+                  }
+                ],
+                "conditionExpected": [
+                  "SUCCESS"
+                ],
+                "groupPath": [],
+                "kind": "if",
+                "ordinal": 2,
+                "renderedSentence": "If previous step is SUCCESS"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-continue",
+                  "elementName": "el-continue",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-continue"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 3,
+                "renderedSentence": "Click on el-continue"
+              }
+            ]
+          }
+        ],
+        "chainKey": "promo-banner",
+        "stepCount": 5,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "673b553dfa2552a55c981d8422f1f4dc76705947cbc9cb77c4ed9a31875a87de",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "caseId": "login-matrix-empty",
+      "code": "data_profile_empty",
+      "message": "Case \"login-matrix-empty\" chạy theo data profile \"p-empty\" nhưng profile rỗng hoặc không có trong snapshot",
+      "severity": "error"
+    }
+  ]
+}

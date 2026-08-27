@@ -1,0 +1,47 @@
+{
+  "name": "err-element-pending-locator",
+  "description": "Element status=pending_locator (chưa chụp được locator) ⇒ element_pending_locator",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "element_pending_locator"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "click-pending-element"
+    ],
+    "cases": {
+      "click-pending-element": {
+        "id": "click-pending-element",
+        "revisionId": "rev-click-pending-element-001",
+        "name": "click-pending-element",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-not-captured",
+            "renderedSentence": "Click on el-not-captured"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-not-captured": {
+        "id": "el-not-captured",
+        "name": "el-not-captured",
+        "status": "pending_locator",
+        "locators": []
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

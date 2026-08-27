@@ -1,0 +1,62 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "open-account-menu",
+            "expectedToFail": false,
+            "revisionId": "rev-open-account-menu-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-account-menu",
+                  "elementName": "Account menu (header)",
+                  "locators": [
+                    {
+                      "kind": "test-id",
+                      "value": "account-menu"
+                    },
+                    {
+                      "kind": "css",
+                      "value": "header nav [data-qa='account']"
+                    },
+                    {
+                      "kind": "xpath",
+                      "value": "//header//nav//button[@data-qa='account']"
+                    },
+                    {
+                      "kind": "text",
+                      "value": "Tài khoản của tôi"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-account-menu"
+              }
+            ]
+          }
+        ],
+        "chainKey": "open-account-menu",
+        "stepCount": 1,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "f03fc7ac710a9bbe5109d124831eafe50a1edaecb9b5b1df112247b914943d58",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

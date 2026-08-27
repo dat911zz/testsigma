@@ -1,0 +1,60 @@
+{
+  "diagnostics": [
+    {
+      "caseId": "everything-broken",
+      "code": "step_group_missing",
+      "message": "Step group \"grp-ghost\" không tồn tại trong snapshot",
+      "severity": "error",
+      "stepOrdinal": 1
+    },
+    {
+      "caseId": "everything-broken",
+      "code": "data_profile_empty",
+      "message": "Vòng lặp \"for\" cần data profile có ít nhất 1 hàng (profile: p-ghost)",
+      "severity": "error",
+      "stepOrdinal": 2
+    },
+    {
+      "caseId": "everything-broken",
+      "code": "while_without_max_iterations",
+      "message": "Vòng lặp \"while\" phải khai báo maxIterations — không có trần lặp là vé vào treo vô hạn",
+      "severity": "error",
+      "stepOrdinal": 3
+    },
+    {
+      "caseId": "everything-broken",
+      "code": "unknown_verb",
+      "message": "Verb \"web.dragAndDrop\" không có trong registry @testkite/verb-kit — chưa port hoặc sai op key",
+      "severity": "error",
+      "stepOrdinal": 4
+    },
+    {
+      "caseId": "everything-broken",
+      "code": "verb_args_invalid",
+      "message": "Args của verb \"web.enter\" không hợp lệ: value: Required",
+      "severity": "error",
+      "stepOrdinal": 5
+    },
+    {
+      "caseId": "everything-broken",
+      "code": "element_not_found",
+      "message": "Element \"el-deleted\" không có trong snapshot — step tham chiếu element đã xoá hoặc thuộc project khác",
+      "severity": "error",
+      "stepOrdinal": 6
+    },
+    {
+      "caseId": "everything-broken",
+      "code": "element_pending_locator",
+      "message": "Element \"el-not-captured\" chưa có locator dùng được (status=pending_locator, 0 locator) — chụp locator trước khi chạy",
+      "severity": "error",
+      "stepOrdinal": 7
+    },
+    {
+      "caseId": "everything-broken",
+      "code": "secret_ref_unknown",
+      "message": "Secret \"PROD_ROOT_PASSWORD\" (arg \"value\") không có trong environment — khai báo secret trước khi tham chiếu",
+      "severity": "error",
+      "stepOrdinal": 8
+    }
+  ]
+}

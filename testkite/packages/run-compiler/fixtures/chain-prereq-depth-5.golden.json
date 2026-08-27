@@ -1,0 +1,177 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "a0-bootstrap",
+            "expectedToFail": false,
+            "revisionId": "rev-a0-bootstrap-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-start",
+                  "elementName": "el-start",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-start"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-start"
+              }
+            ]
+          },
+          {
+            "caseId": "a1-accept-cookies",
+            "expectedToFail": false,
+            "revisionId": "rev-a1-accept-cookies-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-cookie-ok",
+                  "elementName": "el-cookie-ok",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-cookie-ok"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-cookie-ok"
+              }
+            ]
+          },
+          {
+            "caseId": "a2-login",
+            "expectedToFail": false,
+            "revisionId": "rev-a2-login-001",
+            "steps": [
+              {
+                "args": {
+                  "value": "qa@shop.example.com"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-username",
+                  "elementName": "el-username",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-username"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 1,
+                "renderedSentence": "Enter qa@shop.example.com in el-username field"
+              }
+            ]
+          },
+          {
+            "caseId": "a3-select-store",
+            "expectedToFail": false,
+            "revisionId": "rev-a3-select-store-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-store",
+                  "elementName": "el-store",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-store"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-store"
+              }
+            ]
+          },
+          {
+            "caseId": "a4-fill-cart",
+            "expectedToFail": false,
+            "revisionId": "rev-a4-fill-cart-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-cart",
+                  "elementName": "el-cart",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-cart"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-cart"
+              }
+            ]
+          },
+          {
+            "caseId": "target-checkout",
+            "expectedToFail": false,
+            "revisionId": "rev-target-checkout-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-place-order",
+                  "elementName": "el-place-order",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-place-order"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-place-order"
+              }
+            ]
+          }
+        ],
+        "chainKey": "target-checkout",
+        "stepCount": 6,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "8821a5fb8d3e9aabfa359fab2562c7978ec822a54aada8e11e5862e12e370993",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

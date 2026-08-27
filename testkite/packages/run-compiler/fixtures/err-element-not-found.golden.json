@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "caseId": "click-ghost-element",
+      "code": "element_not_found",
+      "message": "Element \"el-deleted-yesterday\" không có trong snapshot — step tham chiếu element đã xoá hoặc thuộc project khác",
+      "severity": "error",
+      "stepOrdinal": 1
+    }
+  ]
+}

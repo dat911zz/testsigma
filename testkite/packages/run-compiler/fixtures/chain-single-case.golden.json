@@ -1,0 +1,70 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "smoke-login",
+            "expectedToFail": false,
+            "revisionId": "rev-smoke-login-001",
+            "steps": [
+              {
+                "args": {
+                  "value": "qa@shop.example.com"
+                },
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-username",
+                  "elementName": "el-username",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-username"
+                    }
+                  ]
+                },
+                "opKey": "web.enter",
+                "ordinal": 1,
+                "renderedSentence": "Enter qa@shop.example.com in el-username field"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-signin",
+                  "elementName": "el-signin",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-signin"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-signin"
+              }
+            ]
+          }
+        ],
+        "chainKey": "smoke-login",
+        "stepCount": 2,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "78dd98dfd6290ed5785f84f50993118b376dd64053564f29073d24df963b1482",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

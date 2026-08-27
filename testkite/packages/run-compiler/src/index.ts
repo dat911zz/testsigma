@@ -26,19 +26,28 @@ import { freezePlan } from "./phase67-freeze.js";
 import type { FrozenChain, RunLane, ScreenshotPolicy } from "./phase67-freeze.js";
 import type { CompileSnapshot } from "./snapshot.js";
 
-export type CompileErrorCode =
-  | "prereq_cycle"
-  | "prereq_depth_exceeded"
-  | "prereq_missing"
-  | "step_group_depth_exceeded"
-  | "step_group_missing"
-  | "unknown_verb"
-  | "verb_args_invalid"
-  | "element_pending_locator"
-  | "element_not_found"
-  | "secret_ref_unknown"
-  | "while_without_max_iterations"
-  | "data_profile_empty";
+/**
+ * Danh mục lỗi compile — DỮ LIỆU, không chỉ là type: golden suite phải liệt kê được mọi code
+ * lúc CHẠY để chứng minh "mỗi code có ≥1 fixture âm". Union được DẪN XUẤT từ mảng này, nên
+ * thêm code mới mà quên fixture là gãy test ngay, không phải một khoảng trống im lặng.
+ * Thứ tự = dòng chảy phase 1→5 (đọc như output của compiler).
+ */
+export const COMPILE_ERROR_CODES = [
+  "prereq_cycle",
+  "prereq_depth_exceeded",
+  "prereq_missing",
+  "step_group_depth_exceeded",
+  "step_group_missing",
+  "unknown_verb",
+  "verb_args_invalid",
+  "element_pending_locator",
+  "element_not_found",
+  "secret_ref_unknown",
+  "while_without_max_iterations",
+  "data_profile_empty",
+] as const;
+
+export type CompileErrorCode = (typeof COMPILE_ERROR_CODES)[number];
 
 export interface CompileDiagnostic {
   readonly severity: "error" | "warning";

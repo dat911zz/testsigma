@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "caseId": "case-a",
+      "code": "prereq_cycle",
+      "message": "Chuỗi prereq của \"case-a\" chứa vòng lặp tại \"case-a\"",
+      "severity": "error"
+    }
+  ]
+}

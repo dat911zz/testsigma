@@ -1,0 +1,70 @@
+{
+  "name": "chain-single-case",
+  "description": "Case đơn không prereq: 2 step action phẳng ⇒ đúng 1 chain, 1 case, 2 step",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "smoke-login"
+    ],
+    "cases": {
+      "smoke-login": {
+        "id": "smoke-login",
+        "revisionId": "rev-smoke-login-001",
+        "name": "smoke-login",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "qa@shop.example.com"
+            },
+            "elementId": "el-username",
+            "renderedSentence": "Enter qa@shop.example.com in el-username field"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-signin",
+            "renderedSentence": "Click on el-signin"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-username": {
+        "id": "el-username",
+        "name": "el-username",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-username"
+          }
+        ]
+      },
+      "el-signin": {
+        "id": "el-signin",
+        "name": "el-signin",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-signin"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

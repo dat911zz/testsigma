@@ -1,0 +1,140 @@
+{
+  "name": "err-gather-all-not-first-fail",
+  "description": "Một case hỏng 8 kiểu cùng lúc ⇒ ĐỦ 8 code trong một lần compile (tác giả sửa một lượt)",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "step_group_missing",
+    "data_profile_empty",
+    "while_without_max_iterations",
+    "unknown_verb",
+    "verb_args_invalid",
+    "element_not_found",
+    "element_pending_locator",
+    "secret_ref_unknown"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "everything-broken"
+    ],
+    "cases": {
+      "everything-broken": {
+        "id": "everything-broken",
+        "revisionId": "rev-everything-broken-001",
+        "name": "everything-broken",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "grp-ghost",
+            "renderedSentence": "Run step group grp-ghost"
+          },
+          {
+            "ordinal": 2,
+            "kind": "for",
+            "loopDataProfileId": "p-ghost",
+            "children": [
+              {
+                "ordinal": 1,
+                "kind": "action",
+                "verbOpKey": "web.click",
+                "args": {},
+                "elementId": "el-ok",
+                "renderedSentence": "Click on el-ok"
+              }
+            ],
+            "renderedSentence": "For each row of p-ghost"
+          },
+          {
+            "ordinal": 3,
+            "kind": "while",
+            "children": [
+              {
+                "ordinal": 1,
+                "kind": "action",
+                "verbOpKey": "web.click",
+                "args": {},
+                "elementId": "el-ok",
+                "renderedSentence": "Click on el-ok"
+              }
+            ],
+            "renderedSentence": "While spinner is visible"
+          },
+          {
+            "ordinal": 4,
+            "kind": "action",
+            "verbOpKey": "web.dragAndDrop",
+            "args": {
+              "target": "el-ok"
+            },
+            "elementId": "el-ok",
+            "renderedSentence": "Drag el-ok"
+          },
+          {
+            "ordinal": 5,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {},
+            "elementId": "el-ok",
+            "renderedSentence": "Enter (thiếu value) in el-ok field"
+          },
+          {
+            "ordinal": 6,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-deleted",
+            "renderedSentence": "Click on el-deleted"
+          },
+          {
+            "ordinal": 7,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-not-captured",
+            "renderedSentence": "Click on el-not-captured"
+          },
+          {
+            "ordinal": 8,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "$secret:PROD_ROOT_PASSWORD"
+            },
+            "elementId": "el-ok",
+            "renderedSentence": "Enter $secret:PROD_ROOT_PASSWORD in el-ok field"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-ok": {
+        "id": "el-ok",
+        "name": "el-ok",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-ok"
+          }
+        ]
+      },
+      "el-not-captured": {
+        "id": "el-not-captured",
+        "name": "el-not-captured",
+        "status": "pending_locator",
+        "locators": []
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": [
+        "LOGIN_PASSWORD"
+      ]
+    }
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "name": "err-unknown-verb-gathers-both",
+  "description": "2 verb lạ ⇒ 2 diagnostic unknown_verb (GOM mọi lỗi, không first-fail)",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "unknown_verb"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "legacy-verbs"
+    ],
+    "cases": {
+      "legacy-verbs": {
+        "id": "legacy-verbs",
+        "revisionId": "rev-legacy-verbs-001",
+        "name": "legacy-verbs",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.selectDropdown",
+            "args": {
+              "value": "Hà Nội"
+            },
+            "elementId": "el-city",
+            "renderedSentence": "web.selectDropdown #1"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-signin",
+            "renderedSentence": "Click on el-signin"
+          },
+          {
+            "ordinal": 3,
+            "kind": "action",
+            "verbOpKey": "mobile.swipeUp",
+            "args": {},
+            "renderedSentence": "Swipe up"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-city": {
+        "id": "el-city",
+        "name": "el-city",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-city"
+          }
+        ]
+      },
+      "el-signin": {
+        "id": "el-signin",
+        "name": "el-signin",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-signin"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

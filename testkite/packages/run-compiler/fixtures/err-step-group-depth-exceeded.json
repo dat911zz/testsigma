@@ -1,0 +1,136 @@
+{
+  "name": "err-step-group-depth-exceeded",
+  "description": "Group lồng 6 tầng ⇒ step_group_depth_exceeded (trần inline là 5)",
+  "expect": "diagnostics",
+  "expectCodes": [
+    "step_group_depth_exceeded"
+  ],
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "deep-groups"
+    ],
+    "cases": {
+      "g6": {
+        "id": "g6",
+        "revisionId": "rev-g6-001",
+        "name": "g6",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-x",
+            "renderedSentence": "Click on el-x"
+          }
+        ]
+      },
+      "g5": {
+        "id": "g5",
+        "revisionId": "rev-g5-001",
+        "name": "g5",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "g6",
+            "renderedSentence": "Run step group g6"
+          }
+        ]
+      },
+      "g4": {
+        "id": "g4",
+        "revisionId": "rev-g4-001",
+        "name": "g4",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "g5",
+            "renderedSentence": "Run step group g5"
+          }
+        ]
+      },
+      "g3": {
+        "id": "g3",
+        "revisionId": "rev-g3-001",
+        "name": "g3",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "g4",
+            "renderedSentence": "Run step group g4"
+          }
+        ]
+      },
+      "g2": {
+        "id": "g2",
+        "revisionId": "rev-g2-001",
+        "name": "g2",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "g3",
+            "renderedSentence": "Run step group g3"
+          }
+        ]
+      },
+      "g1": {
+        "id": "g1",
+        "revisionId": "rev-g1-001",
+        "name": "g1",
+        "isStepGroup": true,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "g2",
+            "renderedSentence": "Run step group g2"
+          }
+        ]
+      },
+      "deep-groups": {
+        "id": "deep-groups",
+        "revisionId": "rev-deep-groups-001",
+        "name": "deep-groups",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "step_group",
+            "stepGroupCaseId": "g1",
+            "renderedSentence": "Run step group g1"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-x": {
+        "id": "el-x",
+        "name": "el-x",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-x"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

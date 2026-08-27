@@ -1,0 +1,113 @@
+{
+  "diagnostics": [],
+  "plan": {
+    "chains": [
+      {
+        "cases": [
+          {
+            "caseId": "nested-groups",
+            "expectedToFail": false,
+            "revisionId": "rev-nested-groups-001",
+            "steps": [
+              {
+                "args": {},
+                "groupPath": [
+                  "grp-outer",
+                  "grp-mid",
+                  "grp-inner"
+                ],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-inner",
+                  "elementName": "el-inner",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-inner"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 1,
+                "renderedSentence": "Click on el-inner"
+              },
+              {
+                "args": {},
+                "groupPath": [
+                  "grp-outer",
+                  "grp-mid"
+                ],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-mid",
+                  "elementName": "el-mid",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-mid"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-mid"
+              },
+              {
+                "args": {},
+                "groupPath": [
+                  "grp-outer"
+                ],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-outer",
+                  "elementName": "el-outer",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-outer"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-outer"
+              },
+              {
+                "args": {},
+                "groupPath": [],
+                "kind": "action",
+                "locators": {
+                  "elementId": "el-done",
+                  "elementName": "el-done",
+                  "locators": [
+                    {
+                      "kind": "css",
+                      "value": "#el-done"
+                    }
+                  ]
+                },
+                "opKey": "web.click",
+                "ordinal": 2,
+                "renderedSentence": "Click on el-done"
+              }
+            ]
+          }
+        ],
+        "chainKey": "nested-groups",
+        "stepCount": 4,
+        "timeoutSeconds": 180
+      }
+    ],
+    "contentHash": "aeb0883aace477911abb96ada81a66fe4cf6f620ad2d9b9ed78e9c823d1d4de8",
+    "planFormatVersion": 1,
+    "policy": {
+      "baseUrl": "https://shop.example.com",
+      "engine": "chromium-headless-shell",
+      "lane": "batch",
+      "retry": "infra-only",
+      "screenshots": "failure"
+    },
+    "projectId": "proj-web-checkout",
+    "teamId": "team-acme"
+  }
+}

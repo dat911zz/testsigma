@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "caseId": "enter-without-value",
+      "code": "verb_args_invalid",
+      "message": "Args của verb \"web.enter\" không hợp lệ: value: Required",
+      "severity": "error",
+      "stepOrdinal": 2
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "name": "chain-shared-prereq-two-targets",
+  "description": "2 target dùng chung prereq login ⇒ 2 chain CÔ LẬP, login được nở trong cả hai (không chạy chung)",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "view-cart",
+      "view-wishlist"
+    ],
+    "cases": {
+      "login": {
+        "id": "login",
+        "revisionId": "rev-login-001",
+        "name": "login",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "qa@shop.example.com"
+            },
+            "elementId": "el-username",
+            "renderedSentence": "Enter qa@shop.example.com in el-username field"
+          }
+        ]
+      },
+      "view-cart": {
+        "id": "view-cart",
+        "revisionId": "rev-view-cart-001",
+        "name": "view-cart",
+        "isStepGroup": false,
+        "prereqCaseId": "login",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-cart",
+            "renderedSentence": "Click on el-cart"
+          }
+        ]
+      },
+      "view-wishlist": {
+        "id": "view-wishlist",
+        "revisionId": "rev-view-wishlist-001",
+        "name": "view-wishlist",
+        "isStepGroup": false,
+        "prereqCaseId": "login",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-wishlist",
+            "renderedSentence": "Click on el-wishlist"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-username": {
+        "id": "el-username",
+        "name": "el-username",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-username"
+          }
+        ]
+      },
+      "el-cart": {
+        "id": "el-cart",
+        "name": "el-cart",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-cart"
+          }
+        ]
+      },
+      "el-wishlist": {
+        "id": "el-wishlist",
+        "name": "el-wishlist",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-wishlist"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}

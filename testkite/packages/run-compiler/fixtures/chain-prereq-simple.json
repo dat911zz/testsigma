@@ -1,0 +1,117 @@
+{
+  "name": "chain-prereq-simple",
+  "description": "Prereq 1 tầng (login → checkout): chain chạy tổ tiên trước, target sau",
+  "expect": "plan",
+  "snapshot": {
+    "teamId": "team-acme",
+    "projectId": "proj-web-checkout",
+    "targetCaseIds": [
+      "checkout"
+    ],
+    "cases": {
+      "login": {
+        "id": "login",
+        "revisionId": "rev-login-001",
+        "name": "login",
+        "isStepGroup": false,
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.enter",
+            "args": {
+              "value": "qa@shop.example.com"
+            },
+            "elementId": "el-username",
+            "renderedSentence": "Enter qa@shop.example.com in el-username field"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-signin",
+            "renderedSentence": "Click on el-signin"
+          }
+        ]
+      },
+      "checkout": {
+        "id": "checkout",
+        "revisionId": "rev-checkout-001",
+        "name": "checkout",
+        "isStepGroup": false,
+        "prereqCaseId": "login",
+        "steps": [
+          {
+            "ordinal": 1,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-cart",
+            "renderedSentence": "Click on el-cart"
+          },
+          {
+            "ordinal": 2,
+            "kind": "action",
+            "verbOpKey": "web.click",
+            "args": {},
+            "elementId": "el-place-order",
+            "renderedSentence": "Click on el-place-order"
+          }
+        ]
+      }
+    },
+    "elements": {
+      "el-username": {
+        "id": "el-username",
+        "name": "el-username",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-username"
+          }
+        ]
+      },
+      "el-signin": {
+        "id": "el-signin",
+        "name": "el-signin",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-signin"
+          }
+        ]
+      },
+      "el-cart": {
+        "id": "el-cart",
+        "name": "el-cart",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-cart"
+          }
+        ]
+      },
+      "el-place-order": {
+        "id": "el-place-order",
+        "name": "el-place-order",
+        "status": "ready",
+        "locators": [
+          {
+            "kind": "css",
+            "value": "#el-place-order"
+          }
+        ]
+      }
+    },
+    "dataProfiles": {},
+    "env": {
+      "baseUrl": "https://shop.example.com",
+      "vars": {},
+      "secretNames": []
+    }
+  }
+}
