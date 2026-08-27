@@ -6,12 +6,12 @@
  * là thuộc tính của fleet (M container × K context), không phải của code.
  */
 import { buildApp } from "./composition-root.js";
+import { loadEnv } from "./modules/kernel/env.js";
 
 async function main(): Promise<void> {
-  // TODO(M1): zod-validate process env (exit-on-invalid) trước khi build app.
+  const env = loadEnv();
   const app = await buildApp();
-  const port = Number(process.env["PORT"] ?? 8080);
-  await app.listen({ host: "0.0.0.0", port });
+  await app.listen({ host: "0.0.0.0", port: env.PORT });
 }
 
 main().catch((err) => {
