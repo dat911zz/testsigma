@@ -2078,7 +2078,7 @@ git commit -m "M1 B3: lint cưỡng chế compiler PURE + queue chỉ trong kern
 
 Đây là lựa chọn có ý thức: gate canh **vòng lặp giá trị lúc chạy**, không canh vòng lặp kiểu lúc biên dịch. Đổi lại thì `pnpm lint:cycles` sẽ đỏ ngay từ ngày đầu vì kiến trúc hiện tại và không ai chạy nó nữa.
 
-- [ ] **Step 1: Cài madge**
+- [x] **Step 1: Cài madge**
 
 ```bash
 cd testkite && pnpm add -Dw madge@^8
@@ -2086,12 +2086,12 @@ cd testkite && pnpm add -Dw madge@^8
 
 `madge@8.0.0` peer `typescript: ^5.4.4` — repo `~5.7.3` ✅.
 
-- [ ] **Step 2: Chạy TRẦN trước để tận mắt thấy 4 vòng giả**
+- [x] **Step 2: Chạy TRẦN trước để tận mắt thấy 4 vòng giả**
 
 Run: `cd testkite && pnpm exec madge --circular --extensions ts --ts-config tsconfig.base.json packages/*/src apps/*/src`
 Expected: `✖ Found 4 circular dependencies!` liệt kê `index.ts > phase*.ts`. Đây là baseline — nhìn nó rồi mới hiểu vì sao cần `.madgerc`.
 
-- [ ] **Step 3: Viết `.madgerc`**
+- [x] **Step 3: Viết `.madgerc`**
 
 Tạo `testkite/.madgerc`:
 
@@ -2107,7 +2107,7 @@ Tạo `testkite/.madgerc`:
 }
 ```
 
-- [ ] **Step 4: Thêm script**
+- [x] **Step 4: Thêm script**
 
 Trong `scripts` của `testkite/package.json`:
 
@@ -2115,12 +2115,12 @@ Trong `scripts` của `testkite/package.json`:
 "lint:cycles": "madge --circular --no-spinner packages/*/src apps/*/src"
 ```
 
-- [ ] **Step 5: Chạy lại, xác nhận XANH**
+- [x] **Step 5: Chạy lại, xác nhận XANH**
 
 Run: `cd testkite && pnpm lint:cycles`
 Expected: `✔ No circular dependency found!`, exit 0.
 
-- [ ] **Step 6: Chứng minh gate BẮT ĐƯỢC vòng thật (đây là \"test\" của nó)**
+- [x] **Step 6: Chứng minh gate BẮT ĐƯỢC vòng thật (đây là \"test\" của nó)**
 
 ```bash
 cd testkite
@@ -2139,7 +2139,7 @@ pnpm lint:cycles; echo "restored -> $?"
 
 Expected: `with-cycle -> 1` kèm `✖ Found 1 circular dependency!`; `restored -> 0`. Nếu `with-cycle -> 0` thì `skipTypeImports` đang nuốt cả import giá trị — dừng lại và sửa.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add testkite/.madgerc testkite/package.json testkite/pnpm-lock.yaml

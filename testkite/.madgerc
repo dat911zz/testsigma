@@ -1,0 +1,9 @@
+{
+  "$comment": "skipTypeImports: gate này canh VÒNG LẶP GIÁ TRỊ LÚC CHẠY. Các phase compiler import `type { CompileDiagnostic } from './index.js'` — TypeScript xoá sạch lúc biên dịch nên runtime không có vòng nào; không bật cờ này thì madge báo 4 vòng giả và gate thành đồ trang trí.",
+  "fileExtensions": ["ts", "tsx"],
+  "tsConfig": "tsconfig.base.json",
+  "detectiveOptions": {
+    "ts": { "skipTypeImports": true },
+    "tsx": { "skipTypeImports": true }
+  }
+}
