@@ -293,6 +293,22 @@ Chi tiết đọc được từ số liệu:
 
 **Cổng còn lại duy nhất là con người:** dev/SDET viết test → **Playwright + TypeScript**; QA quen keyword → **Robot Framework** hoặc **CodeceptJS**; QA thuần no-code không rời được UI → dừng ở lộ trình ổn định (mục 6), Harvest chết vì adoption.
 
+### 9.6. Phán quyết cuối — cổng con người trả lời: QA thuần no-code → chọn đường D
+
+Maintainer xác nhận người viết test hằng ngày là **QA thuần no-code, cần UI kéo-thả** → Harvest sang stack code bị loại vì adoption (đúng rủi ro số 1 đã dự báo). Bốn đường còn lại:
+
+- **A — Ổn định platform (mặc định), nay rẻ hơn nhờ census:** 99,6% web → **bỏ hẳn toàn bộ mobile** (không chỉ iOS): đóng băng/xóa stack usbmuxd–adb–Appium của agent; installer chỉ còn cần JRE + nginx (đều tải được từ nguồn chính chủ) → **bom bucket S3 gần như tự tháo ngòi**. Ước lượng giảm còn ~12–15 tháng-người rải ~2 năm.
+- **B — Mua đường thoát no-code thương mại:** Testsigma Cloud bản thương mại (cùng UI, import tự nhiên nhất — công ty vendor vẫn sống, chỉ bản OSS bị bỏ), TestRigor, Katalon, Mabl. Đổi công lấy license + quay lại vendor lock-in.
+- **C — Demo 2 tuần kiểm chứng giả định no-code** với 2–3 QA thật trên ~20 test dịch sẵn, trước khi chốt.
+- **★ D — Hướng được chọn: NÂNG CẤP CÓ AI — giữ platform + lớp Claude qua MCP có xác thực.** Giữ UI kéo-thả (fallback khi hết token + nơi review), thêm MCP server bọc REST API để Claude soạn/sửa/triage test. AI là lớp cộng thêm, không phải phụ thuộc.
+
+**Thiết kế đường D:**
+
+1. **Vì sao kiến trúc này hợp AI bất thường:** (a) catalog 586 câu = vocabulary đóng — MCP server validate mọi step Claude sinh so với `natural_text_actions` (đúng câu mẫu, placeholder trỏ element/test-data thật) trước khi ghi DB → không có step ảo; (b) schema sẵn workflow nháp (`draft_at`/`ready_at`) → Claude luôn tạo DRAFT, QA review trong UI rồi promote; (c) nền auth API-key có sẵn (`APIAuthenticationFilter`) — nhưng CRUD case/step đang sau cookie-JWT UI → cần mở surface `api/v1` PAT-authenticated (~1–2 tuần, trùng hạng mục security floor + OpenAPI).
+2. **Sơ đồ:** QA/dev dùng Claude (claude.ai Team / Claude Desktop / Claude Code) → MCP server (Node/TypeScript, ~12 tool: tìm/đọc case, tạo case nháp, thêm/sửa step có validate, quản lý element, chạy plan, đọc kết quả + screenshot fail, tra catalog verb) → REST Testsigma (API key giữ server-side) → MySQL. Auth 2 lớp: user ↔ MCP theo spec MCP (OAuth nếu remote / stdio local); MCP ↔ Testsigma bằng API key không lộ ra client.
+3. **Use case đáng tiền nhất cho solo maintainer:** bảo trì estate — triage kết quả chạy đêm (đọc failure + screenshot, đề xuất sửa locator thành draft), gộp step trùng thành step group, dọn 2.159 element. Chạy batch/định kỳ với ngân sách token cố định; hết ngân sách → QA làm tay như cũ, không bị động.
+4. **Công sức:** MCP server v1 ~2–4 tuần + mở API ~1–2 tuần → **~1–1,5 tháng-người**, làm ngay sau Phase 0, song song lộ trình nâng framework (MCP là process Node riêng, không đụng code Java). Model mặc định: Claude Opus 5 (`claude-opus-5`, $5/$25 per MTok); khối lượng lớn dùng Batch API (−50%). Tiên quyết: Phase 0 xong (CSRF + xoay API key mặc định) — không đấu AI vào server còn mở toang.
+
 ---
 
 ## Phụ lục A — File đáng chú ý nhất
