@@ -1889,7 +1889,18 @@ Nếu ESLint kêu không phân giải được `bullmq` — kệ, `no-restricted
 
 - [x] **Step 3: Thêm 2 block vào config**
 
-CHÈN vào cuối mảng `export default [...]` trong `testkite/eslint.config.mjs`:
+Khai báo trước mảng `export default [...]` trong `testkite/eslint.config.mjs` (dùng chung cho
+hai block dưới — `no-restricted-imports` KHÔNG soi `await import()`, xem note review fix):
+
+```js
+const dynamicImportOf = (modulePattern) => `ImportExpression > Literal[value=/${modulePattern}/]`;
+const IO_MODULES =
+  "^(node:)?(fs|net|dns|tls|http|https|child_process|worker_threads|cluster|os|process|path|url|timers)(\\/|$)";
+const SERVICE_MODULES = "^(pg|pg-[^\\/]*|postgres|drizzle-orm|drizzle-kit|bullmq|ioredis|@testkite\\/core)(\\/|$)";
+const QUEUE_MODULES = "^(bullmq|ioredis)(\\/|$)";
+```
+
+CHÈN vào cuối mảng `export default [...]`:
 
 ```js
   {
@@ -1906,13 +1917,18 @@ CHÈN vào cuối mảng `export default [...]` trong `testkite/eslint.config.mj
         {
           patterns: [
             {
+              /** Mỗi builtin phải có ĐỦ HAI dạng: `node:x` VÀ `x` trần. */
               group: [
-                "fs", "node:fs", "node:fs/*",
-                "net", "node:net", "node:dns", "node:tls",
+                "fs", "fs/*", "node:fs", "node:fs/*",
+                "net", "node:net", "dns", "node:dns", "tls", "node:tls",
                 "http", "https", "node:http", "node:https",
-                "node:child_process", "node:worker_threads", "node:cluster",
-                "node:os", "node:process", "node:path", "node:url",
-                "node:timers", "node:timers/*",
+                "child_process", "node:child_process",
+                "worker_threads", "node:worker_threads",
+                "cluster", "node:cluster",
+                "os", "node:os", "process", "node:process",
+                "path", "path/*", "node:path", "node:path/*",
+                "url", "node:url",
+                "timers", "timers/*", "node:timers", "node:timers/*",
               ],
               message:
                 "run-compiler phải PURE: cấm fs/net/process/timer. node:crypto được phép (hash phase 7). Việc đọc dữ liệu thuộc orchestration — compiler chỉ nhận snapshot đã fetch.",
@@ -1929,6 +1945,11 @@ CHÈN vào cuối mảng `export default [...]` trong `testkite/eslint.config.mj
             },
           ],
         },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        { selector: dynamicImportOf(IO_MODULES), message: "run-compiler phải PURE: `await import()` nạp fs/net/process/timer vẫn là I/O..." },
+        { selector: dynamicImportOf(SERVICE_MODULES), message: "run-compiler phải PURE: `await import()` nạp db/queue/app vẫn biến compiler thành service." },
       ],
       "no-restricted-globals": [
         "error",
@@ -1961,6 +1982,10 @@ CHÈN vào cuối mảng `export default [...]` trong `testkite/eslint.config.mj
           ],
         },
       ],
+      "no-restricted-syntax": [
+        "error",
+        { selector: dynamicImportOf(QUEUE_MODULES), message: "Queue client chỉ được import trong modules/kernel — `await import(\"bullmq\")` cũng vậy..." },
+      ],
     },
   },
 ```
@@ -1986,6 +2011,48 @@ Expected: exit 0. `phase67-freeze.ts` import `node:crypto` — nếu nó bị b�
 > **Sửa `test:tools`, bắt buộc chứ không tuỳ hứng.** Fixture `pure-ok.test.ts` BẮT BUỘC mang đuôi `.test.ts` — thứ đang được kiểm chứng chính là `ignores: ["**/packages/run-compiler/src/**/*.test.ts"]`. Nhưng vitest gom mọi `*.test.ts` khớp filter `tools`, nên nó nuốt luôn fixture và chết `No test suite found in file` (đã thấy tận mắt: `Test Files 1 failed | 2 passed`, dù `Tests 17 passed`). Sửa: `"test:tools": "vitest run tools --exclude 'tools/lint-fixtures/**'"`. Đã xác minh `--exclude` của vitest 3 là **cộng thêm, không thay thế** default: `vitest list --exclude 'tools/lint-fixtures/**'` không rò một dòng `node_modules` nào và vẫn liệt kê đủ **27 file test thật**. Không đụng tới `eslint.config.mjs` để né — né kiểu đó là vứt bỏ đúng luật đang cần chứng minh.
 >
 > **Không có vi phạm THẬT nào trong src** (khác B2): `phase67-freeze.ts` chỉ dùng `node:crypto`; mọi `node:fs`/`process.env` trong run-compiler đều nằm trong `golden.test.ts`; `apps/core` chưa import `bullmq` ở đâu — `kernel/outbox/relay.ts` tiêm `publish` từ ngoài và `composition-root.ts` chỉ nhắc luật trong comment. Nên B3 sửa 0 dòng src.
+
+> **Review fix B3 (hai lỗ thủng, đã bịt).** Bản B3 đầu tiên cấm được đúng thứ nó liệt kê, và
+> đó chính là vấn đề — hai đường vòng đi qua sạch sẽ:
+>
+> 1. **`no-restricted-imports` KHÔNG soi `await import()`.** Dựng lại tận mắt: probe
+>    `packages/run-compiler/src/__probe_dynamic.ts` (`await import("node:fs")`) + probe
+>    `apps/core/src/modules/orchestration/__probe_dynamic_queue.ts` (`await import("bullmq")`)
+>    → `pnpm lint` **exit 0, 0 error**, trong khi ĐÚNG nội dung đó viết dạng import tĩnh thì ăn
+>    5 error. Không phải glob repo sai — đã đối chứng bằng config tối giản ngoài repo trên chính
+>    eslint 10.9.1: cùng một rule instance bắt `import fs from "node:fs"` nhưng im lặng cho qua
+>    `await import("node:fs")`. Bịt bằng `no-restricted-syntax` gác `ImportExpression > Literal`
+>    với regex sao chép y hệt ba danh sách (`IO_MODULES`, `SERVICE_MODULES`, `QUEUE_MODULES`).
+>    KHÔNG cấm `import()` nói chung: `await import("node:crypto")` trong run-compiler vẫn phải
+>    xanh — có fixture `pure-ok-dynamic.ts` giữ đúng ranh giới đó.
+> 2. **Thiếu dạng builtin TRẦN.** Danh sách cũ cấm `node:child_process`/`node:os`/`node:path`/
+>    `node:url`/`node:timers` nhưng bỏ trống `child_process`/`os`/`path`/`url`/`timers` — Node
+>    nạp cả hai như nhau. Probe `import { execSync } from "child_process";` một mình trong
+>    run-compiler → `pnpm lint` **exit 0** (compiler shell out được, tệ hơn hẳn ví dụ đọc file mà
+>    plan lấy làm test BẮT chuẩn). `child_process` nằm ngay trong câu chữ yêu cầu của task nên
+>    đây là spec chưa được cưỡng chế, không phải siết thêm. Thêm đủ cặp `x` + `node:x` cho mọi
+>    builtin trong nhóm (kèm `fs/*`, `path/*`, `timers/*`).
+>
+> **TDD lại đúng nghi thức:** thêm 5 fixture + 5 test TRƯỚC khi sửa config →
+> `vitest run tools/lint-rules.test.ts` **3 failed | 12 passed**, đỏ đúng ba chỗ hở
+> (`expected [] to have a length of 5`, `expected [] to have a length of 2`,
+> `expected [] to include 'no-restricted-syntax'`). Sau khi sửa: **15 passed**.
+>
+> **Chứng minh trên đường lint THẬT, không chỉ fixture:** probe dynamic (run-compiler +
+> orchestration) và probe `child_process` → `pnpm lint` **exit 1, 3 error** đúng bản; probe thứ
+> hai với `os`/`path`/`url`/`timers/promises` trần + `await import("bullmq")`/
+> `await import("drizzle-orm/pg-core")` → **exit 1, 6 error**. Đối chứng âm cùng lượt:
+> `await import("node:crypto")` và probe `.test.ts` nạp động `node:fs` → **0 error**, miễn đúng
+> chỗ. `eslint --print-config`: `no-restricted-syntax` = **severity 2** trên `phase67-freeze.ts`
+> và `modules/orchestration/index.ts`, **undefined** trên `golden.test.ts` và
+> `kernel/outbox/relay.ts`. Xoá toàn bộ probe → `pnpm lint` exit 0, `git status` sạch.
+>
+> **Vẫn 0 dòng src bị sửa:** không file thật nào import builtin dạng trần, và `await import()`
+> duy nhất trong run-compiler là `contract-conformance.test.ts` nạp `@testkite/contract` —
+> nằm trong diện miễn `*.test.ts`, và `@testkite/contract` vốn không nằm trong danh sách cấm.
+>
+> **Số sau review fix:** `pnpm test:tools` → **22 pass** (15 lint-rules + 7 module-dag). Toàn
+> workspace: **322 pass + 4 skip**. `pnpm typecheck` exit 0, `pnpm lint` exit 0.
 
 - [x] **Step 6: Commit**
 

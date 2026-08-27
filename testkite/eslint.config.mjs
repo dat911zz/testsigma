@@ -19,6 +19,19 @@ const MODULE_DAG = Object.fromEntries(
   Object.entries(require("./module-dag.json")).filter(([name]) => !name.startsWith("$")),
 );
 
+/**
+ * `no-restricted-imports` CHỈ soi câu lệnh `import` TĨNH: `await import("node:fs")`
+ * lọt qua không một lỗi nào (đã dựng lại trên eslint 10.9.1 bằng config tối giản
+ * ngoài repo — không phải glob của repo sai). Nên mỗi danh sách cấm phải có bản
+ * sao dạng regex gác `ImportExpression` qua `no-restricted-syntax`; hai bản phải
+ * luôn khớp nhau — sửa danh sách nào thì sửa cả regex tương ứng.
+ */
+const dynamicImportOf = (modulePattern) => `ImportExpression > Literal[value=/${modulePattern}/]`;
+const IO_MODULES =
+  "^(node:)?(fs|net|dns|tls|http|https|child_process|worker_threads|cluster|os|process|path|url|timers)(\\/|$)";
+const SERVICE_MODULES = "^(pg|pg-[^\\/]*|postgres|drizzle-orm|drizzle-kit|bullmq|ioredis|@testkite\\/core)(\\/|$)";
+const QUEUE_MODULES = "^(bullmq|ioredis)(\\/|$)";
+
 export default [
   {
     files: ["**/*.ts", "**/*.tsx"],
@@ -74,13 +87,22 @@ export default [
         {
           patterns: [
             {
+              /**
+               * Mỗi builtin phải có ĐỦ HAI dạng: `node:x` VÀ `x` trần. Node nạp
+               * `import { execSync } from "child_process"` y hệt `node:child_process`,
+               * nên thiếu dạng trần là để hở đúng cái lỗ mình đang bịt.
+               */
               group: [
-                "fs", "node:fs", "node:fs/*",
-                "net", "node:net", "node:dns", "node:tls",
+                "fs", "fs/*", "node:fs", "node:fs/*",
+                "net", "node:net", "dns", "node:dns", "tls", "node:tls",
                 "http", "https", "node:http", "node:https",
-                "node:child_process", "node:worker_threads", "node:cluster",
-                "node:os", "node:process", "node:path", "node:url",
-                "node:timers", "node:timers/*",
+                "child_process", "node:child_process",
+                "worker_threads", "node:worker_threads",
+                "cluster", "node:cluster",
+                "os", "node:os", "process", "node:process",
+                "path", "path/*", "node:path", "node:path/*",
+                "url", "node:url",
+                "timers", "timers/*", "node:timers", "node:timers/*",
               ],
               message:
                 "run-compiler phải PURE: cấm fs/net/process/timer. node:crypto được phép (hash phase 7). Việc đọc dữ liệu thuộc orchestration — compiler chỉ nhận snapshot đã fetch.",
@@ -96,6 +118,18 @@ export default [
                 "run-compiler phải PURE: cấm db/queue/app. Compiler là hàm, không phải service.",
             },
           ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: dynamicImportOf(IO_MODULES),
+          message:
+            "run-compiler phải PURE: `await import()` nạp fs/net/process/timer vẫn là I/O, không phải lách luật. node:crypto vẫn được phép.",
+        },
+        {
+          selector: dynamicImportOf(SERVICE_MODULES),
+          message: "run-compiler phải PURE: `await import()` nạp db/queue/app vẫn biến compiler thành service.",
         },
       ],
       "no-restricted-globals": [
@@ -127,6 +161,14 @@ export default [
                 "Queue client chỉ được import trong modules/kernel. Module khác phát việc bằng cách ghi krn_outbox trong cùng transaction (docs/SYSTEM_DESIGN.md §4).",
             },
           ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: dynamicImportOf(QUEUE_MODULES),
+          message:
+            "Queue client chỉ được import trong modules/kernel — `await import(\"bullmq\")` cũng vậy. Module khác ghi krn_outbox trong cùng transaction (docs/SYSTEM_DESIGN.md §4).",
         },
       ],
     },

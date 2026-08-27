@@ -64,6 +64,20 @@ describe("run-compiler PURE (no-restricted-*)", () => {
   it("CHO QUA node:fs trong *.test.ts — golden suite đọc fixture bằng readFileSync", async () => {
     expect(await lintFixture("packages/run-compiler/src/pure-ok.test.ts")).toEqual([]);
   });
+
+  it("BẮT builtin dạng TRẦN: child_process/os/path/url/timers", async () => {
+    const ids = await lintFixture("packages/run-compiler/src/pure-bare.ts");
+    expect(ids.filter((r) => r === "no-restricted-imports")).toHaveLength(5);
+  });
+
+  it("BẮT `await import()` — node:fs và bullmq nạp động", async () => {
+    const ids = await lintFixture("packages/run-compiler/src/pure-dynamic.ts");
+    expect(ids.filter((r) => r === "no-restricted-syntax")).toHaveLength(2);
+  });
+
+  it("CHO QUA `await import(\"node:crypto\")` — cấm đúng danh sách, không cấm import() nói chung", async () => {
+    expect(await lintFixture("packages/run-compiler/src/pure-ok-dynamic.ts")).toEqual([]);
+  });
 });
 
 describe("queue chỉ trong kernel", () => {
@@ -75,5 +89,15 @@ describe("queue chỉ trong kernel", () => {
 
   it("CHO QUA bullmq trong kernel", async () => {
     expect(await lintFixture("apps/core/src/modules/kernel/queue-allowed.ts")).toEqual([]);
+  });
+
+  it("BẮT `await import(\"bullmq\")` trong orchestration", async () => {
+    expect(await lintFixture("apps/core/src/modules/orchestration/queue-dynamic.ts")).toContain(
+      "no-restricted-syntax",
+    );
+  });
+
+  it("CHO QUA `await import(\"bullmq\")` trong kernel", async () => {
+    expect(await lintFixture("apps/core/src/modules/kernel/queue-dynamic-allowed.ts")).toEqual([]);
   });
 });
