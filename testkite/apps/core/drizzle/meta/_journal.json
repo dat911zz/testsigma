@@ -22,6 +22,20 @@
       "when": 1787843211393,
       "tag": "0002_rls_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787843533793,
+      "tag": "0003_aut_cases",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787843538002,
+      "tag": "0004_aut_cases_grants",
+      "breakpoints": true
     }
   ]
 }
