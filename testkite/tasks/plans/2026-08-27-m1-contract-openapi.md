@@ -109,7 +109,7 @@ Bằng chứng thu bằng `pnpm info` + spike chạy thật (ngày 2026-08-27, z
 
 **Ngữ cảnh:** đây là bản zod của `ElementSnapshot` trong `testkite/packages/run-compiler/src/snapshot.ts`. `kind` của locator là chuỗi TỰ DO có chủ đích — fixture hiện có dùng `css`, `xpath`, `text`, `test-id`; đóng thành enum bây giờ là phá fixture và đi trước quyết định của M4.
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 Tạo `testkite/packages/contract/src/schemas/element.test.ts`:
 
@@ -163,12 +163,12 @@ describe("elementSchema", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/schemas/element.test.ts`
 Expected: FAIL — `Failed to resolve import "./element.js"`.
 
-- [ ] **Step 3: Viết implementation tối thiểu**
+- [x] **Step 3: Viết implementation tối thiểu**
 
 Tạo `testkite/packages/contract/src/schemas/element.ts`:
 
@@ -217,17 +217,17 @@ export interface ElementDto {
 }
 ```
 
-- [ ] **Step 4: Chạy test, xác nhận XANH**
+- [x] **Step 4: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/schemas/element.test.ts`
 Expected: PASS (8 test).
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Run: `cd testkite && pnpm typecheck`
 Expected: exit 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add testkite/packages/contract/src/schemas/element.ts testkite/packages/contract/src/schemas/element.test.ts
