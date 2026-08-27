@@ -1,6 +1,18 @@
-# Blueprint SigmaNext — thiết kế hệ kiểm thử thay thế (path E)
+# Blueprint TestKite 🪁 — thiết kế hệ kiểm thử thay thế (path E)
 
-> **Codename tạm:** SigmaNext. Tài liệu chị em của `docs/ARCHITECTURE_AUDIT.md` (nơi ghi các quyết định nền: vì sao rewrite lõi, census, phán quyết engine/container).
+> **Tên chính thức: TestKite** (chốt 27-08-2026, thay codename tạm SigmaNext). Tài liệu chị em của `docs/ARCHITECTURE_AUDIT.md` (nơi ghi các quyết định nền: vì sao rewrite lõi, census, phán quyết engine/container).
+
+## Ý nghĩa tên
+
+**TestKite = con diều.** Tên được chọn vì nó kể đúng câu chuyện kỹ thuật của hệ thống:
+
+- **Diều = nhẹ** — linh hồn của fleet runner: sandbox nhẹ, container Playwright + chromium-headless-shell, sinh ra để chấm dứt lớp lỗi OOM của hệ cũ.
+- **Sợi dây diều = control plane** — diều bay cao nhưng dây luôn nằm trong tay: MySQL là queue + lease authority duy nhất, dispatcher giữ kiểm soát mọi con diều; đứt dây (host chết) thì bump epoch, requeue, không con diều nào ghi được verdict lậu (409 STALE_EPOCH).
+- **Thả nhiều diều = spawn nhiều sandbox** — mỗi worker container là một con diều; muốn bay nhiều hơn thì thả thêm diều (thêm host), không phải làm một con diều to hơn.
+- **Diều bay nhờ gió** — "làn gió mới" là lý do maintainer chọn rewrite ngay từ đầu.
+- Thực dụng: dễ đọc cả tiếng Việt lẫn tiếng Anh, vibe thân thiện kiểu EasyTest nhưng không vô danh, không đụng thương hiệu QA nào (né hẳn `Sigma*`); tại thời điểm chọn tên, `testkite` và `kite-test` đều trống trên npm registry.
+
+**Quy ước đặt tên đề xuất:** monorepo `testkite`; packages `@testkite/core`, `@testkite/runner`, `@testkite/verb-kit`, `@testkite/contract`, `@testkite/mcp`, `@testkite/ui`; daemon giám sát host giữ tên `runnerd` (hoặc `kited` nếu muốn chơi trọn bộ nhận diện).
 > **Phương pháp:** workflow 9 agent / 4 pha — 3 trinh sát (domain từ schema thật + ngữ nghĩa runtime, migrate, pháp y OOM), 3 thiết kế (multitenancy, module lõi, fleet phân tán), 1 thẩm định 10 kịch bản nghiệp vụ, 1 critic (8 mâu thuẫn + 6 khoảng trống), 1 tổng kiến trúc sư chốt. Mọi claim then chốt xác minh trực tiếp trong source tại `a6155d0`.
 > **Ngày:** 2026-08-27.
 
