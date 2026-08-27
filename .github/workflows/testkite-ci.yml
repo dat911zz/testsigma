@@ -50,6 +50,27 @@ jobs:
         working-directory: testkite
         run: pnpm openapi:check
 
+      # DAG 12 module + compiler PURE + queue chỉ trong kernel: ba luật này trước B1–B3
+      # chỉ nằm trong comment. Từ đây `pnpm lint` là thứ chặn chúng ở CI.
+      - name: Gate — kiến trúc (DAG 12 module, compiler PURE, queue chỉ trong kernel)
+        working-directory: testkite
+        run: pnpm lint
+
+      # Bước riêng, KHÔNG thừa dù `pnpm test` ở trên có chuỗi `&& pnpm test:tools`:
+      # tools/lint-rules.test.ts là bằng chứng các luật ở gate trên VẪN BẮT được vi phạm
+      # (fixture vi phạm thường trú + ESLint Node API). Gỡ chuỗi trong script `test` là
+      # mất im lặng lớp bằng chứng đó; step này giữ nó đứng độc lập và gọi tên đúng gate
+      # nào đỏ.
+      - name: Gate — luật lint vẫn bắt được vi phạm (fixture + module DAG)
+        working-directory: testkite
+        run: pnpm run test:tools
+
+      # madge canh vòng lặp GIÁ TRỊ lúc chạy (.madgerc bật skipTypeImports — vòng
+      # `import type` giữa index.ts và các phase compiler bị TypeScript xoá lúc biên dịch).
+      - name: Gate — không phụ thuộc vòng
+        working-directory: testkite
+        run: pnpm lint:cycles
+
       - name: Gate — no browser in API image (apps/core must stay browser-free)
         run: |
           grep -rE "playwright|puppeteer|chromium" testkite/apps/core/src --include='*.ts' && exit 1 || true

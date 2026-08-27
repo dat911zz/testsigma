@@ -2157,7 +2157,7 @@ git commit -m "M1 B4: madge --circular cho apps + packages"
 - Consumes: `pnpm lint` (B1–B3), `pnpm lint:cycles` (B4), `pnpm openapi:check` (A6).
 - Produces: pipeline CI đầy đủ 6 gate.
 
-- [ ] **Step 1: Sửa workflow**
+- [x] **Step 1: Sửa workflow**
 
 Ghi đè `.github/workflows/testkite-ci.yml` thành (đây là trạng thái CUỐI, đã gồm bước drift của Task A6):
 
@@ -2223,7 +2223,7 @@ jobs:
 
 Hai đường `paths` được thêm chính file workflow: sửa gate mà gate không chạy là cách êm ái nhất để ship một gate hỏng.
 
-- [ ] **Step 2: Chạy tại chỗ đúng thứ tự CI**
+- [x] **Step 2: Chạy tại chỗ đúng thứ tự CI**
 
 ```bash
 cd testkite
@@ -2233,7 +2233,44 @@ echo "ALL GATES -> $?"
 
 Expected: `ALL GATES -> 0`.
 
-- [ ] **Step 3: Commit**
+> **Kết quả B5.**
+>
+> **KHÔNG ghi đè file — chèn gate vào bản hiện có.** Block YAML của Step 1 được viết khi
+> workflow mới có mỗi job `build-and-test`; commit `982d00b` (M1 kernel-db T9) từ đó đã thêm
+> job thứ hai `db-tests` (service `postgres:17`, biến `TESTKITE_TEST_PG_URL`, gate migration
+> drift `pnpm db:generate` + `git diff --exit-code -- drizzle/`). Ghi đè nguyên văn là **xoá
+> mất tầng test Postgres thật + gate migration drift** — đúng cái mà `TESTKITE_TEST_PG_URL`
+> tồn tại để chạy, vì `build-and-test` chỉ có PGlite một connection wasm nên suite
+> `test/concurrency` tự skip ở đó (4 skipped). Nên B5 giữ nguyên `db-tests` và chỉ chèn ba
+> step gate mới vào `build-and-test`, đúng thứ tự và đúng câu chữ `name:`/`run:` mà block
+> spec quy định. Phần `on.push.paths`/`on.pull_request.paths` mà Step 1 yêu cầu đã có sẵn
+> từ T9 — đối chiếu bằng `yaml.safe_load`, không phải bằng mắt.
+>
+> **Thêm một step ngoài block spec: `pnpm run test:tools`.** Không thừa dù `pnpm test` ở root
+> là `pnpm -r test && pnpm test:tools`: `tools/lint-rules.test.ts` chính là bằng chứng ba luật
+> ở gate `pnpm lint` VẪN bắt được vi phạm (fixture vi phạm thường trú + ESLint Node API). Nếu
+> ai đó gỡ chuỗi `&& pnpm test:tools` khỏi script `test`, CI vẫn xanh và lớp bằng chứng biến
+> mất **không một tiếng động** — 22 test rơi khỏi CI mà không có step nào đỏ. Step riêng khoá
+> lại đường đó và gọi tên đúng gate nào hỏng khi đỏ. Giá phải trả: vitest chạy `tools` hai lần
+> (~1.3s).
+>
+> **Validate YAML bằng `python3 yaml.safe_load` chứ không bằng mắt** — parse ra 2 job, liệt kê
+> step, rồi assert: `pnpm lint` / `pnpm run test:tools` / `pnpm lint:cycles` đều có mặt,
+> `working-directory: testkite` đủ cả ba, thứ tự `openapi:check < lint < test:tools <
+> lint:cycles` đúng, và `'db-tests' in jobs` (chốt chống chính lỗi ghi đè ở trên). Tất cả
+> assert PASS. Lưu ý YAML 1.1 parse khoá `on:` thành boolean `True` — đây là hành vi của
+> `safe_load`, không phải lỗi file; GitHub Actions đọc bằng parser riêng.
+>
+> **Chạy tại chỗ đúng thứ tự CI:** `ALL GATES -> 0`. Từng bước: install (frozen, "Lockfile is
+> up to date") ✓, `pnpm typecheck` 6/6 project Done ✓, `pnpm test` ✓, `pnpm openapi:check`
+> exit 0 (regen không lệch byte) ✓, `pnpm lint` exit 0 ✓, `pnpm run test:tools` **22 passed**
+> ✓, `pnpm lint:cycles` → `Processed 63 files`, `✔ No circular dependency found!` ✓.
+> Tổng test: **322 passed + 4 skipped** (contract 55, verb-kit 12, apps/core 55+4 skip,
+> run-compiler 178, tools 22).
+>
+> **0 dòng src bị sửa.** B5 chỉ đụng `.github/workflows/testkite-ci.yml`.
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add .github/workflows/testkite-ci.yml
