@@ -31,7 +31,7 @@
 
 ## Tóm tắt điều hành
 
-Monolith TypeScript 12 module trên DAG một chiều + **Run Compiler** sinh run-plan bất biến content-hashed + **fleet runner 2 mặt phẳng với 4 tầng trần bộ nhớ**. Tenant = team (org → team → project), cách ly 3 lớp độc lập. Stack: Node 22, Fastify 5 + zod (OpenAPI sinh từ zod, CI chặn drift), Drizzle + PostgreSQL 17, BullMQ 5 + Valkey, Playwright chromium-headless-shell, React 19 + Vite, Vitest + Testcontainers.
+Monolith TypeScript 12 module trên DAG một chiều + **Run Compiler** sinh run-plan bất biến content-hashed + **fleet runner 2 mặt phẳng với 4 tầng trần bộ nhớ**. Tenant = team (org → team → project), cách ly 3 lớp độc lập. Stack: Node 22, Fastify 5 + zod (OpenAPI sinh từ zod, CI chặn drift), Drizzle + PostgreSQL 17, BullMQ 5 + Valkey, Playwright chromium-headless-shell, React 19 + Vite, Vitest (unit DB trên PGlite in-process; concurrency + CI trên Postgres 17 thật qua service container — Testcontainers loại vì môi trường dev không đảm bảo Docker daemon, xem spike trong plan m1-kernel-db).
 
 **Công sức thật: ~15–18 tháng-người** (baseline 7–10 + multitenancy 3,0 + fairness/quota 1,5 + fleet hardening 2,5 + capture/cutover/DR từ kịch bản 2,25 + migrate 0,75 − cắt giảm 1,0). **9 tháng lịch nếu có thêm 1 kỹ sư lo fleet; ~12 tháng solo.** Quyết trước M1.
 
@@ -81,7 +81,7 @@ Xếp theo mức đóng góp:
 - **Run Compiler (pure function, golden-tested, hash ổn định):** 0 admission/reserve (202 ngay) → 1 resolve chuỗi prereq (ghim revision: schedule/CI = bản 'ready'; ad-hoc author = 'latest') → 2 nở cấu trúc (step group inline ≤5, if/loop thành cây, data-driven fan-out + expected_to_fail) → 3 bind verb vào op registry (gom mọi lỗi) → 4 element → LocatorSet (pending_locator ⇒ diagnostic) → 5 data/env merge, secret = $secretRef → 6 stamp policy/tenant → 7 freeze (SHA-256, zstd, planFormatVersion; có ERROR ⇒ compile_error, trả quota) → 7.5 **cổng health env** (probe base_url 3×/10s; sập ⇒ blocked) → 8 dispatch → 9 thực thi, events seq-idempotent, failure_context ghi tại step fail.
 - **Taxonomy lỗi:** AssertionFailure = verdict failed, không bao giờ retry; chỉ RetryableInfraError retry; app treo = failed(timeout). 3 phanh: cổng health, abort-sớm khi 25 chain đầu fail cùng signature, breaker infra >10%. Quarantine sau 2 OOM/chain.
 - **Đồng thời:** case version + ETag/If-Match (428 nếu thiếu), 409 kèm diff 3 chiều; advisory lock hiện diện TTL 60s.
-- **Testing 8 tầng (chống trớ trêu):** T1 compiler golden; T2 35 op × engine golden trên headless-shell thật; T3 contract + oasdiff + fuzz; **T4 bộ cách ly tenant — không thương lượng**; T5 Testcontainers (outbox atomicity, fairness, lease, races); T6 đúng 1 e2e smoke <5ph; **T7 soak đêm chống OOM tái sinh**; T8 compile-toàn-bộ khi migrate. Bỏ chủ đích: unit test component, coverage target, DB mock.
+- **Testing 8 tầng (chống trớ trêu):** T1 compiler golden; T2 35 op × engine golden trên headless-shell thật; T3 contract + oasdiff + fuzz; **T4 bộ cách ly tenant — không thương lượng**; T5 Postgres thật — service container CI postgres:17 (outbox atomicity, fairness, lease, races; PGlite CẤM dùng cho tầng race — một connection nên contention là giả); T6 đúng 1 e2e smoke <5ph; **T7 soak đêm chống OOM tái sinh**; T8 compile-toàn-bộ khi migrate. Bỏ chủ đích: unit test component, coverage target, DB mock.
 - **API:** ~58 endpoint /v1 + 6 endpoint /fleet nội bộ (epoch bắt buộc mọi mutation) + MCP tools (list/get/search, draft_case, trigger_run, get_run_status, get_failure_report, element:propose) đi chung authorize().
 
 ## 5. Fleet runner phân tán
