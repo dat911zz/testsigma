@@ -9,13 +9,18 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "lint": "eslint apps packages",
     "openapi:gen": "pnpm -F @testkite/contract openapi:gen",
     "openapi:check": "pnpm openapi:gen && git diff --exit-code -- packages/contract/openapi.json",
     "dev:infra": "docker compose -f docker-compose.dev.yml up -d"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^10.9",
+    "eslint-import-resolver-typescript": "^4.4",
+    "eslint-plugin-boundaries": "^7.2",
     "typescript": "~5.7.3",
-    "vitest": "^3.0.0",
-    "@types/node": "^22.10.0"
+    "typescript-eslint": "^8.68",
+    "vitest": "^3.0.0"
   }
 }

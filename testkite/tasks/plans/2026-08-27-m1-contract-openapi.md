@@ -1380,14 +1380,14 @@ git commit -m "M1 A6: gate CI drift OpenAPI + test conformance contract/compiler
 - **`eslint-import-resolver-typescript` là BẮT BUỘC, không phải tuỳ chọn.** Repo dùng NodeNext nên import nội bộ viết `./foo.js` trỏ tới `foo.ts`. Không có resolver này thì `boundaries` phân giải dependency ra `null` và **âm thầm cho qua MỌI vi phạm** — đã dựng lại đúng lỗi đó trong spike (`"to": { "element": { "path": null, "isUnknown": true } }`, exit 0 dù file vi phạm rành rành).
 - **M1 KHÔNG bật bộ rule style/recommended nào.** Phạm vi dòng checklist là luật KIẾN TRÚC. Bật `recommended` giờ là kéo vào một mớ vi phạm phải sửa không liên quan. Config nền đã được chạy thử trên chính repo này: **38 file, 0 message**.
 
-- [ ] **Step 1: Cài dependency**
+- [x] **Step 1: Cài dependency**
 
 ```bash
 cd testkite
 pnpm add -Dw eslint@^10.9 typescript-eslint@^8.68 eslint-plugin-boundaries@^7.2 eslint-import-resolver-typescript@^4.4
 ```
 
-- [ ] **Step 2: Viết config nền**
+- [x] **Step 2: Viết config nền**
 
 Tạo `testkite/eslint.config.mjs`:
 
@@ -1417,7 +1417,7 @@ export default [
 ];
 ```
 
-- [ ] **Step 3: Thêm script**
+- [x] **Step 3: Thêm script**
 
 Trong `scripts` của `testkite/package.json`, thêm:
 
@@ -1425,7 +1425,7 @@ Trong `scripts` của `testkite/package.json`, thêm:
 "lint": "eslint apps packages"
 ```
 
-- [ ] **Step 4: Chạy lint, xác nhận XANH trên repo hiện tại**
+- [x] **Step 4: Chạy lint, xác nhận XANH trên repo hiện tại**
 
 Run: `cd testkite && pnpm lint`
 Expected: exit 0, không in gì. Kiểm nó thật sự có đọc file (chứ không quét rỗng):
@@ -1433,7 +1433,17 @@ Expected: exit 0, không in gì. Kiểm nó thật sự có đọc file (chứ k
 Run: `cd testkite && pnpm exec eslint apps packages -f json | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log('files:',JSON.parse(d).length))"`
 Expected: `files: 38` (± vài file nếu task trước đã thêm).
 
-- [ ] **Step 5: Commit**
+> **Kết quả B1:** `pnpm lint` → exit 0, không in gì. Đếm file: **`files: 76`**, không phải 38 — con số 38 là ảnh chụp lúc spike, phần A đã thêm 9 file schema/openapi và các task kernel-db trước đó thêm phần còn lại. Đã đối chiếu: `git ls-files apps packages | grep -E '\.tsx?$' | wc -l` = **76**, khớp tuyệt đối ⇒ config phủ đúng mọi file nguồn, không lọt `dist/` hay `node_modules/` (repo chưa có thư mục `dist`, không có file `.ts` untracked).
+>
+> **Bằng chứng config sống (M1 nền chưa bật rule nào nên phải chứng minh gián tiếp):** tạo tạm `packages/contract/src/__lint_probe.ts` chứa cú pháp TS-only (`satisfies`, type annotation) + `debugger`.
+> - Bơm rule qua CLI: `pnpm exec eslint packages/contract/src/__lint_probe.ts --rule '{"no-debugger":"error"}'` → **ĐỎ** `3:3 error Unexpected 'debugger' statement no-debugger`, exit 1 — rule đặt vào config này thật sự nổ trên đường lint chính.
+> - Cùng file với config nền: exit 0 — đúng chủ trương "M1 không bật rule style".
+> - Đối chứng ÂM (bỏ block parser TS): `--config` tạm chỉ có `files` → **ĐỎ** `1:12 error Parsing error: Unexpected token :` ⇒ block `languageOptions.parser` là load-bearing, không phải trang trí.
+> - Xoá `__lint_probe.ts` sau khi đo; `git status` sạch, chỉ còn thay đổi có chủ đích.
+>
+> Phiên bản khoá thật trong lockfile: `eslint 10.9.1`, `typescript-eslint 8.68.0`, `eslint-plugin-boundaries 7.2.0`, `eslint-import-resolver-typescript 4.4.5`. Verify: `pnpm typecheck` exit 0, `pnpm test` exit 0 (300 pass + 4 skip concurrency), `pnpm lint` exit 0.
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add testkite/eslint.config.mjs testkite/package.json testkite/pnpm-lock.yaml
