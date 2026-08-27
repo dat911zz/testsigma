@@ -1,0 +1,5 @@
+# Git quyết định "binary" theo cả HAI phía của diff: một byte điều khiển lọt vào
+# blob cũ là đủ để mọi diff/PR view của file đó câm — kể cả diff SỬA nó. Ép .ts luôn
+# được so sánh dạng text để lỗi kiểu đó hiện ra thay vì biến mất.
+*.ts diff
+*.json diff

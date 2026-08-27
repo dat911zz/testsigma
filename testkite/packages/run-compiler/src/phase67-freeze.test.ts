@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { compileRun, PLAN_FORMAT_VERSION } from "./index.js";
-import type { CompileOutput, RunPlan } from "./index.js";
+import { compileRun, dedupeDiagnostics, PLAN_FORMAT_VERSION } from "./index.js";
+import type { CompileDiagnostic, CompileOutput, RunPlan } from "./index.js";
 import {
   canonicalJson,
   chainTimeoutSeconds,
@@ -252,6 +252,40 @@ describe("phase 7 — có ERROR ⇒ KHÔNG có plan, nhưng diagnostics đầy �
     const out = compileRun({ snapshot: snap([login, one, two], ["one", "two"], { elements: [] }) });
 
     expect(out.diagnostics.map((d) => [d.caseId, d.code])).toEqual([["login", "element_not_found"]]);
+  });
+});
+
+describe("dedupeDiagnostics — khoá gộp phải là SONG ÁNH với bộ field", () => {
+  /**
+   * Ký tự phân cách dựng bằng `fromCharCode`, KHÔNG bằng escape trong literal: một byte
+   * điều khiển thật lọt vào source làm git coi cả file là binary — diff/PR view/grep mù.
+   */
+  const SEP = String.fromCharCode(0);
+  const BASE = { severity: "error", code: "element_not_found" } as const;
+
+  it("hai diagnostic KHÁC nhau không bị gộp, dù caseId/message chứa ký tự phân cách", () => {
+    // Nối field bằng một dấu phân cách thì hai bộ dưới đây ra CÙNG một chuỗi:
+    //   error SEP element_not_found SEP a SEP 1 SEP 2 SEP m
+    // caseId đến từ dump hệ cũ, message là free-text — không field nào được phép mang
+    // vai trò cú pháp trong khoá.
+    const a: CompileDiagnostic = { ...BASE, caseId: `a${SEP}1`, stepOrdinal: 2, message: "m" };
+    const b: CompileDiagnostic = { ...BASE, caseId: "a", stepOrdinal: 1, message: `2${SEP}m` };
+
+    expect(dedupeDiagnostics([a, b])).toEqual([a, b]);
+  });
+
+  it("`stepOrdinal` vắng mặt khác `stepOrdinal` có mặt (không quy về cùng chuỗi thay thế)", () => {
+    const withOrdinal: CompileDiagnostic = { ...BASE, caseId: "c", stepOrdinal: 1, message: "m" };
+    const noOrdinal: CompileDiagnostic = { ...BASE, caseId: "c", message: "m" };
+
+    expect(dedupeDiagnostics([withOrdinal, noOrdinal])).toEqual([withOrdinal, noOrdinal]);
+  });
+
+  it("bản sao y hệt VẪN bị gộp, giữ bản xuất hiện đầu và thứ tự gốc", () => {
+    const x: CompileDiagnostic = { ...BASE, caseId: "c", stepOrdinal: 1, message: "m" };
+    const y: CompileDiagnostic = { ...BASE, caseId: "d", stepOrdinal: 1, message: "m" };
+
+    expect(dedupeDiagnostics([x, { ...y }, { ...x }, y])).toEqual([x, y]);
   });
 });
 
