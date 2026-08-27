@@ -83,8 +83,8 @@
 
 ## Task 9 — CI
 
-- [ ] `.github/workflows/testkite-ci.yml`: pnpm install + typecheck + test trên push/PR paths `testkite/**`
-- [ ] Commit "M1 T9: CI"
+- [x] `.github/workflows/testkite-ci.yml`: pnpm install + typecheck + test trên push/PR paths `testkite/**`
+- [x] Commit "M1 T9: CI"
 
 ## Task 10 — (Plan riêng kế tiếp) kernel Drizzle pg + tenancy + outbox
 

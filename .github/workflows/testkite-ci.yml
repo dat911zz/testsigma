@@ -1,0 +1,43 @@
+name: TestKite CI
+
+on:
+  push:
+    paths:
+      - 'testkite/**'
+  pull_request:
+    paths:
+      - 'testkite/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Prepare pnpm 9 via corepack
+        run: corepack prepare pnpm@9 --activate
+
+      - name: pnpm install (frozen lockfile)
+        working-directory: testkite
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: testkite
+        run: pnpm typecheck
+
+      - name: Test
+        working-directory: testkite
+        run: pnpm test
+
+      - name: Gate — no browser in API image (apps/core must stay browser-free)
+        run: |
+          grep -rE "playwright|puppeteer|chromium" testkite/apps/core/src --include='*.ts' && exit 1 || true
