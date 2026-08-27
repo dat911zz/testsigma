@@ -8,3 +8,11 @@
  *  - Repository phải khởi tạo với TenantContext (fail-closed) — xem lớp cách ly L1.
  */
 export const MODULE = "kernel" as const;
+
+// Facade công khai của kernel. Module khác chỉ được import từ file này —
+// không bao giờ với tay vào `./db/*.js`.
+export { withTenant } from "./db/tenant.js";
+export { MissingTenantContextError, TenantRepo, assertTenantContext } from "./db/repo.js";
+export { createDb, type DbHandle } from "./db/client.js";
+export type { TenantContext, TkDb, TkTx } from "./db/types.js";
+export { loadEnv, parseEnv, envSchema, type KernelEnv } from "./env.js";
