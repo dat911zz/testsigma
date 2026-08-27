@@ -26,6 +26,7 @@ export type CompileErrorCode =
   | "prereq_depth_exceeded"
   | "prereq_missing"
   | "step_group_depth_exceeded"
+  | "step_group_missing"
   | "unknown_verb"
   | "verb_args_invalid"
   | "element_pending_locator"

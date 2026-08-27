@@ -13,9 +13,9 @@
       CI fail khi regen drift
 - [ ] **run-plan schema:** RunPlan/ChainPlan/CasePlan/StepPlan hoàn chỉnh + canonicalize + SHA-256 + zstd
       + `planFormatVersion`
-- [ ] **compiler phase 1:** resolve chuỗi prereq — cycle check, depth ≤ 5, ghim revision
+- [x] **compiler phase 1:** resolve chuỗi prereq — cycle check, depth ≤ 5, ghim revision
       ('ready' cho schedule/CI, 'latest' cho ad-hoc author)
-- [ ] **compiler phase 2:** nở step group (local ≤ 5 tầng), if/loop → cây block,
+- [x] **compiler phase 2:** nở step group (local ≤ 5 tầng), if/loop → cây block,
       data-driven fan-out + `expected_to_fail`
 - [ ] **compiler phase 3–5:** bind verb vào registry (GOM mọi lỗi), element → LocatorSet
       (`pending_locator` ⇒ diagnostic), merge data/env với `$secretRef`

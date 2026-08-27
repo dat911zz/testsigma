@@ -23,37 +23,37 @@
 
 ## Task 1 — Toolchain: deps + vitest chạy được
 
-- [ ] Thêm dep root: `typescript@~5.7`, `vitest@^3`, `@types/node@^22`; per-package: `zod@^3.24` cho contract/verb-kit/run-compiler; workspace refs `@testkite/contract`, `@testkite/verb-kit` vào run-compiler
-- [ ] `vitest.config.ts` root (projects = packages/*)
-- [ ] Viết test trivial `packages/contract/src/index.test.ts` (RUN_VERDICTS chứa "compile_error")
-- [ ] `pnpm install` → `pnpm typecheck` xanh → `pnpm test` xanh
-- [ ] Commit: "M1 T1: toolchain + first test"
+- [x] Thêm dep root: `typescript@~5.7`, `vitest@^3`, `@types/node@^22`; per-package: `zod@^3.24` cho contract/verb-kit/run-compiler; workspace refs `@testkite/contract`, `@testkite/verb-kit` vào run-compiler
+- [x] `vitest.config.ts` root (projects = packages/*)
+- [x] Viết test trivial `packages/contract/src/index.test.ts` (RUN_VERDICTS chứa "compile_error")
+- [x] `pnpm install` → `pnpm typecheck` xanh → `pnpm test` xanh
+- [x] Commit: "M1 T1: toolchain + first test"
 
 ## Task 2 — Contract: zod hoá các union + AuthoredSnapshot types
 
-- [ ] Test: parse hợp lệ/không hợp lệ cho `runVerdictSchema`, `jobStatusSchema`
-- [ ] Implement zod schemas song song các union hiện có (không phá type cũ)
-- [ ] Định nghĩa types input compiler trong `run-compiler/src/snapshot.ts`: `AuthoredCase` (id, revisionId, name, isStepGroup, prereqCaseId?, dataProfileId?, expectedRows?), `AuthoredStep` (ordinal, kind: action|step_group|if|for|while|rest, verbOpKey?, args, elementRef?, stepGroupCaseId?, conditionExpected?, loop config, children?), `ElementSnapshot` (id, name, status, locators[]), `DataProfileSnapshot`, `EnvSnapshot` (baseUrl, vars, secretNames)
-- [ ] Commit: "M1 T2: contract zod + compiler snapshot types"
+- [x] Test: parse hợp lệ/không hợp lệ cho `runVerdictSchema`, `jobStatusSchema`
+- [x] Implement zod schemas song song các union hiện có (không phá type cũ)
+- [x] Định nghĩa types input compiler trong `run-compiler/src/snapshot.ts`: `AuthoredCase` (id, revisionId, name, isStepGroup, prereqCaseId?, dataProfileId?, expectedRows?), `AuthoredStep` (ordinal, kind: action|step_group|if|for|while|rest, verbOpKey?, args, elementRef?, stepGroupCaseId?, conditionExpected?, loop config, children?), `ElementSnapshot` (id, name, status, locators[]), `DataProfileSnapshot`, `EnvSnapshot` (baseUrl, vars, secretNames)
+- [x] Commit: "M1 T2: contract zod + compiler snapshot types"
 
 ## Task 3 — Phase 1: resolve chuỗi prereq (TDD)
 
-- [ ] Test đỏ: chain đơn (login→case) ra thứ tự [login, case]; case không prereq ra [case]
-- [ ] Test đỏ: cycle A→B→A ⇒ diagnostic `prereq_cycle` (kèm caseId), không plan
-- [ ] Test đỏ: depth 6 ⇒ `prereq_depth_exceeded`; depth 5 OK
-- [ ] Test đỏ: prereq trỏ case không tồn tại ⇒ `prereq_missing` (thêm code mới vào union)
-- [ ] Test đỏ: 2 case cùng prereq login ⇒ 2 chain riêng, login KHÔNG chạy chung (chain = đơn vị cô lập)
-- [ ] Implement `resolveChains(snapshot, scope)` tối thiểu cho pass; chạy verify
-- [ ] Commit: "M1 T3: phase1 chain resolution"
+- [x] Test đỏ: chain đơn (login→case) ra thứ tự [login, case]; case không prereq ra [case]
+- [x] Test đỏ: cycle A→B→A ⇒ diagnostic `prereq_cycle` (kèm caseId), không plan
+- [x] Test đỏ: depth 6 ⇒ `prereq_depth_exceeded`; depth 5 OK
+- [x] Test đỏ: prereq trỏ case không tồn tại ⇒ `prereq_missing` (thêm code mới vào union)
+- [x] Test đỏ: 2 case cùng prereq login ⇒ 2 chain riêng, login KHÔNG chạy chung (chain = đơn vị cô lập)
+- [x] Implement `resolveChains(snapshot, scope)` tối thiểu cho pass; chạy verify
+- [x] Commit: "M1 T3: phase1 chain resolution"
 
 ## Task 4 — Phase 2: nở cấu trúc (TDD)
 
-- [ ] Test đỏ: step_group inline (group 3 step → case thấy 3 step phẳng, giữ renderedSentence gốc + provenance groupId)
-- [ ] Test đỏ: group lồng depth 6 ⇒ `step_group_depth_exceeded`; group tự gọi mình ⇒ cùng code (cycle qua depth)
-- [ ] Test đỏ: `if` block → node điều kiện với children; `for` với dataProfile rỗng ⇒ `data_profile_empty`
-- [ ] Test đỏ: `while` thiếu maxIterations ⇒ `while_without_max_iterations`
-- [ ] Test đỏ: case data-driven 3 hàng ⇒ 3 CasePlan iteration (label từ row), hàng `expected_to_fail` giữ cờ
-- [ ] Implement expansion; commit "M1 T4: phase2 structural expansion"
+- [x] Test đỏ: step_group inline (group 3 step → case thấy 3 step phẳng, giữ renderedSentence gốc + provenance groupId)
+- [x] Test đỏ: group lồng depth 6 ⇒ `step_group_depth_exceeded`; group tự gọi mình ⇒ cùng code (cycle qua depth)
+- [x] Test đỏ: `if` block → node điều kiện với children; `for` với dataProfile rỗng ⇒ `data_profile_empty`
+- [x] Test đỏ: `while` thiếu maxIterations ⇒ `while_without_max_iterations`
+- [x] Test đỏ: case data-driven 3 hàng ⇒ 3 CasePlan iteration (label từ row), hàng `expected_to_fail` giữ cờ
+- [x] Implement expansion; commit "M1 T4: phase2 structural expansion"
 
 ## Task 5 — Phase 3: bind verb (TDD)
 
