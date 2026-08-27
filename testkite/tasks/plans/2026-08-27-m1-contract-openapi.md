@@ -769,7 +769,19 @@ git commit -m "M1 A3: contract zod schema case + data profile + env + snapshot"
 
 **Vì sao dời `COMPILE_ERROR_CODES`:** `runSchema` cần danh mục lỗi compile, nhưng `contract` KHÔNG được import `run-compiler` (ngược DAG). Chép sang là hai danh sách sẽ lệch. Chiều đúng: contract SỞ HỮU danh mục, run-compiler re-export — nó vốn đã phụ thuộc contract. `golden.test.ts` import `COMPILE_ERROR_CODES` từ `./index.js` nên re-export giữ nguyên mọi call-site, không sửa test nào.
 
-- [ ] **Step 1: Viết test ĐỎ**
+**Lệch so với spec bên dưới (đã thực thi, A5 đọc kỹ):** `run.ts` import hằng từ `../enums.js`
+chứ KHÔNG từ `../index.js`. Lý do: bước 5 đòi run-compiler lấy `COMPILE_ERROR_CODES` qua facade
+`@testkite/contract`, nên `src/index.ts` phải re-export `./schemas/index.js` NGAY từ A4 — và
+barrel re-export schemas + schema đọc ngược barrel = VÒNG IMPORT. Đã dựng lại lỗi thật bằng
+`tsx`: `ReferenceError: Cannot access 'RUN_VERDICTS' before initialization` (thân barrel chưa
+chạy khi `z.enum(RUN_VERDICTS)` của `run.ts` đọc hằng). **Vitest KHÔNG bắt được** — SSR
+transform của vite-node xếp thứ tự khác nên vẫn xanh, nên luật được canh tĩnh bằng test
+"không file schema nào import ngược `../index.js`" trong `run.test.ts`.
+Cách chữa: tách 4 hằng (`RUN_VERDICTS`, `JOB_STATUSES`, `JOB_KINDS`, `LANES`) sang module LÁ
+`packages/contract/src/enums.ts`; `index.ts` re-export lại nên bề mặt facade KHÔNG đổi.
+⇒ A5 sửa `index.ts` chỉ còn phải thêm `export * from "./openapi.js";`.
+
+- [x] **Step 1: Viết test ĐỎ**
 
 Tạo `testkite/packages/contract/src/schemas/run.test.ts`:
 
@@ -863,12 +875,12 @@ describe("runSchema", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/schemas/run.test.ts`
 Expected: FAIL — không resolve được `./run.js`.
 
-- [ ] **Step 3: Viết implementation tối thiểu**
+- [x] **Step 3: Viết implementation tối thiểu**
 
 Tạo `testkite/packages/contract/src/schemas/run.ts`:
 
@@ -962,12 +974,12 @@ Thêm vào `testkite/packages/contract/src/schemas/index.ts`:
 export * from "./run.js";
 ```
 
-- [ ] **Step 4: Chạy test, xác nhận XANH**
+- [x] **Step 4: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/schemas/run.test.ts`
 Expected: PASS (10 test).
 
-- [ ] **Step 5: Dời danh mục khỏi run-compiler**
+- [x] **Step 5: Dời danh mục khỏi run-compiler**
 
 Trong `testkite/packages/run-compiler/src/index.ts`, XOÁ khối khai báo `COMPILE_ERROR_CODES` + `export type CompileErrorCode` (khoảng dòng 30–50, từ comment `Danh mục lỗi compile` tới hết `export type CompileErrorCode = ...`) và thay bằng:
 
@@ -981,12 +993,12 @@ export { COMPILE_ERROR_CODES } from "@testkite/contract";
 export type { CompileErrorCode } from "@testkite/contract";
 ```
 
-- [ ] **Step 6: Chạy TOÀN BỘ test, xác nhận không vỡ gì**
+- [x] **Step 6: Chạy TOÀN BỘ test, xác nhận không vỡ gì**
 
 Run: `cd testkite && pnpm typecheck && pnpm test`
 Expected: exit 0. Golden suite của run-compiler vẫn xanh — nó import `COMPILE_ERROR_CODES` từ `./index.js`, đường dẫn không đổi.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add testkite/packages/contract/src/schemas/run.ts testkite/packages/contract/src/schemas/run.test.ts testkite/packages/contract/src/schemas/index.ts testkite/packages/run-compiler/src/index.ts

@@ -4,38 +4,13 @@
  */
 
 // ---------------------------------------------------------------------------
-// Verdicts (docs/SYSTEM_DESIGN.md §2, §4)
+// Verdicts (docs/SYSTEM_DESIGN.md §2, §4) — định nghĩa ở `./enums.js` (module lá),
+// tái xuất ở đây để bề mặt facade không đổi. Schema import thẳng module lá, không
+// qua barrel này: barrel re-export schemas nên đọc ngược lên đây là vòng import.
 // ---------------------------------------------------------------------------
 
-/** Verdict của một run — compile_error/blocked xảy ra TRƯỚC khi bất kỳ browser nào khởi động. */
-export const RUN_VERDICTS = [
-  "passed",
-  "failed",
-  "compile_error",
-  "blocked", // cổng health môi trường (phase 7.5) chặn
-  "aborted_early", // phanh mass-failure: 25 chain đầu fail cùng signature
-  "cancelled",
-] as const;
-export type RunVerdict = (typeof RUN_VERDICTS)[number];
-
-/** Trạng thái job (job_runs — queue of record trong MySQL). */
-export const JOB_STATUSES = [
-  "pending",
-  "dispatched",
-  "running",
-  "succeeded",
-  "failed",
-  "cancelled",
-  "rejected_quota",
-  "unknown_after_restore", // quarantine bắt buộc sau restore DB, TRƯỚC khi reaper chạy
-] as const;
-export type JobStatus = (typeof JOB_STATUSES)[number];
-
-export const JOB_KINDS = ["chain", "element_verify", "capture_session", "env_probe"] as const;
-export type JobKind = (typeof JOB_KINDS)[number];
-
-export const LANES = ["interactive", "batch"] as const;
-export type Lane = (typeof LANES)[number];
+export * from "./enums.js";
+export * from "./schemas/index.js";
 
 // ---------------------------------------------------------------------------
 // Error taxonomy — MỘT vị từ (`retryable === true`) gate mọi retry ở mọi nơi.
