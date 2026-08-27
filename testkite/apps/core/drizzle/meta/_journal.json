@@ -36,6 +36,20 @@
       "when": 1787843538002,
       "tag": "0004_aut_cases_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787844965994,
+      "tag": "0005_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787844966994,
+      "tag": "0006_outbox_grants",
+      "breakpoints": true
     }
   ]
 }
