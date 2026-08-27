@@ -49,6 +49,13 @@ importers:
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+      zod-openapi:
+        specifier: 4.2.4
+        version: 4.2.4(zod@3.25.76)
+    devDependencies:
+      tsx:
+        specifier: ^4.23
+        version: 4.23.12
 
   packages/run-compiler:
     dependencies:
@@ -1113,6 +1120,12 @@ packages:
     resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
     engines: {node: '>=0.4'}
 
+  zod-openapi@4.2.4:
+    resolution: {integrity: sha512-tsrQpbpqFCXqVXUzi3TPwFhuMtLN3oNZobOtYnK6/5VkXsNdnIgyNr4r8no4wmYluaxzN3F7iS+8xCW8BmMQ8g==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.21.4
+
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
@@ -1864,5 +1877,9 @@ snapshots:
       stackback: 0.0.2
 
   xtend@4.0.2: {}
+
+  zod-openapi@4.2.4(zod@3.25.76):
+    dependencies:
+      zod: 3.25.76
 
   zod@3.25.76: {}

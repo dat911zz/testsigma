@@ -1023,7 +1023,7 @@ git commit -m "M1 A4: contract zod schema run + dời COMPILE_ERROR_CODES về c
 
 **Vì sao cần `tsx`:** entry `openapi.gen.ts` import `./openapi.js` trỏ tới `openapi.ts`. Type-stripping gốc của Node 22 KHÔNG ánh xạ `.js → .ts` — đã xác minh: `ERR_MODULE_NOT_FOUND: .../openapi.js`. `tsx` làm được. Đây là devDep của riêng package contract, không đụng runtime.
 
-- [ ] **Step 1: Thêm dependency**
+- [x] **Step 1: Thêm dependency**
 
 ```bash
 cd testkite
@@ -1039,7 +1039,7 @@ Rồi thêm vào `scripts` của `testkite/packages/contract/package.json`:
 
 Kiểm chứng peer khớp: `pnpm -F @testkite/contract why zod` phải cho `zod 3.25.76`, và `pnpm install` KHÔNG in cảnh báo peer nào cho `zod-openapi`.
 
-- [ ] **Step 2: Viết test ĐỎ**
+- [x] **Step 2: Viết test ĐỎ**
 
 Tạo `testkite/packages/contract/src/openapi.test.ts`:
 
@@ -1094,12 +1094,12 @@ describe("serializeOpenApiDocument", () => {
 });
 ```
 
-- [ ] **Step 3: Chạy test, xác nhận ĐỎ**
+- [x] **Step 3: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/openapi.test.ts`
 Expected: FAIL — không resolve được `./openapi.js`.
 
-- [ ] **Step 4: Viết implementation tối thiểu**
+- [x] **Step 4: Viết implementation tối thiểu**
 
 Tạo `testkite/packages/contract/src/openapi.ts`:
 
@@ -1211,12 +1211,12 @@ export * from "./schemas/index.js";
 export { buildOpenApiDocument, OPENAPI_INFO, OPENAPI_SCHEMA_NAMES, serializeOpenApiDocument } from "./openapi.js";
 ```
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm -F @testkite/contract exec vitest run src/openapi.test.ts`
 Expected: PASS (7 test).
 
-- [ ] **Step 6: Sinh spec lần đầu và kiểm mắt thường**
+- [x] **Step 6: Sinh spec lần đầu và kiểm mắt thường**
 
 ```bash
 cd testkite && pnpm -F @testkite/contract openapi:gen
@@ -1225,12 +1225,12 @@ head -20 packages/contract/openapi.json
 
 Expected: dòng 2 là `"openapi": "3.1.0"`; có `"components"` với 9 key schema; KHÔNG có key `"paths"`.
 
-- [ ] **Step 7: Chạy toàn bộ + typecheck**
+- [x] **Step 7: Chạy toàn bộ + typecheck**
 
 Run: `cd testkite && pnpm typecheck && pnpm test`
 Expected: exit 0.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add testkite/packages/contract/package.json testkite/packages/contract/openapi.json testkite/packages/contract/src/openapi.ts testkite/packages/contract/src/openapi.gen.ts testkite/packages/contract/src/openapi.test.ts testkite/packages/contract/src/index.ts testkite/pnpm-lock.yaml

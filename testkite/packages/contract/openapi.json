@@ -1,0 +1,488 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TestKite Contract",
+    "version": "0.0.1",
+    "description": "Catalog schema authoring-facing của TestKite, sinh từ zod. M1: chỉ components.schemas — paths gắn ở M2 cùng route Fastify."
+  },
+  "components": {
+    "schemas": {
+      "Locator": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ]
+      },
+      "Element": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "pending_locator"
+            ]
+          },
+          "locators": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Locator"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "locators"
+        ]
+      },
+      "AuthoredStep": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "action"
+              },
+              "ordinal": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verbOpKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "args": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "elementId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "kind",
+              "ordinal",
+              "renderedSentence",
+              "verbOpKey"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "step_group"
+              },
+              "ordinal": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "stepGroupCaseId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "kind",
+              "ordinal",
+              "renderedSentence",
+              "stepGroupCaseId"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "if"
+              },
+              "ordinal": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "conditionExpected": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AuthoredStep"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "ordinal",
+              "renderedSentence",
+              "conditionExpected",
+              "children"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "for"
+              },
+              "ordinal": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "loopDataProfileId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AuthoredStep"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "ordinal",
+              "renderedSentence",
+              "loopDataProfileId",
+              "children"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "while"
+              },
+              "ordinal": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxIterations": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AuthoredStep"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "ordinal",
+              "renderedSentence",
+              "maxIterations",
+              "children"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "rest"
+              },
+              "ordinal": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "args": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "ordinal",
+              "renderedSentence"
+            ]
+          }
+        ]
+      },
+      "AuthoredCase": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revisionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "isStepGroup": {
+            "type": "boolean"
+          },
+          "prereqCaseId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dataProfileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthoredStep"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "revisionId",
+          "name",
+          "isStepGroup",
+          "steps"
+        ]
+      },
+      "DataRow": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedToFail": {
+            "type": "boolean"
+          },
+          "values": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "label",
+          "expectedToFail",
+          "values"
+        ]
+      },
+      "DataProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DataRow"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "rows"
+        ]
+      },
+      "Env": {
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "vars": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "secretNames": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "baseUrl",
+          "vars",
+          "secretNames"
+        ]
+      },
+      "CompileDiagnostic": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "prereq_cycle",
+              "prereq_depth_exceeded",
+              "prereq_missing",
+              "step_group_depth_exceeded",
+              "step_group_missing",
+              "unknown_verb",
+              "verb_args_invalid",
+              "element_pending_locator",
+              "element_not_found",
+              "secret_ref_unknown",
+              "while_without_max_iterations",
+              "data_profile_empty"
+            ]
+          },
+          "caseId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "stepOrdinal": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "severity",
+          "code",
+          "caseId",
+          "message"
+        ]
+      },
+      "Run": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "teamId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lane": {
+            "type": "string",
+            "enum": [
+              "interactive",
+              "batch"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "dispatched",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "rejected_quota",
+              "unknown_after_restore"
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "compile_error",
+              "blocked",
+              "aborted_early",
+              "cancelled"
+            ]
+          },
+          "planContentHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompileDiagnostic"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "teamId",
+          "projectId",
+          "lane",
+          "status",
+          "verdict",
+          "diagnostics"
+        ]
+      }
+    }
+  }
+}

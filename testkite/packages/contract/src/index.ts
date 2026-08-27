@@ -54,3 +54,10 @@ export class AssertionFailure extends AppError {
   readonly retryable = false;
   readonly tenantVisible = true;
 }
+
+// ---------------------------------------------------------------------------
+// OpenAPI (zod là nguồn, openapi.json là đầu ra). Schema DTO đã tái xuất ở trên
+// qua `./schemas/index.js` — không lặp lại ở đây (duplicate export).
+// ---------------------------------------------------------------------------
+
+export { buildOpenApiDocument, OPENAPI_INFO, OPENAPI_SCHEMA_NAMES, serializeOpenApiDocument } from "./openapi.js";
