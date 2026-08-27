@@ -1789,7 +1789,7 @@ git commit -m "M1 B2: eslint-boundaries cưỡng chế DAG 12 module + test lu�
 - `*.test.ts` trong run-compiler **ĐƯỢC PHÉP** dùng `node:fs` — `golden.test.ts` đọc 20+ fixture bằng `readFileSync`. Không có `ignores` này thì task đầu tiên đã đỏ oan.
 - `bullmq`/`ioredis` chỉ được xuất hiện trong `apps/core/src/modules/kernel/**` (M1 checklist: "lint cấm `bullmq` ngoài kernel").
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 Thêm vào `testkite/tools/lint-rules.test.ts`:
 
@@ -1830,7 +1830,7 @@ describe("queue chỉ trong kernel", () => {
 });
 ```
 
-- [ ] **Step 2: Tạo fixture, chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Tạo fixture, chạy test, xác nhận ĐỎ**
 
 `testkite/tools/lint-fixtures/packages/run-compiler/src/pure-ok.ts`:
 
@@ -1887,7 +1887,7 @@ Expected: FAIL — các test PURE/queue đỏ (luật chưa tồn tại), 3 test
 
 Nếu ESLint kêu không phân giải được `bullmq` — kệ, `no-restricted-imports` khớp trên CHUỖI import, không cần package tồn tại.
 
-- [ ] **Step 3: Thêm 2 block vào config**
+- [x] **Step 3: Thêm 2 block vào config**
 
 CHÈN vào cuối mảng `export default [...]` trong `testkite/eslint.config.mjs`:
 
@@ -1965,17 +1965,29 @@ CHÈN vào cuối mảng `export default [...]` trong `testkite/eslint.config.mj
   },
 ```
 
-- [ ] **Step 4: Chạy test, xác nhận XANH**
+- [x] **Step 4: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm test:tools`
 Expected: PASS — 10 test lint-rules + 7 test module-dag.
 
-- [ ] **Step 5: `pnpm lint` phải XANH trên code thật**
+- [x] **Step 5: `pnpm lint` phải XANH trên code thật**
 
 Run: `cd testkite && pnpm lint`
 Expected: exit 0. `phase67-freeze.ts` import `node:crypto` — nếu nó bị bắt thì `node:crypto` đã lọt vào danh sách cấm, gỡ ra. `golden.test.ts` import `node:fs` — nếu nó bị bắt thì `ignores` của block PURE sai glob.
 
-- [ ] **Step 6: Commit**
+> **Kết quả B3:** `pnpm test:tools` → **17 pass** (10 lint-rules + 7 module-dag). Toàn workspace: **317 pass + 4 skip** (verb-kit 12, contract 55, apps/core 55+4 skip, run-compiler 178, tools 17) — nền 310 + 7 test mới. `pnpm typecheck` exit 0, `pnpm lint` exit 0.
+>
+> **TDD đúng nghi thức:** trước khi thêm 2 block config, `vitest run tools/lint-rules.test.ts` → **4 failed | 6 passed**, đỏ đúng 4 test đòi bắt vi phạm (`expected [] to include 'no-restricted-imports'`, `expected 0 to be greater than or equal to 2`, `expected [] to include 'no-restricted-globals'`). Ba test "CHO QUA" xanh sẵn là xanh RỖNG — chúng chỉ có nghĩa khi đi kèm 4 test kia.
+>
+> **Chứng minh luật bắt được vi phạm — trên ĐƯỜNG LINT THẬT, không chỉ fixture:** dựng tạm `packages/run-compiler/src/__pure_probe.ts` + `apps/core/src/modules/orchestration/__queue_probe.ts` → `eslint` **exit 1, 5 error** đúng bản: `no-restricted-imports` (node:fs), `no-restricted-properties` ×2 (`Date.now` dòng 3, `Math.random` dòng 4), `no-restricted-globals` (`process` dòng 5), `no-restricted-imports` (bullmq trong orchestration). Probe `__pure_probe.test.ts` (node:fs + process.env) → **exit 0**, đúng diện miễn. Xoá probe → `pnpm lint` exit 0.
+>
+> **Đối chứng âm bằng `eslint --print-config` (chống xanh-giả do glob trượt):** trên file THẬT `packages/run-compiler/src/phase67-freeze.ts` cả ba luật đều **severity 2 (bật)** ⇒ nó xanh vì `node:crypto` cố ý nằm ngoài danh sách cấm, KHÔNG phải vì block không với tới. Ngược lại `golden.test.ts` → `no-restricted-imports`/`no-restricted-globals` **undefined (tắt)** ⇒ `ignores` `*.test.ts` khớp thật; `apps/core/src/modules/kernel/outbox/relay.ts` → `no-restricted-imports` **undefined** ⇒ kernel được miễn luật queue đúng thiết kế.
+>
+> **Sửa `test:tools`, bắt buộc chứ không tuỳ hứng.** Fixture `pure-ok.test.ts` BẮT BUỘC mang đuôi `.test.ts` — thứ đang được kiểm chứng chính là `ignores: ["**/packages/run-compiler/src/**/*.test.ts"]`. Nhưng vitest gom mọi `*.test.ts` khớp filter `tools`, nên nó nuốt luôn fixture và chết `No test suite found in file` (đã thấy tận mắt: `Test Files 1 failed | 2 passed`, dù `Tests 17 passed`). Sửa: `"test:tools": "vitest run tools --exclude 'tools/lint-fixtures/**'"`. Đã xác minh `--exclude` của vitest 3 là **cộng thêm, không thay thế** default: `vitest list --exclude 'tools/lint-fixtures/**'` không rò một dòng `node_modules` nào và vẫn liệt kê đủ **27 file test thật**. Không đụng tới `eslint.config.mjs` để né — né kiểu đó là vứt bỏ đúng luật đang cần chứng minh.
+>
+> **Không có vi phạm THẬT nào trong src** (khác B2): `phase67-freeze.ts` chỉ dùng `node:crypto`; mọi `node:fs`/`process.env` trong run-compiler đều nằm trong `golden.test.ts`; `apps/core` chưa import `bullmq` ở đâu — `kernel/outbox/relay.ts` tiêm `publish` từ ngoài và `composition-root.ts` chỉ nhắc luật trong comment. Nên B3 sửa 0 dòng src.
+
+- [x] **Step 6: Commit**
 
 ```bash
 git add testkite/eslint.config.mjs testkite/tools/

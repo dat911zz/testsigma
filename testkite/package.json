@@ -9,7 +9,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test && pnpm test:tools",
-    "test:tools": "vitest run tools",
+    "test:tools": "vitest run tools --exclude 'tools/lint-fixtures/**'",
     "lint": "eslint apps packages",
     "openapi:gen": "pnpm -F @testkite/contract openapi:gen",
     "openapi:check": "pnpm openapi:gen && git diff --exit-code -- packages/contract/openapi.json",
