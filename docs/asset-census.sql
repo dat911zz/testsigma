@@ -134,6 +134,43 @@ JOIN workspace_versions wv ON wv.id = tc.workspace_version_id
 JOIN workspaces w          ON w.id = wv.workspace_id
 GROUP BY w.type ORDER BY so_step DESC;
 
+-- ----------------------------------------------------------------------------
+-- 7. (BỔ SUNG SAU CENSUS) ĐỘ SÂU CHUỖI pre_requisite — 92% case dùng prereq,
+--    đây là construct trung tâm của bản dịch. Cần biết chuỗi sâu bao nhiêu
+--    và case nào được dùng làm tiền đề nhiều nhất (→ ứng viên setup function).
+--    (CTE cần MySQL 8; cột pre_requisite trỏ tới test_cases.id)
+-- ----------------------------------------------------------------------------
+WITH RECURSIVE chain (id, root, depth) AS (
+  SELECT id, id, 0 FROM test_cases WHERE deleted = 0 AND pre_requisite IS NULL
+  UNION ALL
+  SELECT tc.id, c.root, c.depth + 1
+  FROM test_cases tc JOIN chain c ON tc.pre_requisite = c.id
+  WHERE tc.deleted = 0
+)
+SELECT depth AS do_sau_chuoi, COUNT(*) AS so_case FROM chain GROUP BY depth ORDER BY depth;
+
+-- 7b. Top case được dùng làm tiền đề (mỗi dòng ~ một "luồng setup" cần viết tay cho chuẩn)
+SELECT tc2.id, tc2.name, COUNT(*) AS so_case_phu_thuoc
+FROM test_cases tc1
+JOIN test_cases tc2 ON tc2.id = tc1.pre_requisite
+WHERE tc1.deleted = 0
+GROUP BY tc2.id, tc2.name
+ORDER BY so_case_phu_thuoc DESC LIMIT 25;
+
+-- ----------------------------------------------------------------------------
+-- 8. (BỔ SUNG SAU CENSUS) 7.344 suite / 7.112 plan cho 3.143 case là bất thường
+--    — gần chắc sinh tự động. Đếm plan/suite THẬT còn được động tới gần đây;
+--    chỉ dịch những cái này thành job CI, phần còn lại bỏ.
+-- ----------------------------------------------------------------------------
+SELECT 'plans dong toi 90 ngay' AS what, COUNT(*) AS n
+  FROM test_plans WHERE updated_date > DATE_SUB(NOW(), INTERVAL 90 DAY)
+UNION ALL SELECT 'suites dong toi 90 ngay', COUNT(*)
+  FROM test_suites WHERE updated_date > DATE_SUB(NOW(), INTERVAL 90 DAY);
+
+-- 8b. Phân bố plan theo tháng tạo — nếu dồn cục theo ngày chạy test thì là per-run artifact
+SELECT DATE_FORMAT(created_date, '%Y-%m') AS thang, COUNT(*) AS n
+FROM test_plans GROUP BY thang ORDER BY thang DESC LIMIT 24;
+
 -- ============================================================================
 -- ĐỌC KẾT QUẢ:
 --  * Ít verb thực dùng (≤ ~40), phần trăm web áp đảo, addon ≈ 0, ít conditional

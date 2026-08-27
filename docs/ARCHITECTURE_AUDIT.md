@@ -269,6 +269,30 @@ Lưu ý trung thực về "Java nặng": sau khi thoát Java, **Node.js vẫn �
 - **Nửa đường đứt gánh là kết cục tệ nhất** (gánh 2 hệ song song vĩnh viễn): ép deadline decommission theo lịch, đóng băng soạn thảo theo từng workspace ngay khi cắt.
 - **Chi phí để biết có nên đi hay không chỉ là ~2 tháng** (Phase 1–2) — Phase 0 kiểu gì cũng phải làm. Không có cam kết không thể đảo ngược nào trước cổng Phase 2.
 
+### 9.5. Kết quả census (27-08-2026, DB production) — **GO**
+
+Cả ba điều kiện của cổng dữ liệu đều bật xanh:
+
+| Điều kiện cổng | Kết quả thật |
+|---|---|
+| Web-only? | **99,6%** — 52.990/54.262 step là WebApplication; mobile tổng cộng 217 step (~20 case thử nghiệm — re-record nhanh hơn dịch) |
+| Addon? | **0 addon cài đặt** — hạng mục duy nhất không migrate tự động được thì trống trơn |
+| Quy mô/độ tập trung? | **1 workspace thật duy nhất** ("Web workspace (Live)": 3.111 case / 52.900 step / 2.159 element, sửa lần cuối 26-08-2026 — estate đang sống) |
+
+Chi tiết đọc được từ số liệu:
+
+- **~80 verb thực dùng** trên 586 câu catalog; click + enter = 55,7% tổng step; **9 verb phủ 80%**; **~35 verb phủ 99%** — translator chỉ cần chừng đó, đuôi ~45 verb dùng 1–2 lần thì sửa tay.
+- **~4.700 step think/wait thủ công (8,7%)** — auto-wait của Playwright xóa gần hết: bản dịch gọn hơn bản gốc.
+- **Construct trung tâm: `pre_requisite` — 2.904/3.143 case (92%)** dùng chuỗi case-gọi-case → dịch thành setup function/fixture dùng chung; cần đo độ sâu chuỗi (SQL bổ sung mục 7 trong `asset-census.sql`).
+- Step group: 51 group / 625 điểm gọi → 51 hàm dùng chung. Conditional 716 + forloop 524 → if/for thường. (Đính chính: query `for_loop_*` ra 0 vì loop ở estate này đi qua verb NLP "forloop" — histogram bắt được.)
+- Data-driven: 214 case + 149 profile → parameterized test. REST: 6 step — không đáng kể.
+- Locator: csspath ~1.500, xpath ~550, id 87, dynamic 68 → port nguyên vẹn thành page object.
+- ⚠️ Bất thường cần soi: **7.344 suite / 7.112 plan cho 3.143 case** — gần chắc sinh tự động (per-run/API). Đừng dịch 7k plan; đếm plan thật bằng SQL bổ sung mục 8.
+
+**Ước lượng lại: ~4–6 tháng-người** (từ dải 6–12 — phần kéo rộng là mobile + addon, cả hai = 0), suite đầu chạy song song sau ~6–8 tuần. Cutover theo suite/tag trong chính workspace duy nhất (estate đang sửa hằng ngày → đóng băng theo lát cắt nhỏ). Phase 0 (tháo bom vendor + mirror bucket) vẫn đi trước.
+
+**Cổng còn lại duy nhất là con người:** dev/SDET viết test → **Playwright + TypeScript**; QA quen keyword → **Robot Framework** hoặc **CodeceptJS**; QA thuần no-code không rời được UI → dừng ở lộ trình ổn định (mục 6), Harvest chết vì adoption.
+
 ---
 
 ## Phụ lục A — File đáng chú ý nhất
