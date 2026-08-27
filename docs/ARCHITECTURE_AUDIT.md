@@ -226,6 +226,51 @@ Lộ trình 7 giai đoạn ở mục 6 **giữ nguyên toàn bộ**; tổng ngâ
 
 ---
 
+## 9. Thoát Java toàn phần — kế hoạch Harvest & Replace chi tiết (bổ sung 27-08-2026)
+
+> Bối cảnh: maintainer xác nhận không muốn tiếp tục vận hành stack Java. Mục này nâng phương án Harvest & Replace (mục 5) từ "fallback có cổng" thành kế hoạch hành động đầy đủ — vì **đây chính là con đường thoát-toàn-stack đúng**, không phải rewrite bằng ngôn ngữ khác.
+
+### 9.1. Định đề
+
+Muốn thoát Java có hai con đường, chênh nhau một bậc độ lớn:
+
+1. **Rewrite platform bằng ngôn ngữ khác** (Go/TS/Python…): 8–15 **năm**-người cho parity, vì phải tái tạo 218 endpoint + 4 mặt API + recorder + device lab + addon marketplace trên codebase 0 test làm đặc tả. Đã bị loại vĩnh viễn ở mục 5 và mục 8.
+2. **Harvest & Replace**: không rebuild platform — **bỏ luôn platform, chỉ giữ dữ liệu**, đưa test estate sang các công cụ OSS đang được cộng đồng maintain. **6–12 tháng-người**, workspace đầu tiên chạy production ở tháng 4–6.
+
+Điểm mấu chốt đã kiểm chứng: 772 action class trung bình chỉ **22,6 dòng/class** (696/772 dưới 50 dòng) — wrapper mỏng quanh Selenium/Appium, **mọi verb đều có bản tương đương tốt hơn, có test, đang được maintain** trong Robot Framework / Playwright / CodeceptJS. Tài sản thật nằm ở 3 thứ, đều là *dữ liệu*: catalog 586 câu (224 verb ngữ nghĩa — "hòn đá Rosetta"), test estate trong ~15/61 bảng (schema sạch, FK nhất quán), và bộ elements/locator (chuyển thẳng thành page object gần như nguyên vẹn).
+
+Lưu ý trung thực về "Java nặng": sau khi thoát Java, **Node.js vẫn ở lại** (Appium và Playwright đều là Node) — nhưng đó là runtime của công cụ chuẩn ngành được người khác maintain, không phải 178k LOC không test mà bro phải tự gánh. Cái được giải phóng thật sự không phải RAM — mà là **quyền sở hữu đống code đó**.
+
+### 9.2. Bảng thay thế từng thành phần
+
+| Thành phần Testsigma (Java) | Thay bằng (OSS đang maintain) |
+|---|---|
+| `automator/` — 772 action class | **Robot Framework** (Browser/SeleniumLibrary/AppiumLibrary) *hoặc* **CodeceptJS** (`I.click('Login')` — đọc giống câu Testsigma nhất) *hoặc* **Playwright + TS** nếu người viết là engineer |
+| `agent/` + stack usbmuxd iOS tự viết | **Appium 2 + appium-xcuitest-driver** — đã làm sẵn WDA install, DeveloperDiskImage, usbmux; cộng **Device Farmer** cho lab thiết bị |
+| `server/` — nửa orchestration (`AgentExecutionService` 1.570 dòng, scheduler) | **CI runner** (GitHub Actions/Jenkins) + **Selenium Grid 4 / Selenoid / Moon** |
+| `server/` — nửa kết quả/báo cáo | **ReportPortal** hoặc **Allure** |
+| `suggestion/` — self-healing 65 class | **Healenium** + auto-waiting/locator ngữ nghĩa của Playwright |
+| Quản lý test case | **Kiwi TCMS** hoặc **Qase** |
+| `ui/` Angular — soạn thảo no-code, recorder, mirror thiết bị | **Không có bản thay thế** — soạn bằng VS Code/RobotCode. Đây là cái MẤT lớn nhất |
+
+### 9.3. Năm giai đoạn (6–12 tháng-người)
+
+1. **Phase 0 — Containment (3–5 tuần, vô điều kiện):** trùng Phase 0 mục 6 — dump+restore drill, tháo bom vendor (cert agent, telemetry, 2 scheduler), purge key DigiCert, xoay secret. *Không* nâng framework — đó là cái bẫy nuốt mất một năm.
+2. **Phase 1 — Census (2–3 tuần):** chạy `docs/asset-census.sql` (đã commit kèm báo cáo này, tên bảng/cột đối chiếu schema thật) trên DB production. Biến "hệ có 224 verb" thành "estate của tôi dùng N verb, 6 verb phủ 80% step". Đếm luôn: step group, data-driven, if/loop, REST step, addon JAR (loại tài sản duy nhất **không có đường migrate tự động**), locator theo loại.
+3. **Phase 2 — Chọn đích + spike đối kháng (5–7 tuần):** chọn stack theo census; tự tay dịch top-20 verb; port một suite 50 test THẬT; chạy song song với Testsigma 2 tuần, so pass/fail + flake + thời gian. Đồng thời **demo bề mặt soạn thảo cho chính người viết test**. Cổng go/no-go là *sự chấp nhận của người viết*, không phải độ chính xác bản dịch.
+4. **Phase 3 — Viết translator (3–4 tháng):** ~5–8k LOC mới duy nhất. Input: XML backup của chính Testsigma (`XMLExportImportService` — 46 DTO, cỗ máy trích xuất vendor viết sẵn); mẫu tham khảo có sẵn trong repo: `TestStepImportService` + `ExternalImportNlpMappingService` (Testsigma từng viết importer *chiều vào* — translator là chiều ra của cùng pattern). Emit: elements → page object, test_data → data file, step group → keyword tái dùng, suite/plan → định nghĩa job CI. Verb không dịch được → stub TODO có cờ, không rơi im lặng.
+5. **Phase 4–5 — Cutover từng workspace + nghỉ hưu (3–5 tháng, chồng lấn):** không bao giờ big-bang. Mỗi workspace: dịch → chạy song song 2–3 chu kỳ → diff → sửa đuôi → **đóng băng soạn thảo trong Testsigma** → cắt. Web-only ít addon đi trước, mobile-native đi cuối (215/586 dòng catalog). Kết quả cũ export sang ReportPortal/Allure hoặc giữ một instance read-only cách ly mạng để tra cứu audit. Cuối cùng: archive repo kèm tài liệu 224 verb.
+
+### 9.4. Rủi ro chính & điều kiện thắng
+
+- **Người viết test là ai — rủi ro giết dự án, và nó không phải kỹ thuật.** Giá trị cốt lõi của Testsigma là non-coder viết test. Nếu họ không chấp nhận keyword syntax (Robot/CodeceptJS), Harvest chết vì con người → quay về containment, không phải rewrite. Giải quyết trong 90 ngày đầu bằng demo thật.
+- **Mobile-native là nơi ước lượng vỡ** (dịch đắt nhất) — census quyết định.
+- **Flake-rate delta khi cutover:** engine cũ có hành vi ngầm (retry 1 lần khi `StaleElementReference`, fallback JS `innerText`…) mà test đã "quen" — test dịch xong sẽ fail *khác kiểu*; cần ngân sách chỉnh đuôi và kỳ vọng đúng từ stakeholder.
+- **Nửa đường đứt gánh là kết cục tệ nhất** (gánh 2 hệ song song vĩnh viễn): ép deadline decommission theo lịch, đóng băng soạn thảo theo từng workspace ngay khi cắt.
+- **Chi phí để biết có nên đi hay không chỉ là ~2 tháng** (Phase 1–2) — Phase 0 kiểu gì cũng phải làm. Không có cam kết không thể đảo ngược nào trước cổng Phase 2.
+
+---
+
 ## Phụ lục A — File đáng chú ý nhất
 
 - `server/src/main/java/com/testsigma/service/AgentExecutionService.java` — god class 1.570 dòng, tâm điểm mọi đường chạy test.
