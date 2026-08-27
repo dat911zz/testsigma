@@ -2284,11 +2284,11 @@ git commit -m "M1 B5: nối gate lint + madge vào CI"
 **Files:**
 - Modify: `testkite/tasks/M1-kernel-contracts-compiler.md:8-13`
 
-- [ ] **Step 1: Lấy hash của các commit vừa tạo**
+- [x] **Step 1: Lấy hash của các commit vừa tạo**
 
 Run: `git log --oneline -12`
 
-- [ ] **Step 2: Tick hai dòng**
+- [x] **Step 2: Tick hai dòng**
 
 Trong `testkite/tasks/M1-kernel-contracts-compiler.md`, đổi:
 

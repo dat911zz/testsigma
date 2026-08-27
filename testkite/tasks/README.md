@@ -10,7 +10,7 @@ kèm hash commit bên cạnh. TODO trong code gắn tag `TODO(M<n>)` khớp đú
 
 | File | Nội dung | Trạng thái |
 |---|---|---|
-| [M1](M1-kernel-contracts-compiler.md) | Kernel, contracts, **compiler core + golden (xây đầu tiên)**, schema tenancy | 🟡 scaffold xong |
+| [M1](M1-kernel-contracts-compiler.md) | Kernel, contracts, **compiler core + golden (xây đầu tiên)**, schema tenancy | 🟢 xong 27-08-2026 |
 | [M2](M2-identity-authoring.md) | Identity/RBAC/audit/token + CI cách ly · Authoring + revision/review | 🔴 |
 | [M3](M3-orchestration-fleet.md) | Queue Postgres (SKIP LOCKED), dispatcher, worker + memory governance, fleet systemd 3 host, results + SSE | 🔴 |
 | [M4](M4-elements-verbs-planning.md) | Elements + capture service · 35 verb + engine golden · testdata · planning | 🔴 |

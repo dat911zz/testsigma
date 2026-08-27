@@ -5,13 +5,16 @@
 
 ## Checklist
 
-- [ ] `pnpm install` + toolchain: tsconfig refs, eslint (+ eslint-boundaries theo `ownership.json`,
+- [x] `pnpm install` + toolchain: tsconfig refs, eslint (+ eslint-boundaries theo `ownership.json`,
       madge --circular, lint cấm `bullmq` ngoài kernel), vitest, CI cơ bản (typecheck + test mỗi PR)
+      (hash: e4849ce, d7e4743, 7026f56, 993c0d4, f74afb8, 1453613)
 - [x] **kernel:** Drizzle (driver pg, PostgreSQL 17) + drizzle-kit; migration đầu tiên: bộ ba tenancy + `krn_outbox`/`krn_outbox_consumed`;
       transactional outbox writer + relay skeleton; zod-validate env (exit-on-invalid)
       (hash: ea91f68, b1e5ccd, 13e44bb, 8e53a08)
-- [ ] **contract:** zod schemas cho case/step/element/run + sinh OpenAPI 3.1, commit spec,
-      CI fail khi regen drift
+- [x] **contract:** zod schemas cho case/step/element/run + sinh OpenAPI 3.1, commit spec,
+      CI fail khi regen drift — `zod-openapi@4.2.4` (pin exact; xem plan để biết vì sao không
+      dùng `@asteasolutions/zod-to-openapi`)
+      (hash: 4b69aca, 52d8f76, 1e0f7a2, 6028915, 8cbf490, 56bd1d2)
 - [x] **run-plan schema:** RunPlan/ChainPlan/CasePlan/StepPlan hoàn chỉnh + canonicalize + SHA-256 + zstd
       + `planFormatVersion` (zstd để planFormatVersion=2) (hash: 6a64ff2)
 - [x] **compiler phase 1:** resolve chuỗi prereq — cycle check, depth ≤ 5, ghim revision
