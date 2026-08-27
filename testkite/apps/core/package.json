@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
