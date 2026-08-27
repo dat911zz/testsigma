@@ -4,9 +4,13 @@ on:
   push:
     paths:
       - 'testkite/**'
+      # Sửa chính workflow này cũng phải chạy lại CI — nếu không, job db-tests thêm ở
+      # commit T9 sẽ không bao giờ chạy trên chính commit giới thiệu nó.
+      - '.github/workflows/testkite-ci.yml'
   pull_request:
     paths:
       - 'testkite/**'
+      - '.github/workflows/testkite-ci.yml'
 
 jobs:
   build-and-test:
@@ -41,3 +45,45 @@ jobs:
       - name: Gate — no browser in API image (apps/core must stay browser-free)
         run: |
           grep -rE "playwright|puppeteer|chromium" testkite/apps/core/src --include='*.ts' && exit 1 || true
+
+  # Tầng test thứ hai: Postgres THẬT. Job build-and-test ở trên chạy PGlite (một
+  # connection wasm) nên tuyệt đối không chứng minh được tranh chấp khoá; suite
+  # test/concurrency tự skip ở đó và CHỈ chạy thật ở job này.
+  db-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: testkite
+          POSTGRES_DB: testkite
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # PostgreSQL 17 là ENGINE CÓ THẨM QUYỀN. PGlite (18.x wasm) chỉ là vòng lặp
+      # nhanh cho dev; lệch hành vi giữa hai bên thì tin job này.
+      TESTKITE_TEST_PG_URL: postgres://postgres:testkite@127.0.0.1:5432/testkite
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack prepare pnpm@9 --activate
+      - name: pnpm install (frozen lockfile)
+        working-directory: testkite
+        run: pnpm install --frozen-lockfile
+      - name: Test DB (PGlite + Postgres 17 thật)
+        working-directory: testkite
+        run: pnpm --filter @testkite/core test
+      # Kiểm chứng cục bộ 2026-08-27: thêm một cột vào schema rồi `pnpm db:generate`
+      # sinh 0007_*.sql VÀ sửa `drizzle/meta/_journal.json` (file đã tracked) ⇒
+      # `git diff --exit-code` bắt được drift; schema không đổi thì generate là no-op.
+      - name: Gate — migration drift (schema đổi mà chưa generate)
+        working-directory: testkite/apps/core
+        run: |
+          pnpm db:generate
+          git diff --exit-code -- drizzle/ \
+            || { echo "Schema đổi nhưng chưa commit migration. Chạy: pnpm db:generate"; exit 1; }
