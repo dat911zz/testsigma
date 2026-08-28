@@ -50,6 +50,13 @@
       "when": 1787844966994,
       "tag": "0006_outbox_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787884349822,
+      "tag": "0007_authoring_workflow",
+      "breakpoints": true
     }
   ]
 }

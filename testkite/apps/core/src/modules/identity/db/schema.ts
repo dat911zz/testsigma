@@ -4,7 +4,17 @@
  * Mọi bảng tenant-scoped: team_id dẫn đầu index + UNIQUE(team_id, id) làm mỏ neo composite FK.
  */
 import { sql } from "drizzle-orm";
-import { index, pgEnum, pgPolicy, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  pgEnum,
+  pgPolicy,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 // Xuôi DAG: identity → kernel qua FACADE. `appRole` là role DB do kernel sở hữu.
 import { appRole } from "../../kernel/index.js";
 
@@ -44,6 +54,12 @@ export const teams = pgTable(
     slug: text("slug").notNull(),
     status: teamStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Four-eyes (blueprint §3): mặc định người-sửa-cuối KHÔNG được tự promote.
+     * Team một người / team pilot bật cờ này để tự promote — quyết định của
+     * team_admin, ghi audit, không phải mặc định im lặng.
+     */
+    allowSelfPromote: boolean("allow_self_promote").notNull().default(false),
   },
   (t) => [
     unique("teams_org_slug_unique").on(t.orgId, t.slug),

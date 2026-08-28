@@ -509,7 +509,7 @@ git commit -m "M2-AUT T1: codec revision zstd native + canonical JSON"
 
 > **5 timestamp workflow** (blueprint §2 "vá dead-DTO cũ"): `created_at`, `updated_at` (đã có từ M1) + `submitted_at`, `reviewed_at`, `promoted_at`. Ba cái sau NULL khi chưa tới bước đó — và CHECK ép chúng khớp `status`, nên không thể tồn tại một case `ready` mà chưa từng được review (đúng thứ hệ cũ để lọt: `review_submitted_at` chưa từng persist — xem §8 câu hỏi mở #10).
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/test/authoring/case-schema.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/test/authoring/case-schema.test.ts`**
 
 ```ts
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
@@ -597,12 +597,12 @@ describe("aut_cases — workflow columns", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/case-schema.test.ts`
 Expected: FAIL ngay test đầu — `pg_type` không có `aut_case_status` (0 row).
 
-- [ ] **Step 3: Thêm cột vào `teams` (module identity)**
+- [x] **Step 3: Thêm cột vào `teams` (module identity)**
 
 Trong `apps/core/src/modules/identity/db/schema.ts`, thêm import `boolean`:
 
@@ -627,7 +627,7 @@ Trong `apps/core/src/modules/identity/index.ts`, sửa dòng export cuối thàn
 export { projects, teams } from "./db/schema.js";
 ```
 
-- [ ] **Step 4: Mở rộng `aut_cases` trong `apps/core/src/modules/authoring/db/schema.ts`**
+- [x] **Step 4: Mở rộng `aut_cases` trong `apps/core/src/modules/authoring/db/schema.ts`**
 
 Đổi khối import đầu file thành (thêm `check`, `integer`, `pgEnum`):
 
@@ -699,19 +699,19 @@ và thêm hai CHECK vào cuối mảng cấu hình (TRƯỚC `pgPolicy`, thứ t
     ),
 ```
 
-- [ ] **Step 5: Sinh migration**
+- [x] **Step 5: Sinh migration**
 
 Run: `cd testkite/apps/core && pnpm db:generate --name=authoring_workflow`
 Expected: `drizzle/0007_authoring_workflow.sql` (số có thể khác — xem mục "Phụ thuộc chéo"). Mở file, xác nhận có `CREATE TYPE "public"."aut_case_status"`, `ALTER TABLE "teams" ADD COLUMN "allow_self_promote" boolean DEFAULT false NOT NULL`, và hai `ADD CONSTRAINT ... CHECK`.
 
 Không cần migration grants ở task này: cột mới nằm trong bảng đã `GRANT SELECT, INSERT, UPDATE, DELETE` từ `0002`/`0004`.
 
-- [ ] **Step 6: Chạy test, xác nhận XANH**
+- [x] **Step 6: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/case-schema.test.ts`
 Expected: PASS 6 test.
 
-- [ ] **Step 7: Verify + commit**
+- [x] **Step 7: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm --filter @testkite/core test`
 Expected: toàn bộ xanh (test M1 không đổi hành vi — cột mới đều có default hoặc nullable).
