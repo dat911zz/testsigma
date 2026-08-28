@@ -75,6 +75,32 @@ jobs:
         run: |
           grep -rE "playwright|puppeteer|chromium" testkite/apps/core/src --include='*.ts' && exit 1 || true
 
+      # Bộ T4 của blueprint §4 là "không thương lượng" ⇒ nó phải là một STEP RIÊNG,
+      # gọi đúng tên khi đỏ, chứ không lẫn trong `pnpm test`.
+      - name: Gate — cách ly tenant L3 (token team B + id team A phải ra 404)
+        working-directory: testkite
+        run: pnpm --filter @testkite/core test test/isolation/
+
+      # Secret không bao giờ được lọt vào code. `tk_` là tiền tố token của TestKite.
+      - name: Gate — không hard-code secret/token trong source
+        run: |
+          if grep -rEn "tk_[0-9a-f]{8}_[A-Za-z0-9_-]{20,}" testkite/apps testkite/packages \
+               --include='*.ts' --include='*.json' | grep -v "test/"; then
+            echo "Có token TestKite thật trong source (ngoài test)."; exit 1
+          fi
+
+      # Never-grantable là danh sách của blueprint §3, không phải quy ước. Đổi nó phải
+      # đi kèm đổi blueprint — gate này bắt hai bên phải khớp.
+      - name: Gate — danh sách never-grantable khớp blueprint
+        working-directory: testkite
+        run: |
+          for p in "secret:write" "quota:set" "element:write" "token:issue:service" "team:purge"; do
+            grep -q "\"$p\"" apps/core/src/modules/identity/rbac/permissions.ts \
+              || { echo "never-grantable thiếu $p"; exit 1; }
+            grep -q "$p" ../docs/SYSTEM_DESIGN.md \
+              || { echo "$p không còn trong blueprint §3"; exit 1; }
+          done
+
   # Tầng test thứ hai: Postgres THẬT. Job build-and-test ở trên chạy PGlite (một
   # connection wasm) nên tuyệt đối không chứng minh được tranh chấp khoá; suite
   # test/concurrency tự skip ở đó và CHỈ chạy thật ở job này.

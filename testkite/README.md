@@ -54,3 +54,22 @@ pnpm install
 pnpm dev:infra     # MySQL 8.4 + Valkey + MinIO
 pnpm typecheck && pnpm test
 ```
+
+### OIDC trong dev/test
+
+- **Prod:** Keycloak self-host (quyết định 28-08-2026). Connector là **generic OIDC** —
+  không có một dòng code nào riêng cho Keycloak; đổi IdP = đổi `issuer_url`.
+- **Test + dev:** mini-IdP in-process (`apps/core/test/harness/mock-idp.ts`, ~200 dòng,
+  dùng `jose`). Lý do: sandbox/CI runner không đảm bảo có docker daemon, và mini-IdP
+  phát được **id_token độc hại theo yêu cầu** (hết hạn, sai `aud`/`iss`, ký bằng khoá
+  ngoài JWKS) — thứ `oauth2-mock-server` không làm được, mà đó mới là phần đáng test.
+  Chính ca `unknown_kid` là lý do connector BẮT BUỘC gọi
+  `client.enableNonRepudiationChecks(config)`: mặc định `openid-client` KHÔNG kiểm chữ ký
+  id_token (OIDC Core §3.1.3.7 mục 6), và TLS của ta có thể kết thúc ở reverse proxy nội bộ.
+- **Keycloak service container trong CI — đã cân nhắc, CHƯA bật:** GitHub Actions chạy
+  được `services: quay.io/keycloak/keycloak` (`start-dev`), nhưng nó tốn ~30–60s boot mỗi
+  job và cần seed realm/client qua `kcadm`. Giá trị thêm so với mini-IdP chỉ là *tính
+  tương thích cấu hình Keycloak thật* — thuộc smoke test M6, không thuộc định nghĩa "xanh"
+  của M2. Khi bật: thêm job thứ ba `oidc-compat` chạy `test/identity/oidc-keycloak.test.ts`
+  với `TESTKITE_TEST_OIDC_ISSUER`, và suite đó `skipIf` khi biến vắng mặt (đúng khuôn
+  `describeRealPg` của M1).
