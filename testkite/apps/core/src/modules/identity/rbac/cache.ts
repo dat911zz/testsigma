@@ -62,7 +62,11 @@ export function createAuthzCache(opts: {
     },
     set(key, grant) {
       // Map preserves insertion order ⇒ the oldest entry is the first key (FIFO, good enough for a 60s cache).
-      if (store.size >= max) {
+      // Only a key that is genuinely NEW can push the map past the cap: overwriting an
+      // existing key leaves the size unchanged, so evicting for it would drop a live
+      // entry for nothing (one busy token refreshing itself would keep forcing other
+      // tokens back to the DB).
+      if (!store.has(key) && store.size >= max) {
         const oldest = store.keys().next();
         if (!oldest.done) store.delete(oldest.value);
       }

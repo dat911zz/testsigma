@@ -1,0 +1,19 @@
+-- Least privilege for `ensure_audit_partition(date)` — a follow-up to 0017, which is
+-- already applied and must not be edited.
+--
+-- 0017 creates the function with a plain `CREATE OR REPLACE FUNCTION ... LANGUAGE plpgsql`
+-- and no REVOKE. Postgres grants EXECUTE on a new function to PUBLIC by default, so both
+-- `testkite_app` and `testkite_auth` inherited the ability to run it — reproduced on the
+-- migrated schema: has_function_privilege(<role>,'ensure_audit_partition(date)','EXECUTE')
+-- returned true for testkite_app, testkite_auth and PUBLIC alike.
+--
+-- The function is DDL: it runs `CREATE TABLE ... PARTITION OF audit_events`. Nothing on the
+-- request path calls it. Its two real callers both run as the migration/owner role, which
+-- keeps EXECUTE as the function's owner regardless of this REVOKE:
+--   * this migration set itself (the 14-month seed loop in 0017)
+--   * the monthly job (M6), via `ensureAuditPartitionsSql()`
+--
+-- Same principle the rest of 0017 already applies to this table: the app role gets SELECT
+-- and INSERT and nothing else, and the DB is what refuses — not a convention that the code
+-- happens never to call it.
+REVOKE EXECUTE ON FUNCTION ensure_audit_partition(date) FROM PUBLIC;

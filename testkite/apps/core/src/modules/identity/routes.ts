@@ -46,7 +46,11 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
     ...(deps.now ? { now: deps.now } : {}),
     ...(deps.defer ? { defer: deps.defer } : {}),
   };
-  const oidc = createOidcConnector({ db: deps.db, ...(deps.now ? { now: deps.now } : {}) });
+  const oidc = createOidcConnector({
+    db: deps.db,
+    audit: deps.audit,
+    ...(deps.now ? { now: deps.now } : {}),
+  });
 
   return [
     publicRoute(byId("loginPassword"), async ({ body }) => {
@@ -76,6 +80,11 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
         connectorId: params.connectorId,
         callbackUrl: body.callbackUrl,
       });
+      // The role sync has COMMITTED by now (its audit entry rode the same transaction).
+      // Same reasoning as setMemberRole below: a permission that just changed has to bite
+      // immediately on NON-HIGH actions too, and those read the 60s cache. Any token of
+      // this team may be carrying the old role, not just the one about to be minted.
+      if (identity.roleChanged) deps.cache.invalidateTeam(identity.teamId);
       return withTenant(deps.db, { teamId: identity.teamId }, async (tx) => {
         const scopes = effectiveScopes(identity.role, ROLE_PERMISSIONS[identity.role], "session");
         const minted = await issueApiToken(
@@ -141,6 +150,11 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
             lastUsedAt: apiTokens.lastUsedAt,
           })
           .from(apiTokens)
+          // RLS already pins this read to `app.team_id`; the predicate is repeated here on
+          // purpose, the same way listMembers/setMemberRole below spell theirs out. Two
+          // independent layers have to fail before a token from another team can be listed,
+          // and the query says out loud which tenant it belongs to.
+          .where(eq(apiTokens.teamId, ctx.teamId))
           .orderBy(desc(apiTokens.createdAt));
         // None of these columns touch token_hash: the secret already left the system at issue time.
         return rows.map((r) => ({

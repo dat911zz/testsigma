@@ -54,4 +54,24 @@ describe("permission cache", () => {
     for (let i = 0; i < 50; i += 1) c.set(`tok-${i}`, grant("team-a"));
     expect(c.size()).toBeLessThanOrEqual(10);
   });
+
+  it("refreshing an EXISTING key while full evicts nobody — the cap counts keys, not writes", () => {
+    // Overwriting a key that is already stored adds no entry, so evicting the oldest one
+    // would be pure loss: a single busy token re-authenticating every 60s would keep
+    // pushing other tokens back to the DB even though the map never grew.
+    const c = createAuthzCache({ now: () => 0, maxEntries: 3 });
+    for (const k of ["tok-a", "tok-b", "tok-c"]) c.set(k, grant("team-a"));
+    c.set("tok-c", grant("team-a"));
+    expect(c.size()).toBe(3);
+    expect(c.get("tok-a"), "the oldest entry was evicted by a plain overwrite").toBeDefined();
+  });
+
+  it("a NEW key while full still evicts the oldest one", () => {
+    const c = createAuthzCache({ now: () => 0, maxEntries: 3 });
+    for (const k of ["tok-a", "tok-b", "tok-c"]) c.set(k, grant("team-a"));
+    c.set("tok-d", grant("team-a"));
+    expect(c.size()).toBe(3);
+    expect(c.get("tok-a")).toBeUndefined();
+    expect(c.get("tok-d")).toBeDefined();
+  });
 });

@@ -148,7 +148,7 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
 
     route(createCaseDescriptor, async (request, reply) => {
       const auth = getAuth(request);
-      requireScope(auth, "case:write");
+      requireScope(auth, createCaseDescriptor);
       const body = createCaseBodySchema.parse(request.body);
       const { projectId } = request.params as { projectId: string };
       const summary = await withTenant(db, { teamId: auth.teamId }, async (tx) => {
@@ -171,7 +171,7 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
 
     route(getCaseDescriptor, async (request, reply) => {
       const auth = getAuth(request);
-      requireScope(auth, "case:read");
+      requireScope(auth, getCaseDescriptor);
       const { caseId } = request.params as { caseId: string };
       const summary = await withTenant(db, { teamId: auth.teamId }, async (tx) => {
         const row = await new CaseRepo(tx, { teamId: auth.teamId }).findById(caseId);
@@ -183,7 +183,7 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
 
     route(replaceStepsDescriptor, async (request, reply) => {
       const auth = getAuth(request);
-      requireScope(auth, "case:write");
+      requireScope(auth, replaceStepsDescriptor);
       const body = replaceStepsBodySchema.parse(request.body);
       const { caseId } = request.params as { caseId: string };
       const summary = await runMutation(auth, caseId, ifMatchHeader(request), (tx, ctx, expectedVersion) =>
@@ -194,7 +194,7 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
 
     route(submitReviewDescriptor, async (request, reply) => {
       const auth = getAuth(request);
-      requireScope(auth, "case:write");
+      requireScope(auth, submitReviewDescriptor);
       const { caseId } = request.params as { caseId: string };
       const summary = await runMutation(auth, caseId, ifMatchHeader(request), (tx, ctx, expectedVersion) =>
         submitForReview(tx, ctx, { userId: auth.userId }, { caseId, expectedVersion }),
@@ -204,7 +204,7 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
 
     route(withdrawReviewDescriptor, async (request, reply) => {
       const auth = getAuth(request);
-      requireScope(auth, "case:write");
+      requireScope(auth, withdrawReviewDescriptor);
       const { caseId } = request.params as { caseId: string };
       const summary = await runMutation(auth, caseId, ifMatchHeader(request), (tx, ctx, expectedVersion) =>
         withdrawReview(tx, ctx, { userId: auth.userId }, { caseId, expectedVersion }),
@@ -214,7 +214,7 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
 
     route(reviewCaseDescriptor, async (request, reply) => {
       const auth = getAuth(request);
-      requireScope(auth, "case:promote");
+      requireScope(auth, reviewCaseDescriptor);
       const body = reviewBodySchema.parse(request.body);
       const { caseId } = request.params as { caseId: string };
       const summary = await runMutation(auth, caseId, ifMatchHeader(request), (tx, ctx, expectedVersion) =>
@@ -230,7 +230,7 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
 
     route(promoteCaseDescriptor, async (request, reply) => {
       const auth = getAuth(request);
-      requireScope(auth, "case:promote");
+      requireScope(auth, promoteCaseDescriptor);
       const { caseId } = request.params as { caseId: string };
       const summary = await runMutation(auth, caseId, ifMatchHeader(request), (tx, ctx, expectedVersion) =>
         promoteCase(tx, ctx, { userId: auth.userId }, { caseId, expectedVersion }),

@@ -5,9 +5,12 @@
  * itself is covered elsewhere (identity's suites + the L3 cross-tenant suite that runs
  * these routes through the real auth hook).
  */
+import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import { sql } from "drizzle-orm";
+import { authoringRoutes as authoringDescriptors, type RouteDescriptor } from "@testkite/contract";
 import { authoringRoutes } from "../../src/modules/authoring/index.js";
 import { makeTestDb, type TestDb } from "../harness/pglite.js";
 
@@ -19,12 +22,18 @@ const alice = { userId: "" };
 const bob = { userId: "" };
 /** Stand-in for what the identity middleware decorates onto each request. */
 let current = { teamId: "", userId: "", scopes: [] as string[] };
+/**
+ * Replaces `current` wholesale for the tests that hand the routes a MALFORMED decorated
+ * context. Typed `unknown` on purpose: the point of those tests is what happens when the
+ * identity middleware's shape stops matching what this module expects.
+ */
+let tkOverride: unknown;
 
 beforeAll(async () => {
   t = await makeTestDb();
   app = Fastify();
   app.addHook("onRequest", async (req) => {
-    (req as unknown as { tk: typeof current }).tk = current;
+    (req as unknown as { tk: unknown }).tk = tkOverride === undefined ? current : tkOverride;
   });
   await app.register(authoringRoutes(t.db));
   await app.ready();
@@ -46,6 +55,7 @@ beforeEach(async () => {
   alice.userId = String(u1.rows[0]?.["id"]);
   bob.userId = String(u2.rows[0]?.["id"]);
   current = { teamId, userId: alice.userId, scopes: ["case:read", "case:write", "case:promote"] };
+  tkOverride = undefined;
 });
 
 describe("full lifecycle over HTTP (M2 exit criteria)", () => {
@@ -265,5 +275,106 @@ describe("malformed path-param uuid -> 400, not 500", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.statusCode).not.toBe(500);
+  });
+});
+
+/**
+ * Every handler used to repeat its required scope as a hand-typed literal next to the
+ * descriptor that already declares it. The two happened to agree, which is exactly the
+ * state in which a later edit to the contract silently leaves the handler behind: the
+ * OpenAPI document and the shell's auth hook would move to the new permission while the
+ * plugin kept checking the old one. These tests pin the enforced scope to the descriptor
+ * — in both directions, so the check can be neither too narrow nor too broad.
+ */
+describe("scope enforcement is read from the contract descriptor", () => {
+  /** Every scope the authoring contract knows about — the pool each probe draws from. */
+  const SCOPES = [
+    ...new Set(authoringDescriptors.map((d) => d.permission).filter((p): p is string => p !== null)),
+  ];
+
+  /** Bodies valid enough to clear schema validation, which runs BEFORE the handler. */
+  const BODIES: Readonly<Record<string, unknown>> = {
+    createCase: { name: "C", isStepGroup: false },
+    replaceSteps: { steps: [] },
+    reviewCase: { decision: "approved" },
+  };
+
+  const call = (d: RouteDescriptor): ReturnType<FastifyInstance["inject"]> => {
+    const url = d.path.replace("{projectId}", projectId).replace("{caseId}", randomUUID());
+    const payload = BODIES[d.operationId];
+    return app.inject({
+      method: d.method.toUpperCase() as "GET" | "POST" | "PUT",
+      url,
+      ...(payload === undefined ? {} : { payload }),
+    });
+  };
+
+  it("the contract declares a permission for every authoring route", () => {
+    expect(authoringDescriptors.length).toBeGreaterThan(0);
+    for (const d of authoringDescriptors) {
+      expect(d.permission, `${d.operationId} declares no permission`).not.toBeNull();
+    }
+  });
+
+  it("a credential holding every OTHER authoring scope is still rejected ⇒ 403", async () => {
+    for (const d of authoringDescriptors) {
+      current = {
+        teamId,
+        userId: alice.userId,
+        scopes: SCOPES.filter((s) => s !== d.permission),
+      };
+      const res = await call(d);
+      expect(res.statusCode, `${d.operationId} accepted a credential without ${String(d.permission)}`).toBe(403);
+      expect(res.json<{ code: string }>().code).toBe("FORBIDDEN");
+    }
+  });
+
+  it("the descriptor's own scope ALONE is enough — the check is not wider than the contract", async () => {
+    for (const d of authoringDescriptors) {
+      current = { teamId, userId: alice.userId, scopes: [String(d.permission)] };
+      const res = await call(d);
+      expect(res.statusCode, `${d.operationId} demanded more than ${String(d.permission)}`).not.toBe(403);
+    }
+  });
+
+  it("no handler hand-types a scope string — every route calls requireScope with its descriptor", async () => {
+    const source = await readFile(
+      new URL("../../src/modules/authoring/routes/cases.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toMatch(/requireScope\(\s*auth\s*,\s*["'`]/);
+    expect((source.match(/requireScope\(/g) ?? []).length).toBe(authoringDescriptors.length);
+  });
+});
+
+/**
+ * `getAuth` is the ONE place that reads the shape identity decorates onto the request, so
+ * it is also the only place that can notice the shape has changed. It already refuses a
+ * missing tenant and a missing user; `scopes` was taken on faith, and a non-array value
+ * turned every downstream `scopes.includes(...)` into either a 500 or — worse, for a
+ * string — an accidental substring match that reads as a granted permission.
+ */
+describe("getAuth rejects a malformed decorated context", () => {
+  it("no `scopes` at all ⇒ 401, never a 500", async () => {
+    tkOverride = { teamId, userId: alice.userId };
+    const res = await app.inject({ method: "GET", url: `/v1/cases/${randomUUID()}` });
+    expect(res.statusCode).not.toBe(500);
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("`scopes` as a STRING ⇒ 401, and never a substring match standing in for a grant", async () => {
+    tkOverride = { teamId, userId: alice.userId, scopes: "case:read case:write" };
+    const res = await app.inject({ method: "GET", url: `/v1/cases/${randomUUID()}` });
+    expect(res.statusCode).not.toBe(200);
+    expect(res.statusCode).not.toBe(404);
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("a well-formed context with an EMPTY scope list still gets the ordinary 403", async () => {
+    // The guard must reject only a broken SHAPE — an empty array is a legitimate context
+    // (a credential that simply holds nothing), and it must keep answering 403, not 401.
+    tkOverride = { teamId, userId: alice.userId, scopes: [] };
+    const res = await app.inject({ method: "GET", url: `/v1/cases/${randomUUID()}` });
+    expect(res.statusCode).toBe(403);
   });
 });

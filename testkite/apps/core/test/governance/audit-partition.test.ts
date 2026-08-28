@@ -90,6 +90,20 @@ describe("audit_events", () => {
     expect(r.rows[0]).toMatchObject({ s: true, i: true, u: false, d: false, tr: false });
   });
 
+  it("ensure_audit_partition is NOT executable by the app role (EXECUTE revoked from PUBLIC)", async () => {
+    // A plain `CREATE FUNCTION` hands EXECUTE to PUBLIC by default, so this DDL helper —
+    // which runs `CREATE TABLE ... PARTITION OF audit_events` — was reachable by every
+    // role in the cluster, `testkite_app` included. Nothing on the request path calls it:
+    // partitions are created by migrations and by the monthly job, both of which run as
+    // the owner. Least privilege here matches the rest of this table's grants.
+    const r = await t.db.execute(sql`
+      SELECT
+        has_function_privilege('testkite_app','ensure_audit_partition(date)','EXECUTE') AS app,
+        has_function_privilege('testkite_auth','ensure_audit_partition(date)','EXECUTE') AS auth,
+        has_function_privilege('public','ensure_audit_partition(date)','EXECUTE') AS pub`);
+    expect(r.rows[0]).toMatchObject({ app: false, auth: false, pub: false });
+  });
+
   it("NO child partition is GRANTed — a child GRANT is a tenant leak", async () => {
     const r = await t.db.execute(sql`
       SELECT c.relname,

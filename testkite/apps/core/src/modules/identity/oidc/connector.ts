@@ -24,11 +24,19 @@
  *     flow). Not enough ⇒ 401.
  *   - If the email belongs to no one ⇒ create a new user, and `email_verified_at` copies
  *     EXACTLY what the IdP says, never self-declared as verified.
+ *
+ * A FIFTH REQUIREMENT, about the role on an ALREADY-ANCHORED login: the membership role is
+ * derived from the IdP's groups, so it has to keep following them. Writing it with ON
+ * CONFLICT DO NOTHING pinned it to whatever the first login happened to assert — a group
+ * REVOKED at the IdP never reached TestKite, which is the one direction a role sync must
+ * never lag in. Every anchored login now re-asserts the mapped role, and a role that
+ * actually moves writes a HIGH audit entry in the SAME transaction.
  */
 import * as client from "openid-client";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { NotFoundError, UnauthorizedError } from "@testkite/contract";
 import { withAuthRole, withTenant, type TkDb } from "../../kernel/index.js";
+import type { AuditPort } from "../audit-port.js";
 import {
   idnOidcConnectors,
   idnOidcIdentities,
@@ -47,11 +55,26 @@ export type OidcIdentity = {
   readonly subject: string;
   readonly role: MembershipRole;
   readonly groups: readonly string[];
+  /**
+   * True when this login actually MOVED the stored membership role (see requirement (5)).
+   * The caller uses it to drop the team's permission cache: without that, a downgrade
+   * would sit behind the 60s TTL on every non-HIGH action.
+   */
+  readonly roleChanged: boolean;
 };
 
 type ConnectorRow = typeof idnOidcConnectors.$inferSelect;
 
-export type OidcDeps = { readonly db: TkDb; readonly now?: () => Date };
+/**
+ * `audit` is the same PORT identity's routes take (audit-port.ts): the role sync writes its
+ * HIGH entry INSIDE the transaction that moves the role, so there is no window where the
+ * role changed and nothing recorded it.
+ */
+export type OidcDeps = {
+  readonly db: TkDb;
+  readonly audit: AuditPort;
+  readonly now?: () => Date;
+};
 
 /** Configuration cache per connector (discovery is one HTTP round-trip each time). */
 const configCache = new Map<string, { config: client.Configuration; at: number }>();
@@ -192,7 +215,7 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
       // Standard OIDC claim, paired with `email`. The IdP not sending it ⇒ treated as NOT verified.
       const emailVerified = claims["email_verified"] === true;
 
-      const userId = await withTenant(deps.db, { teamId: row.teamId }, async (tx) => {
+      const provisioned = await withTenant(deps.db, { teamId: row.teamId }, async (tx) => {
         // (1) Anchored by (connector, sub): the path every login after the first one takes.
         //     Doesn't touch email — a user who changes their email at the IdP is still the same person.
         const anchored = await tx
@@ -207,11 +230,43 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
           .limit(1);
         const known = anchored[0]?.userId;
         if (known !== undefined) {
+          // Requirement (5): re-assert the mapped role, don't just make sure a membership
+          // exists. Read the current role FIRST — ON CONFLICT ... RETURNING would hand
+          // back the value it just wrote, which cannot tell a change from a no-op.
+          const before = await tx
+            .select({ role: memberships.role })
+            .from(memberships)
+            .where(and(eq(memberships.teamId, row.teamId), eq(memberships.userId, known)))
+            .limit(1);
+          const previousRole = before[0]?.role;
           await tx
             .insert(memberships)
             .values({ teamId: row.teamId, userId: known, role })
-            .onConflictDoNothing({ target: [memberships.teamId, memberships.userId] });
-          return known;
+            .onConflictDoUpdate({
+              target: [memberships.teamId, memberships.userId],
+              set: { role },
+            });
+          // `previousRole === undefined` = the membership did not exist and was just
+          // created (someone removed from the team, logging back in through SSO). That is
+          // provisioning, not a change, and the login itself is already audited.
+          const roleChanged = previousRole !== undefined && previousRole !== role;
+          if (roleChanged) {
+            await deps.audit(tx, { teamId: row.teamId }, {
+              actorKind: "system",
+              actorId: known,
+              action: "member.role_change",
+              severity: "HIGH",
+              targetKind: "membership",
+              targetId: known,
+              // `source` separates this from an operator's own setMemberRole: the same
+              // action name with a different origin, which is what an auditor needs to see.
+              // The groups that caused it are deliberately NOT repeated here — the
+              // `auth.oidc_login` entry from this same login already carries them, and
+              // meta has a hard 8 KiB ceiling that an IdP with many groups can reach.
+              meta: { from: previousRole, to: role, source: "oidc", connectorId: row.id, subject },
+            });
+          }
+          return { userId: known, roleChanged };
         }
 
         // (2) This `sub`'s first login. Email is matched via lower() — the same column the
@@ -229,6 +284,11 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
           // IdP verifies the email AND this team has already invited that person. Missing
           // either one ⇒ the SAME 401 as every other failure branch, with no explanation
           // (never act as an oracle).
+          //
+          // Note the deliberate asymmetry with requirement (5): this branch does NOT touch
+          // the existing membership's role. The team invited this person AT a role, and
+          // that invitation stands for the login that links the account; the IdP takes
+          // over from the next login onward, through the anchored branch above.
           if (!emailVerified) throw invalid;
           const member = await tx
             .select({ id: memberships.id })
@@ -266,10 +326,19 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
           .onConflictDoNothing({
             target: [idnOidcIdentities.connectorId, idnOidcIdentities.subject],
           });
-        return id;
+        // First login for this `sub`: the role was just provisioned, not moved.
+        return { userId: id, roleChanged: false };
       });
 
-      return { teamId: row.teamId, userId, email, subject, role, groups };
+      return {
+        teamId: row.teamId,
+        userId: provisioned.userId,
+        email,
+        subject,
+        role,
+        groups,
+        roleChanged: provisioned.roleChanged,
+      };
     },
   };
 }

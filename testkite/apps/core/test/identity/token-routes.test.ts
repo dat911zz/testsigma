@@ -147,6 +147,29 @@ describe("token routes", () => {
     expect(r.json()).toMatchObject({ code: "NOT_FOUND" });
   });
 
+  it("GET /v1/tokens lists ONLY this team's tokens — never another team's", async () => {
+    const createdB = await h.app.inject({
+      method: "POST",
+      url: "/v1/tokens",
+      headers: auth(h.tokens.adminB),
+      payload: { name: "ci-b", scopes: ["case:read"], expiresInDays: 30 },
+    });
+    const b = createdB.json() as { id: string; prefix: string };
+
+    const list = await h.app.inject({ method: "GET", url: "/v1/tokens", headers: auth(h.tokens.adminA) });
+    expect(list.statusCode).toBe(200);
+    const rows = list.json() as { id: string }[];
+    expect(rows.some((r) => r.id === b.id)).toBe(false);
+    expect(list.payload).not.toContain(b.prefix);
+
+    // Team A still sees its own tokens: the tenant filter narrows, it does not empty the list.
+    const own = await h.db.raw.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM api_tokens WHERE team_id = $1`,
+      [h.ids.teamA],
+    );
+    expect(rows.length).toBe(own.rows[0]?.n);
+  });
+
   it("both issue and revoke write a HIGH audit entry", async () => {
     const created = await h.app.inject({
       method: "POST",

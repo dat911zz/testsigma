@@ -15,12 +15,20 @@ afterAll(async () => {
   await h.close();
 });
 
-/** An OIDC connector for an arbitrary team — team B uses this to set up the cross-tenant case. */
-async function newConnector(teamId: string, name: string): Promise<string> {
+/**
+ * An OIDC connector for an arbitrary team — team B uses this to set up the cross-tenant
+ * case. `roleMapping` is the IdP group -> TestKite role table; empty (the default) means
+ * every login falls back to `default_role`.
+ */
+async function newConnector(
+  teamId: string,
+  name: string,
+  roleMapping: Record<string, string> = {},
+): Promise<string> {
   const r = await h.db.raw.query<{ id: string }>(
-    `INSERT INTO idn_oidc_connectors (team_id, name, issuer_url, client_id, client_secret, scopes, default_role, allow_insecure_http)
-     VALUES ($1,$2,$3,$4,$5,ARRAY['openid','email','groups'],'viewer',true) RETURNING id`,
-    [teamId, name, idp.issuer, idp.clientId, idp.clientSecret],
+    `INSERT INTO idn_oidc_connectors (team_id, name, issuer_url, client_id, client_secret, scopes, default_role, allow_insecure_http, role_mapping)
+     VALUES ($1,$2,$3,$4,$5,ARRAY['openid','email','groups'],'viewer',true,$6::jsonb) RETURNING id`,
+    [teamId, name, idp.issuer, idp.clientId, idp.clientSecret, JSON.stringify(roleMapping)],
   );
   return String(r.rows[0]?.id);
 }
@@ -320,5 +328,112 @@ describe("OIDC — resisting cross-tenant session hijack via email", () => {
       expect(u.rows.length).toBe(1);
       expect(u.rows[0]?.v).toBeNull();
     }
+  });
+});
+
+/**
+ * The membership role is provisioned FROM the IdP's groups, so it has to keep following
+ * them. Writing it only on the very first login froze it forever: a group revoked at the
+ * IdP — the one direction that must never lag — never reached TestKite, and the person
+ * kept the role their old groups had bought them for as long as the account existed.
+ */
+describe("OIDC — the membership role is re-synced from the IdP on every login", () => {
+  const ADMIN_GROUP = "acme-admins";
+  const MAPPING = { [ADMIN_GROUP]: "team_admin" };
+
+  const roleOf = async (userId: string): Promise<string | undefined> => {
+    const r = await h.db.raw.query<{ role: string }>(
+      `SELECT role FROM memberships WHERE team_id=$1 AND user_id=$2`,
+      [h.ids.teamA, userId],
+    );
+    return r.rows[0]?.role;
+  };
+
+  const listMembers = (secret: string): ReturnType<TestApp["app"]["inject"]> =>
+    h.app.inject({
+      method: "GET",
+      url: "/v1/members",
+      headers: { authorization: `Bearer ${secret}` },
+    });
+
+  const roleChangeEvents = async (): Promise<
+    { severity: string; meta: Record<string, unknown> }[]
+  > => {
+    const r = await h.db.raw.query<{ severity: string; meta: Record<string, unknown> }>(
+      `SELECT severity, meta FROM audit_events WHERE action='member.role_change' ORDER BY occurred_at`,
+    );
+    return r.rows;
+  };
+
+  it("a group removed at the IdP downgrades the stored role, and the OLD session token loses the permission", async () => {
+    const cid = await newConnector(h.ids.teamA, "kc-sync", MAPPING);
+
+    // Login 1: the IdP still asserts the admin group.
+    const first = await login(cid, {
+      tk_sub: "kc-sync",
+      tk_email: "sync@acme.test",
+      tk_groups: ADMIN_GROUP,
+    });
+    expect(first.statusCode).toBe(200);
+    const userId = userIdOf(first);
+    const oldSecret = (first.json() as { secret: string }).secret;
+    expect(await roleOf(userId)).toBe("team_admin");
+    expect((await listMembers(oldSecret)).statusCode).toBe(200);
+
+    // Login 2: the group is gone, so the mapping no longer matches and the connector's
+    // default_role (viewer) applies.
+    const second = await login(cid, {
+      tk_sub: "kc-sync",
+      tk_email: "sync@acme.test",
+      tk_groups: "",
+    });
+    expect(second.statusCode).toBe(200);
+    expect(userIdOf(second)).toBe(userId);
+    expect(await roleOf(userId)).toBe("viewer");
+
+    // `member:manage` is HIGH_RISK ⇒ the auth hook asks for a FRESH lookup, so the 60s
+    // cache cannot keep the revoked permission alive either.
+    const after = await listMembers(oldSecret);
+    expect(after.statusCode).toBe(403);
+  });
+
+  it("an IdP-driven role change writes a HIGH audit entry naming both roles", async () => {
+    const cid = await newConnector(h.ids.teamA, "kc-audit", MAPPING);
+    await login(cid, { tk_sub: "kc-audit", tk_email: "audit@acme.test", tk_groups: ADMIN_GROUP });
+    await login(cid, { tk_sub: "kc-audit", tk_email: "audit@acme.test", tk_groups: "" });
+
+    const events = await roleChangeEvents();
+    expect(events.length).toBe(1);
+    expect(events[0]?.severity).toBe("HIGH");
+    expect(events[0]?.meta).toMatchObject({ from: "team_admin", to: "viewer", source: "oidc" });
+  });
+
+  it("a login that does NOT change the role writes no audit entry (the log is not a login feed)", async () => {
+    const cid = await newConnector(h.ids.teamA, "kc-stable", MAPPING);
+    for (let i = 0; i < 3; i += 1) {
+      const r = await login(cid, {
+        tk_sub: "kc-stable",
+        tk_email: "stable@acme.test",
+        tk_groups: ADMIN_GROUP,
+      });
+      expect(r.statusCode).toBe(200);
+    }
+    expect(await roleChangeEvents()).toEqual([]);
+  });
+
+  it("an UPGRADE is synced too, and the role stays inside the connector's own team", async () => {
+    const cid = await newConnector(h.ids.teamA, "kc-up", MAPPING);
+    const first = await login(cid, { tk_sub: "kc-up", tk_email: "up@acme.test", tk_groups: "none" });
+    const userId = userIdOf(first);
+    expect(await roleOf(userId)).toBe("viewer");
+
+    await login(cid, { tk_sub: "kc-up", tk_email: "up@acme.test", tk_groups: ADMIN_GROUP });
+    expect(await roleOf(userId)).toBe("team_admin");
+
+    const other = await h.db.raw.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM memberships WHERE team_id=$1 AND user_id=$2`,
+      [h.ids.teamB, userId],
+    );
+    expect(other.rows[0]?.n).toBe(0);
   });
 });

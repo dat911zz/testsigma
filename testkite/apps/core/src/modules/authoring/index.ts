@@ -40,4 +40,10 @@ export {
 // hook. `getAuth`/`requireScope` are the single adapter onto the identity request
 // context; nothing else in authoring touches its shape.
 export { authoringRoutes } from "./routes/cases.js";
-export { getAuth, requireScope, InsufficientScopeError, type RequestAuth } from "./routes/context.js";
+export {
+  getAuth,
+  requireScope,
+  InsufficientScopeError,
+  type RequestAuth,
+  type ScopedDescriptor,
+} from "./routes/context.js";

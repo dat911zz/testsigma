@@ -169,6 +169,13 @@
       "when": 1787908582246,
       "tag": "0023_onboarding_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787929395148,
+      "tag": "0024_audit_partition_fn_revoke",
+      "breakpoints": true
     }
   ]
 }
