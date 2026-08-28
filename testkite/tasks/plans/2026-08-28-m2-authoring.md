@@ -4487,7 +4487,7 @@ git commit -m "M2-AUT T11: promote advisory lock + four-eyes (allow_self_promote
 >
 > Local: `bash scripts/test-pg.sh` (đã có từ M1) dựng cluster tạm rồi export `TESTKITE_TEST_PG_URL`. Không có biến ⇒ suite tự skip, `pnpm test` vẫn xanh. CI job `postgres:17` luôn set biến ⇒ **CI là nơi bằng chứng này thật sự được thu**.
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/test/concurrency/promote-lock.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/test/concurrency/promote-lock.test.ts`**
 
 ```ts
 import { expect, it, beforeAll, afterAll, beforeEach } from "vitest";
@@ -4643,12 +4643,12 @@ describeRealPg("promote dưới tranh chấp thật (Postgres 17)", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy trên máy KHÔNG có Postgres, xác nhận SKIP**
+- [x] **Step 2: Chạy trên máy KHÔNG có Postgres, xác nhận SKIP**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/concurrency/promote-lock.test.ts`
 Expected: suite bị skip (không có `TESTKITE_TEST_PG_URL`), exit code 0.
 
-- [ ] **Step 3: Dựng Postgres thật rồi chạy, xác nhận XANH**
+- [x] **Step 3: Dựng Postgres thật rồi chạy, xác nhận XANH**
 
 ```bash
 cd testkite && bash scripts/test-pg.sh   # in ra TESTKITE_TEST_PG_URL
@@ -4658,7 +4658,7 @@ pnpm --filter @testkite/core test test/concurrency/promote-lock.test.ts
 
 Expected: PASS 4 test. **Dán output thật vào commit message hoặc PR** — đây là bằng chứng duy nhất cho câu "advisory lock hoạt động"; nếu chỉ chạy trên PGlite thì bạn chưa chứng minh gì cả (`verification-before-completion`).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add testkite/apps/core/test/concurrency/promote-lock.test.ts
