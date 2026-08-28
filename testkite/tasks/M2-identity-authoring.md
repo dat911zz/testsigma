@@ -31,3 +31,16 @@
       + seed egress observe 14d) (hash: f77d13a)
 
 **Exit:** bộ T4 cách ly tenant xanh trên CI; tạo case → sửa → review → promote chạy trọn qua API — ✅ XANH (hash: 3a9f8c2, 4abe6cd; test test/authoring/routes.test.ts "create -> edit steps -> submit -> review -> promote, over HTTP only").
+
+## Bàn giao từ đợt polish (28-08-2026, tổng kiến trúc sư xử lý)
+
+- **NIT-56 — ĐÃ VÁ:** bước `Gate — migration drift` trong job db-tests đứng sau bước Test mà thiếu
+  `if: always()`, nên khi test đỏ thì fail-fast của GitHub Actions nuốt luôn cổng drift. Đã thêm
+  `if: always()` + dịch bước sang tiếng Anh.
+- **NIT-58 / NIT-59 — KHÔNG CẦN LÀM (đã lỗi thời):** kiểm chứng lại bằng probe thật — luật queue ĐÃ phủ
+  dynamic import từ M1 (`dynamicImportOf(QUEUE_MODULES)`, eslint.config.mjs), probe `await import("bullmq")`
+  ngoài kernel cho lint đỏ đúng rule; fixture `tools/lint-fixtures/.../orchestration/queue-dynamic.ts` đã
+  tồn tại sẵn. Biến thể tiền tố `node:` không áp dụng vì bullmq/ioredis là gói npm, không phải builtin.
+- **Nghiệm thu bổ sung theo cảnh báo quy trình của triage (NIT-17):** chạy full suite **2 lượt liên tiếp**
+  trên Postgres thật, kết quả giống hệt nhau — 688 test, 0 skip (verb-kit 12 · contract 83 ·
+  run-compiler 179 · apps/core 387 · tools 27). Không còn cơ sở nghi test giòn.

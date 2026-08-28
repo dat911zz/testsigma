@@ -160,12 +160,16 @@ jobs:
       - name: Test DB (PGlite + Postgres 17 thật)
         working-directory: testkite
         run: pnpm --filter @testkite/core test
-      # Kiểm chứng cục bộ 2026-08-27: thêm một cột vào schema rồi `pnpm db:generate`
-      # sinh 0007_*.sql VÀ sửa `drizzle/meta/_journal.json` (file đã tracked) ⇒
-      # `git diff --exit-code` bắt được drift; schema không đổi thì generate là no-op.
-      - name: Gate — migration drift (schema đổi mà chưa generate)
+      # Local check 2026-08-27: adding one column to the schema then running
+      # `pnpm db:generate` writes 0007_*.sql AND edits `drizzle/meta/_journal.json`
+      # (a tracked file), so `git diff --exit-code` catches the drift; when the schema
+      # is unchanged, generate is a no-op.
+      # `if: always()` is load-bearing (polish review NIT-56): without it, a failing test
+      # step short-circuits the job and drift ships unnoticed behind an unrelated red.
+      - name: Gate — migration drift (schema changed without a generated migration)
+        if: always()
         working-directory: testkite/apps/core
         run: |
           pnpm db:generate
           git diff --exit-code -- drizzle/ \
-            || { echo "Schema đổi nhưng chưa commit migration. Chạy: pnpm db:generate"; exit 1; }
+            || { echo "Schema changed but the migration was never committed. Run: pnpm db:generate"; exit 1; }
