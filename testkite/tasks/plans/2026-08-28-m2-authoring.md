@@ -1861,7 +1861,7 @@ git commit -m "M2-AUT T5: DTO authoring (StepInput/CaseSummary/ThreeWayDiff) + r
 
 > **Luật chuẩn hoá (đây là toàn bộ giá trị của hàm này):** vị trí step KHÔNG được biểu diễn bằng số. `after` = id của step liền trước **cùng cha** (null nếu đứng đầu). Spike 2026-08-28 đo: chèn 1 step vào giữa 4 step ⇒ jsondiffpatch/rfc6902/deep-object-diff đều báo **4** thay đổi (3 cái là giả); chuẩn hoá `after` + khoá theo id ⇒ đúng **2** mục (`/steps/s9` added, `/steps/s2/after` modified).
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/src/modules/authoring/revision/diff.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/src/modules/authoring/revision/diff.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -2006,12 +2006,12 @@ describe("threeWayDiff", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test src/modules/authoring/revision/diff.test.ts`
 Expected: FAIL — `Failed to resolve import "./payload.js"`.
 
-- [ ] **Step 3: Implement `apps/core/src/modules/authoring/revision/payload.ts`**
+- [x] **Step 3: Implement `apps/core/src/modules/authoring/revision/payload.ts`**
 
 ```ts
 /**
@@ -2068,7 +2068,7 @@ export interface RevisionPayload {
 }
 ```
 
-- [ ] **Step 4: Implement `apps/core/src/modules/authoring/revision/diff.ts`**
+- [x] **Step 4: Implement `apps/core/src/modules/authoring/revision/diff.ts`**
 
 ```ts
 /**
@@ -2247,12 +2247,12 @@ export function threeWayDiff(input: ThreeWayDiffInput): ThreeWayDiffDto {
 }
 ```
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test src/modules/authoring/revision/diff.test.ts`
 Expected: PASS 12 test.
 
-- [ ] **Step 6: Verify + commit**
+- [x] **Step 6: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm --filter @testkite/core test`
 
