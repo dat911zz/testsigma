@@ -1,0 +1,62 @@
+/**
+ * Cache quyền TTL 60s (blueprint §3). Đây là cache CỦA MỘT TIẾN TRÌNH, không phải
+ * Redis: hệ quả là mỗi instance API có thể lệch nhau tối đa 60s sau khi đổi vai.
+ * Chấp nhận được vì (a) action HIGH bỏ qua cache hoàn toàn — xem Task 6, và
+ * (b) đổi vai gọi invalidateTeam() ngay trong tiến trình xử lý.
+ *
+ * KHÔNG dùng `now` mặc định là Date.now trong test: clock được tiêm để test TTL
+ * không cần sleep.
+ */
+import type { MembershipRole, Permission } from "./permissions.js";
+
+export const AUTHZ_CACHE_TTL_MS = 60_000;
+const DEFAULT_MAX_ENTRIES = 10_000;
+
+export type CachedGrant = {
+  readonly teamId: string;
+  readonly role: MembershipRole;
+  readonly scopes: readonly Permission[];
+  readonly cachedAt: number;
+};
+
+export type AuthzCache = {
+  get: (key: string) => CachedGrant | undefined;
+  set: (key: string, grant: CachedGrant) => void;
+  invalidateTeam: (teamId: string) => void;
+  size: () => number;
+};
+
+export function createAuthzCache(opts: {
+  readonly ttlMs?: number;
+  readonly now?: () => number;
+  readonly maxEntries?: number;
+} = {}): AuthzCache {
+  const ttl = opts.ttlMs ?? AUTHZ_CACHE_TTL_MS;
+  const now = opts.now ?? Date.now;
+  const max = opts.maxEntries ?? DEFAULT_MAX_ENTRIES;
+  const store = new Map<string, CachedGrant>();
+
+  return {
+    get(key) {
+      const hit = store.get(key);
+      if (hit === undefined) return undefined;
+      if (now() - hit.cachedAt > ttl) {
+        store.delete(key);
+        return undefined;
+      }
+      return hit;
+    },
+    set(key, grant) {
+      // Map giữ thứ tự chèn ⇒ entry cũ nhất là key đầu tiên (FIFO, đủ cho một cache 60s).
+      if (store.size >= max) {
+        const oldest = store.keys().next();
+        if (!oldest.done) store.delete(oldest.value);
+      }
+      store.set(key, { ...grant, cachedAt: now() });
+    },
+    invalidateTeam(teamId) {
+      for (const [k, v] of store) if (v.teamId === teamId) store.delete(k);
+    },
+    size: () => store.size,
+  };
+}

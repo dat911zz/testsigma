@@ -23,3 +23,10 @@ export {
   MAX_TOKEN_TTL_DAYS,
   type MintedToken,
 } from "./auth/token.js";
+export {
+  PERMISSIONS, ROLE_PERMISSIONS, NEVER_GRANTABLE, HIGH_RISK,
+  isPermission, isNeverGrantable, isHighRisk,
+  type Permission, type MembershipRole,
+} from "./rbac/permissions.js";
+export { authorize, assertGrantable, effectiveScopes, type CredentialKind } from "./rbac/authorize.js";
+export { createAuthzCache, AUTHZ_CACHE_TTL_MS, type AuthzCache, type CachedGrant } from "./rbac/cache.js";
