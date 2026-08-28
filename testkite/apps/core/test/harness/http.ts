@@ -13,6 +13,7 @@ import {
 import { identityRouteRegistrations } from "../../src/modules/identity/routes.js";
 import { writeAuditEvent } from "../../src/modules/governance/index.js";
 import { governanceRouteRegistrations } from "../../src/modules/governance/routes.js";
+import { authoringRoutes } from "../../src/modules/authoring/index.js";
 import { onboardRouteRegistration } from "../../src/http/usecases/onboard-team.js";
 
 export type TestApp = {
@@ -116,6 +117,9 @@ export async function makeTestApp(): Promise<TestApp> {
       // Onboarding nộp từ tầng shell (nó ghép bốn module) — y hệt composition-root thật.
       onboardRouteRegistration({ db: db.db }),
     ],
+    // Authoring is a plugin (same as composition-root); the L3 suite drives its
+    // routes through the real auth hook to prove cross-tenant ids yield 404.
+    plugins: [authoringRoutes(db.db)],
   });
   await app.ready();
 
@@ -215,7 +219,18 @@ export async function makeTestApp(): Promise<TestApp> {
       sql`INSERT INTO memberships (team_id,user_id,role) VALUES (${ids.teamA},${ids.orgAdminUser},'org_admin')`,
     );
 
-    const ADMIN = ["case:read", "member:manage", "token:issue:user", "audit:read", "team:manage"];
+    // case:write + case:promote let the L3 suite reach the authoring handlers (and get
+    // 404 for a cross-tenant id) instead of stopping at the scope gate; team_admin's
+    // role grants both, so the effective scope set is unchanged in kind.
+    const ADMIN = [
+      "case:read",
+      "case:write",
+      "case:promote",
+      "member:manage",
+      "token:issue:user",
+      "audit:read",
+      "team:manage",
+    ];
     const AUTHOR = ["case:read", "case:write", "run:trigger"];
     // org_admin: quản người + tạo team, KHÔNG đọc tài sản team (break-glass mới đọc).
     const ORG_ADMIN = ["member:manage", "audit:read", "team:manage", "team:create"];

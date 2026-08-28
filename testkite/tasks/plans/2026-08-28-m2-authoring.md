@@ -5194,7 +5194,7 @@ git commit -m "M2-AUT T13: buildCompileSnapshot (pin ready/latest) noi voi run-c
 
 Mã lỗi: 404 `case_not_found` (kể cả id của tenant khác — **không bao giờ 403**), 428 `if_match_required`, 409 `version_conflict` (body = `ThreeWayDiff`), 409 `invalid_case_state`, 403 `four_eyes_self_promote`, 403 `insufficient_scope`.
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/test/authoring/routes.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/test/authoring/routes.test.ts`**
 
 ```ts
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
@@ -5431,12 +5431,12 @@ describe("cách ly tenant + scope", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/routes.test.ts`
 Expected: FAIL — `authoringRoutes` chưa được export.
 
-- [ ] **Step 3: Implement `apps/core/src/modules/authoring/routes/context.ts`**
+- [x] **Step 3: Implement `apps/core/src/modules/authoring/routes/context.ts`**
 
 ```ts
 /**
@@ -5478,7 +5478,7 @@ export function requireScope(auth: RequestAuth, scope: string): void {
 }
 ```
 
-- [ ] **Step 4: Implement `apps/core/src/modules/authoring/routes/cases.ts`**
+- [x] **Step 4: Implement `apps/core/src/modules/authoring/routes/cases.ts`**
 
 ```ts
 /**
@@ -5632,7 +5632,7 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
 
 > `await import(...)` trong handler GET là **tạm bợ có chủ đích** để tránh vòng import khi facade còn đang được dựng. Nếu `pnpm lint:cycles` (madge) xanh với import tĩnh thì **chuyển sang import tĩnh ở đầu file** — dynamic import trong hot path là chi phí không cần thiết.
 
-- [ ] **Step 5: Đăng ký plugin + export facade**
+- [x] **Step 5: Đăng ký plugin + export facade**
 
 `apps/core/src/modules/authoring/index.ts` — thêm:
 
@@ -5647,16 +5647,16 @@ export { getAuth, requireScope, InsufficientScopeError, type RequestAuth } from 
   await app.register(authoringRoutes(db), { prefix: "/v1" });
 ```
 
-- [ ] **Step 6: Cài `fastify` nếu identity chưa cài**
+- [x] **Step 6: Cài `fastify` nếu identity chưa cài**
 
 Run: `cd testkite && pnpm --filter @testkite/core add fastify@^5.2.0` (bỏ qua nếu plan identity đã thêm — kiểm tra `apps/core/package.json` trước).
 
-- [ ] **Step 7: Chạy test, xác nhận XANH**
+- [x] **Step 7: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/routes.test.ts`
 Expected: PASS 8 test — trong đó test "VÒNG ĐỜI TRỌN VẸN QUA HTTP" chính là **exit criteria của M2**.
 
-- [ ] **Step 8: Verify + commit**
+- [x] **Step 8: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm lint && pnpm lint:cycles && pnpm test && pnpm openapi:check`
 

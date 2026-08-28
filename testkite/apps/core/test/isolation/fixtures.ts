@@ -34,13 +34,34 @@ export const RESOURCE_FIXTURES: Readonly<Record<string, (c: FixtureCtx) => Promi
     if (id === undefined) throw new Error("fixture connectorId hỏng: INSERT không trả id");
     return id;
   },
-  // --- authoring nộp fixture của nó vào đây (caseId, stepId, revisionId, ...) ---
+  // --- authoring ---
+  // A project owned by team A. POST /v1/projects/{projectId}/cases with team B's token
+  // must yield 404 (the project is invisible), never a leak that it exists elsewhere.
+  projectId: async ({ app }) => app.ids.projectA,
+  // A case owned by team A, created through the real product route with an author of
+  // team A (author role carries case:write). Every /v1/cases/{caseId} route is then
+  // probed with team B's token and must return 404.
+  caseId: async ({ app }) => {
+    const r = await app.app.inject({
+      method: "POST",
+      url: `/v1/projects/${app.ids.projectA}/cases`,
+      headers: { authorization: `Bearer ${app.tokens.authorA}` },
+      payload: { name: "L3 fixture", isStepGroup: false },
+    });
+    if (r.statusCode !== 201) throw new Error(`fixture caseId failed: ${r.statusCode} ${r.body}`);
+    return (r.json() as { id: string }).id;
+  },
 };
 
 export const BODY_FIXTURES: Readonly<Record<string, unknown>> = {
   setMemberRole: { role: "viewer" },
   oidcStart: { redirectUri: "http://127.0.0.1:8080/cb" },
   oidcCallback: { callbackUrl: "http://127.0.0.1:8080/cb?code=x&state=y" },
+  // Valid authoring bodies so the L3 probe reaches the tenant check (404) instead of
+  // stopping at body validation (400), which would hide the 404-vs-403 question.
+  createCase: { name: "L3", isStepGroup: false },
+  replaceSteps: { steps: [] },
+  reviewCase: { decision: "approved" },
 };
 
 /**
