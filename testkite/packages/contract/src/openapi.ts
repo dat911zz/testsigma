@@ -16,6 +16,8 @@ import type { oas31 } from "zod-openapi";
 import {
   authoredCaseSchema,
   authoredStepSchema,
+  caseChangeSchema,
+  caseSummarySchema,
   compileDiagnosticSchema,
   dataProfileSchema,
   dataRowSchema,
@@ -23,6 +25,8 @@ import {
   envSchema,
   locatorSchema,
   runSchema,
+  stepInputSchema,
+  threeWayDiffSchema,
 } from "./schemas/index.js";
 
 /**
@@ -39,6 +43,10 @@ export const OPENAPI_SCHEMA_NAMES = [
   "Env",
   "CompileDiagnostic",
   "Run",
+  "StepInput",
+  "CaseSummary",
+  "CaseChange",
+  "ThreeWayDiff",
 ] as const;
 
 export const OPENAPI_INFO = {
@@ -63,6 +71,10 @@ export function buildOpenApiDocument(): oas31.OpenAPIObject {
         Env: envSchema,
         CompileDiagnostic: compileDiagnosticSchema,
         Run: runSchema,
+        StepInput: stepInputSchema,
+        CaseSummary: caseSummarySchema,
+        CaseChange: caseChangeSchema,
+        ThreeWayDiff: threeWayDiffSchema,
       },
     },
   });

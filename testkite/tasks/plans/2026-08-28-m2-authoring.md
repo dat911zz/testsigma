@@ -1449,7 +1449,14 @@ git commit -m "M2-AUT T4: aut_case_revisions append-only zstd (grant SELECT+INSE
 
 > **Vì sao `StepInput` KHÔNG dùng lại `AuthoredStep`:** hai DTO phục vụ hai chiều khác nhau. `AuthoredStep` là thứ **compiler đọc** — không có id (compiler không cần), có `ordinal` (đã hoá giải thành số). `StepInput` là thứ **tác giả gửi lên** — phải có `id` optional để server giữ nguyên danh tính step qua các lần sửa (nếu không, mọi lần lưu sinh id mới ⇒ diff 3 chiều báo "thay toàn bộ case", đúng lớp nhiễu mà spike đã đo), và KHÔNG có `ordinal` vì vị trí = thứ tự phần tử trong mảng, để client không bao giờ gửi lên một bộ ordinal tự mâu thuẫn.
 
-- [ ] **Step 1: Viết test ĐỎ `packages/contract/src/schemas/authoring.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `packages/contract/src/schemas/authoring.test.ts`**
+
+> **Sửa lỗi block spec khi thực thi:** vòng lặp "phủ đúng 6 kind" dưới đây THIẾU nhánh `rest`
+> (không gán `method`/`url`), nên `.every()` trả `false` và test không bao giờ xanh được với
+> schema đúng. Đã thêm `if (kind === "rest") { base["method"] = "GET"; base["url"] = "https://x.test/orders"; }`.
+> KHÔNG nới lỏng schema: `aut_rest_steps.method`/`url` là `NOT NULL` (Task 3) và Task 8 đọc
+> thẳng `node.method`/`node.url` — method/url phải BẮT BUỘC. Kèm thêm một test khẳng định
+> rest thiếu method/url bị từ chối (11 test thay vì 10).
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -1571,12 +1578,12 @@ describe("threeWayDiffSchema", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/contract test`
 Expected: FAIL — `Failed to resolve import "./authoring.js"`.
 
-- [ ] **Step 3: Implement `packages/contract/src/schemas/authoring.ts`**
+- [x] **Step 3: Implement `packages/contract/src/schemas/authoring.ts`**
 
 ```ts
 /**
@@ -1787,7 +1794,7 @@ export interface ThreeWayDiffDto {
 }
 ```
 
-- [ ] **Step 4: Nối vào barrel + OpenAPI**
+- [x] **Step 4: Nối vào barrel + OpenAPI**
 
 `packages/contract/src/schemas/index.ts` — thêm dòng CUỐI:
 
@@ -1815,15 +1822,16 @@ và **vào cuối** object `components.schemas` trong `buildOpenApiDocument()`:
 
 > Thêm vào CUỐI là bắt buộc: `openapi.json` được so **theo byte** trong gate drift, và thứ tự khoá quyết định byte.
 
-- [ ] **Step 5: Chạy test, xác nhận XANH + sinh lại spec**
+- [x] **Step 5: Chạy test, xác nhận XANH + sinh lại spec**
 
 Run: `cd testkite && pnpm --filter @testkite/contract test`
 Expected: PASS (10 test mới + toàn bộ test cũ của contract).
+Thực tế: 66 pass (55 cũ + 11 mới); `openapi.json` +374 dòng, 0 dòng xoá — 4 schema nối đúng vào CUỐI.
 
 Run: `cd testkite && pnpm openapi:gen && pnpm openapi:check`
 Expected: `openapi.json` có thêm 4 schema; `openapi:check` xanh (không diff sau khi commit file mới sinh).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add testkite/packages/contract/src/schemas/authoring.ts \

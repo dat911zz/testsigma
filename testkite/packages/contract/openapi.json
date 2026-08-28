@@ -480,6 +480,380 @@
           "verdict",
           "diagnostics"
         ]
+      },
+      "StepInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "action"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verbOpKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "args": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "elementId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "kind",
+              "renderedSentence",
+              "verbOpKey"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "step_group"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "stepGroupCaseId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "kind",
+              "renderedSentence",
+              "stepGroupCaseId"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "if"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "conditionExpected": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StepInput"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "renderedSentence",
+              "conditionExpected",
+              "children"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "for"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "loopDataProfileId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StepInput"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "renderedSentence",
+              "loopDataProfileId",
+              "children"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "while"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "maxIterations": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/StepInput"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "renderedSentence",
+              "children"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "rest"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "renderedSentence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE",
+                  "HEAD",
+                  "OPTIONS"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "body": {
+                "type": "string"
+              },
+              "storeAs": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "kind",
+              "renderedSentence",
+              "method",
+              "url"
+            ]
+          }
+        ]
+      },
+      "CaseSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "isStepGroup": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "in_review",
+              "ready"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "prereqCaseId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dataProfileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "latestRevisionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "readyRevisionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lastEditedBy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "updatedAt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "submittedAt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reviewedAt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "promotedAt": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "name",
+          "isStepGroup",
+          "status",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CaseChange": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "modified"
+            ]
+          },
+          "base": {},
+          "value": {}
+        },
+        "required": [
+          "path",
+          "kind"
+        ]
+      },
+      "ThreeWayDiff": {
+        "type": "object",
+        "properties": {
+          "baseVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "baseRevisionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "currentVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "currentRevisionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mine": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaseChange"
+            }
+          },
+          "theirs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaseChange"
+            }
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "baseVersion",
+          "baseRevisionId",
+          "currentVersion",
+          "currentRevisionId",
+          "mine",
+          "theirs",
+          "conflicts"
+        ]
       }
     }
   }
