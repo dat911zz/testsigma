@@ -5673,7 +5673,7 @@ git commit -m "M2-AUT T14: route vong doi case (tao/sua/submit/review/promote) q
 
 ## Task 15 — Tick backlog M2
 
-- [ ] **Step 1: Tick các dòng authoring trong `testkite/tasks/M2-identity-authoring.md`**
+- [x] **Step 1: Tick các dòng authoring trong `testkite/tasks/M2-identity-authoring.md`**
 
 ```
 - [x] Authoring: aut_cases (5 timestamp workflow đủ) / aut_steps / aut_step_loops / aut_rest_steps
@@ -5684,7 +5684,7 @@ git commit -m "M2-AUT T14: route vong doi case (tao/sua/submit/review/promote) q
 
 Chỉ tick dòng **Exit** (`tạo case → sửa → review → promote chạy trọn qua API`) khi Task 14 đã xanh; phần `bộ T4 cách ly tenant xanh trên CI` thuộc plan identity, KHÔNG tick từ đây.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add testkite/tasks/M2-identity-authoring.md

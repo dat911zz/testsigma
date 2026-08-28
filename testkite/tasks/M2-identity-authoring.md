@@ -13,11 +13,13 @@
 - [ ] Cách ly L2: composite FK (team_id, parent) toàn đồ thị asset
 - [x] Cách ly L3: **bộ CI cross-tenant sinh từ OpenAPI — token B + id A ⇒ 404** (không bao giờ 403) (hash: 4eef1e0)
 - [x] audit_events (partition tháng; app user không có DELETE grant) (hash: 8713291)
-- [ ] Authoring: aut_cases (5 timestamp workflow đủ) / aut_steps / aut_step_loops / aut_rest_steps
+- [x] Authoring: aut_cases (5 timestamp workflow đủ) / aut_steps / aut_step_loops / aut_rest_steps
       + revisions (zstd append-only) + reviews + advisory locks
-- [ ] Four-eyes: người-sửa-cuối-không-tự-promote (trừ teams.allow_self_promote)
-- [ ] Optimistic concurrency: version + ETag/If-Match (428 nếu thiếu), 409 kèm diff 3 chiều
+      (hash: 1e1cda9, 030fb0b, 7bc9c40, 18b192a, 6bf6bcc)
+- [x] Four-eyes: người-sửa-cuối-không-tự-promote (trừ teams.allow_self_promote) (hash: 6bf6bcc)
+- [x] Optimistic concurrency: version + ETag/If-Match (428 nếu thiếu), 409 kèm diff 3 chiều
+      (hash: 6024b1c, ca09804, 9370218)
 - [x] Onboarding team = 1 transaction idempotent (quota + 3 env stub + team_admin + service account
       + seed egress observe 14d) (hash: f77d13a)
 
-**Exit:** bộ T4 cách ly tenant xanh trên CI; tạo case → sửa → review → promote chạy trọn qua API.
+**Exit:** bộ T4 cách ly tenant xanh trên CI; tạo case → sửa → review → promote chạy trọn qua API — ✅ XANH (hash: 3a9f8c2, 4abe6cd; test test/authoring/routes.test.ts "create -> edit steps -> submit -> review -> promote, over HTTP only").
