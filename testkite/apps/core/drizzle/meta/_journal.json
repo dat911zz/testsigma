@@ -120,6 +120,13 @@
       "when": 1787896718297,
       "tag": "0016_auth_role_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787980341000,
+      "tag": "0017_audit_events",
+      "breakpoints": true
     }
   ]
 }

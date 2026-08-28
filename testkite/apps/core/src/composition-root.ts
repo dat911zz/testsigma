@@ -13,6 +13,7 @@
 import { createDb, type KernelEnv } from "./modules/kernel/index.js";
 import { createAuthenticator, createAuthzCache } from "./modules/identity/index.js";
 import { identityRouteRegistrations } from "./modules/identity/routes.js";
+import { governanceRouteRegistrations } from "./modules/governance/routes.js";
 import { buildHttpApp, type TkApp } from "./http/app.js";
 
 export async function buildApp(env: KernelEnv): Promise<TkApp> {
@@ -26,6 +27,7 @@ export async function buildApp(env: KernelEnv): Promise<TkApp> {
     authenticator,
     registrations: [
       ...identityRouteRegistrations({ db, cache }),
+      ...governanceRouteRegistrations({ db }),
       // authoring nối registration của nó vào đây (một dòng, sau identity).
     ],
   });

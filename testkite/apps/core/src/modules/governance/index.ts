@@ -8,3 +8,13 @@
  *  - Repository phải khởi tạo với TenantContext (fail-closed) — xem lớp cách ly L1.
  */
 export const MODULE = "governance" as const;
+
+export {
+  writeAuditEvent,
+  AUDIT_RETENTION_DAYS,
+  ensureAuditPartitionsSql,
+  type AuditEventInput,
+  type AuditSeverity,
+  type AuditActorKind,
+} from "./audit/write.js";
+export { auditEvents } from "./db/audit-schema.js";

@@ -11,6 +11,7 @@ import {
   mintTokenSecret,
 } from "../../src/modules/identity/index.js";
 import { identityRouteRegistrations } from "../../src/modules/identity/routes.js";
+import { governanceRouteRegistrations } from "../../src/modules/governance/routes.js";
 
 export type TestApp = {
   readonly app: TkApp;
@@ -72,7 +73,10 @@ export async function makeTestApp(): Promise<TestApp> {
     env: ENV,
     db: db.db,
     authenticator,
-    registrations: [...identityRouteRegistrations({ db: db.db, cache })],
+    registrations: [
+      ...identityRouteRegistrations({ db: db.db, cache }),
+      ...governanceRouteRegistrations({ db: db.db }),
+    ],
   });
   await app.ready();
 
