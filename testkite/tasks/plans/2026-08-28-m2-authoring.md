@@ -264,11 +264,11 @@ Sửa: `apps/core/src/modules/authoring/index.ts` (facade), `apps/core/src/modul
   - `encodeRevision(payload: unknown): EncodedRevision`
   - `decodeRevision(codec: RevisionCodec, bytes: Uint8Array): unknown`
 
-- [ ] **Step 1: Nâng sàn Node**
+- [x] **Step 1: Nâng sàn Node**
 
 Trong `testkite/package.json`, đổi `"node": ">=22"` thành `"node": ">=22.15.0"` (mốc zstd vào `node:zlib`). Không đụng `.github/workflows/testkite-ci.yml`: `node-version: '22'` đã lấy bản 22.x mới nhất.
 
-- [ ] **Step 2: Viết test ĐỎ `apps/core/src/modules/authoring/revision/codec.test.ts`**
+- [x] **Step 2: Viết test ĐỎ `apps/core/src/modules/authoring/revision/codec.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -372,12 +372,12 @@ describe("decodeRevision", () => {
 });
 ```
 
-- [ ] **Step 3: Chạy test, xác nhận ĐỎ**
+- [x] **Step 3: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test src/modules/authoring/revision/codec.test.ts`
 Expected: FAIL — `Failed to resolve import "./canonical.js"`.
 
-- [ ] **Step 4: Implement `apps/core/src/modules/authoring/revision/canonical.ts`**
+- [x] **Step 4: Implement `apps/core/src/modules/authoring/revision/canonical.ts`**
 
 ```ts
 /**
@@ -411,7 +411,7 @@ export function canonicalJson(value: unknown): string {
 }
 ```
 
-- [ ] **Step 5: Implement `apps/core/src/modules/authoring/revision/codec.ts`**
+- [x] **Step 5: Implement `apps/core/src/modules/authoring/revision/codec.ts`**
 
 ```ts
 /**
@@ -477,12 +477,12 @@ export function decodeRevision(codec: RevisionCodec, bytes: Uint8Array): unknown
 }
 ```
 
-- [ ] **Step 6: Chạy test, xác nhận XANH**
+- [x] **Step 6: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test src/modules/authoring/revision/codec.test.ts`
 Expected: PASS 14 test.
 
-- [ ] **Step 7: Verify + commit**
+- [x] **Step 7: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm --filter @testkite/core test`
 Expected: typecheck xanh; toàn bộ test cũ vẫn PASS.
