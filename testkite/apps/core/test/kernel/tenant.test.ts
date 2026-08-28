@@ -1,8 +1,9 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../harness/pglite.js";
-import { withTenant } from "../../src/modules/kernel/db/tenant.js";
+import { withAuthRole, withTenant } from "../../src/modules/kernel/db/tenant.js";
 import { MissingTenantContextError, TenantRepo } from "../../src/modules/kernel/db/repo.js";
+import { APP_ROLE, AUTH_ROLE } from "../../src/modules/kernel/db/schema.js";
 
 let t: TestDb;
 let teamA = "";
@@ -93,6 +94,32 @@ describe("withTenant", () => {
     ).rejects.toThrow(MissingTenantContextError);
     const r = await t.db.execute(sql`SELECT count(*)::int AS n FROM projects`);
     expect(r.rows[0]?.["n"]).toBe(2);
+  });
+});
+
+describe("APP_ROLE / AUTH_ROLE are safe to interpolate raw into SQL (NIT-36)", () => {
+  // tenant.ts does `sql.raw(\`SET LOCAL ROLE ${APP_ROLE}\`)` / `${AUTH_ROLE}` — safe ONLY
+  // because both are our own compile-time constants, not user input, as the comments right
+  // there say. That assumption was previously asserted only in a comment, not by any
+  // machine-checked test — this canary turns it into one: an unquoted identifier (matches
+  // Postgres's bare-identifier syntax), which also means neither value could carry a `;` or
+  // whitespace that would break out of `SET LOCAL ROLE <here>` into a second statement.
+  const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
+
+  it("APP_ROLE matches a safe bare SQL identifier", () => {
+    expect(APP_ROLE).toMatch(IDENTIFIER);
+  });
+
+  it("AUTH_ROLE matches a safe bare SQL identifier", () => {
+    expect(AUTH_ROLE).toMatch(IDENTIFIER);
+  });
+
+  it("withAuthRole actually switches to that role (end-to-end, not just the constant's shape)", async () => {
+    const row = await withAuthRole(t.db, async (tx) => {
+      const r = await tx.execute(sql`SELECT current_user AS u`);
+      return r.rows[0];
+    });
+    expect(row?.["u"]).toBe(AUTH_ROLE);
   });
 });
 

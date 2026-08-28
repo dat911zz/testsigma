@@ -13,7 +13,7 @@ export type ErrorPayload = {
   readonly message: string;
   readonly requestId: string;
   readonly issues?: readonly string[];
-};
+} & Readonly<Record<string, unknown>>;
 
 const GENERIC = "The request could not be completed.";
 
@@ -40,9 +40,7 @@ export function toErrorPayload(err: unknown, requestId: string): { status: numbe
         code: err.code,
         message: err.tenantVisible ? err.message : GENERIC,
         requestId,
-        ...(err instanceof Error && "issues" in err && Array.isArray(err.issues)
-          ? { issues: err.issues as readonly string[] }
-          : {}),
+        ...err.publicExtras(),
       },
     };
   }

@@ -20,7 +20,12 @@ export interface AuthoredStep {
   readonly conditionExpected?: readonly string[];
   /** kind=for: the data profile that feeds the loop. */
   readonly loopDataProfileId?: string;
-  /** kind=while: mandatory — missing it is a compile error. */
+  /**
+   * kind=while: NOT required at this boundary — a while with no iteration cap is valid
+   * authoring data (contract/schemas/step.ts). The compiler is what judges it, raising the
+   * `while_without_max_iterations` diagnostic instead of rejecting at the API edge, so an
+   * author gets every error batched into one pass rather than one at a time.
+   */
   readonly maxIterations?: number;
   /** The NLP sentence shown to QA in the results. */
   readonly renderedSentence: string;

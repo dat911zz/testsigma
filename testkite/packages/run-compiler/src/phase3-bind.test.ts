@@ -84,6 +84,22 @@ describe("phase 3 — bind verb: args", () => {
     expect(step?.args).toEqual({ value: "admin" });
   });
 
+  it("when BOTH args.element and elementId are present, argsForCheck prefers args.element (NIT-02)", () => {
+    // elementId is a well-formed, valid element id — if it were used for the check instead
+    // of args.element, `web.click`'s required `element` param would be satisfied and no
+    // diagnostic would fire. args.element is deliberately an EMPTY string here (fails
+    // `requiredArg = z.string().min(1)`): a diagnostic firing is the only way to observe,
+    // from the outside, which of the two actually won.
+    const r = bindOf([actionOn(1, "web.click", "el-real-and-valid", { element: "" })]);
+
+    expect(r.diagnostics.map((d) => d.code)).toEqual(["verb_args_invalid"]);
+    expect(r.diagnostics[0]?.stepOrdinal).toBe(1);
+    // The IR itself is unaffected — argsForCheck is CHECK-ONLY, the author's args/elementId
+    // both pass through to the bound step untouched (the step is dropped only because the
+    // check above failed, same as any other verb_args_invalid).
+    expect(r.cases[0]?.steps).toEqual([]);
+  });
+
   it("web.click with no element (neither args nor elementRef) ⇒ verb_args_invalid", () => {
     const r = bindOf([action(2, "web.click")]);
 

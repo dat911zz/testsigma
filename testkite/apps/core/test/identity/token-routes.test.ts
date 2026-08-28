@@ -96,15 +96,19 @@ describe("token routes", () => {
     expect(n.rows[0]?.n).toBe(0);
   });
 
-  it("requesting a scope wider than the role ⇒ 403", async () => {
+  it("a token whose own scopes don't carry token:issue:user ⇒ 403, even though the author ROLE grants it", async () => {
+    // Effective scope = token.scopes ∩ ROLE_PERMISSIONS[role] (rbac/authorize.ts):
+    // `author` DOES have token:issue:user in permissions.ts's AUTHOR set, but authorA was
+    // minted with a narrower scope list (harness's own AUTHOR array below) that doesn't
+    // include it — the intersection can never contain a scope the token itself lacks, no
+    // matter what the role would otherwise allow. That is exactly the branch under test.
     const r = await h.app.inject({
       method: "POST",
       url: "/v1/tokens",
       headers: auth(h.tokens.authorA),
       payload: { name: "x", scopes: ["case:read"], expiresInDays: 30 },
     });
-    // Does author have token:issue:user? Yes — but the route requires exactly that permission, so this is a 201.
-    expect([201, 403]).toContain(r.statusCode);
+    expect(r.statusCode).toBe(403);
   });
 
   it("revoking a token ⇒ 204, and that token is immediately 401", async () => {

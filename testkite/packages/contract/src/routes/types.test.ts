@@ -68,7 +68,11 @@ describe("ROUTES", () => {
     }
   });
 
-  it("an auth=required route must explicitly declare a permission or null", () => {
+  it("a public route (auth='public') never declares a permission — there's no credential yet to check it against", () => {
+    // Deliberately ONE direction only: the reverse ("auth='required' ⇒ permission is
+    // non-null") does NOT hold — identity.ts's `getMe` is auth='required' with
+    // permission=null on purpose (being logged in is the whole requirement, nothing to
+    // check beyond that). Asserting both directions would make that route fail this test.
     for (const r of ROUTES) {
       if (r.auth === "public") expect(r.permission).toBeNull();
     }

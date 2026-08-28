@@ -116,6 +116,28 @@ describe("buildRevisionPayload", () => {
     expect(restStep?.rest).toEqual({ method: "POST", url: "https://x.test/o" });
   });
 
+  it("a `while` step with no maxIterations produces `loop: {}`, NOT a missing/undefined loop (NIT-09)", () => {
+    // maxIterations is intentionally optional at the API boundary (contract/schemas/step.ts)
+    // — an author may submit a while with no cap, and the COMPILER is what raises the
+    // `while_without_max_iterations` diagnostic later, not this layer. That means this
+    // path is genuinely reachable over HTTP and needs to stay locked, not just documented.
+    const flat = flattenStepInputs({
+      caseId: "c1",
+      steps: [{ kind: "while", renderedSentence: "while spinner", children: [] }],
+      existingIds: new Set(),
+      newId: seqIds(),
+    });
+    const payload = buildRevisionPayload({
+      case: { name: "C", isStepGroup: false },
+      steps: flat.steps,
+      loops: flat.loops,
+      rests: flat.rests,
+    });
+    const whileStep = payload.steps.find((s) => s.kind === "while");
+    expect(whileStep?.loop).toEqual({});
+    expect(whileStep).toHaveProperty("loop");
+  });
+
   it("omits undefined fields entirely — the canonical hash must not depend on how the object was built", () => {
     const flat = flattenStepInputs({
       caseId: "c1",

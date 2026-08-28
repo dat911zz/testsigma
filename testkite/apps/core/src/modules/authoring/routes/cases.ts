@@ -13,11 +13,9 @@
  * authoritative check-then-act; this pre-read only decides 404-vs-428.
  */
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
-import { hasZodFastifySchemaValidationErrors, validatorCompiler } from "fastify-type-provider-zod";
-import { ZodError } from "zod";
+import { validatorCompiler } from "fastify-type-provider-zod";
 import { and, eq } from "drizzle-orm";
 import {
-  AppError,
   NotFoundError,
   toFastifyPath,
   createCaseBodySchema,
@@ -38,11 +36,9 @@ import { withTenant, type TenantContext, type TkDb, type TkTx } from "../../kern
 import { createCase, replaceSteps, toCaseSummary } from "../case-service.js";
 import { decideReview, promoteCase, submitForReview, withdrawReview } from "../review-service.js";
 import { formatETag, parseIfMatch } from "../concurrency.js";
-import { CaseNotFoundError, VersionConflictError } from "../errors.js";
+import { CaseNotFoundError } from "../errors.js";
 import { CaseRepo } from "../db/case-repo.js";
 import { getAuth, requireScope, type RequestAuth } from "./context.js";
-
-const GENERIC = "The request could not be completed.";
 
 function ifMatchHeader(request: FastifyRequest): string | undefined {
   const raw = request.headers["if-match"];
@@ -63,49 +59,6 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
     // declared but never enforced. In the real app the shell also sets this at the root
     // (idempotent here); in a bare test app this is what makes `schema.params` validate.
     app.setValidatorCompiler(validatorCompiler);
-
-    app.setErrorHandler((error, request, reply) => {
-      // A schema (params/query/body) mismatch caught by the zod validator compiler:
-      // treat it exactly like the shared shell handler does — 400, not the 500 fall-through.
-      if (hasZodFastifySchemaValidationErrors(error)) {
-        return reply.code(400).send({
-          code: "VALIDATION_FAILED",
-          message: "The submitted data is invalid.",
-          requestId: request.id,
-          issues: error.validation.map((i) => i.message ?? String(i)),
-        });
-      }
-      if (error instanceof VersionConflictError) {
-        return reply.code(error.httpStatus).send({
-          code: error.code,
-          message: error.message,
-          diff: error.diff,
-          requestId: request.id,
-        });
-      }
-      if (error instanceof AppError) {
-        const issues =
-          "issues" in error && Array.isArray((error as { issues?: unknown }).issues)
-            ? ((error as { issues: readonly string[] }).issues)
-            : undefined;
-        return reply.code(error.httpStatus).send({
-          code: error.code,
-          message: error.tenantVisible ? error.message : GENERIC,
-          requestId: request.id,
-          ...(issues !== undefined && issues.length > 0 ? { issues } : {}),
-        });
-      }
-      if (error instanceof ZodError) {
-        return reply.code(400).send({
-          code: "VALIDATION_FAILED",
-          message: "The submitted data is invalid.",
-          requestId: request.id,
-          issues: error.issues.map((i) => i.message),
-        });
-      }
-      request.log.error({ err: error }, "unhandled authoring error");
-      return reply.code(500).send({ code: "INTERNAL", message: GENERIC, requestId: request.id });
-    });
 
     /**
      * Shared body for the 5 If-Match mutations: existence check (404) BEFORE If-Match

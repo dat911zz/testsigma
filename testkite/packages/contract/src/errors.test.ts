@@ -45,4 +45,21 @@ describe("HTTP error family", () => {
     expect(a.httpStatus).toBe(200);
     expect(a.retryable).toBe(false);
   });
+
+  it("every HTTP-facing error's code is SCREAMING_SNAKE — the client-visible API taxonomy, locked", () => {
+    // RetryableInfraError/FatalInfraError/AssertionFailure are excluded on purpose: they
+    // carry job-verdict codes (browser_oom, fatal_infra, assertion_failure) from a
+    // DIFFERENT taxonomy consumed by the runner/compiler retry policy, not the
+    // client-facing API convention this test locks.
+    const codes = [
+      new ValidationFailedError("x").code,
+      new UnauthorizedError("x").code,
+      new ForbiddenError("x").code,
+      new NotFoundError("x").code,
+      new ConflictError("x").code,
+      new PreconditionRequiredError("x").code,
+      new TooManyRequestsError("x").code,
+    ];
+    for (const code of codes) expect(code).toMatch(/^[A-Z][A-Z0-9_]*$/);
+  });
 });

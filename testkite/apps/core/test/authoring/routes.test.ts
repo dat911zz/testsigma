@@ -12,6 +12,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { sql } from "drizzle-orm";
 import { authoringRoutes as authoringDescriptors, type RouteDescriptor } from "@testkite/contract";
 import { authoringRoutes } from "../../src/modules/authoring/index.js";
+import { installErrorHandler } from "../../src/http/errors.js";
 import { makeTestDb, type TestDb } from "../harness/pglite.js";
 
 let t: TestDb;
@@ -32,6 +33,10 @@ let tkOverride: unknown;
 beforeAll(async () => {
   t = await makeTestDb();
   app = Fastify();
+  // Install the SAME shared handler apps/core/src/http/app.ts installs on the real app,
+  // so an HTTP-level test here goes through the one true error-mapping path — not a
+  // second, bare-Fastify default that would let a mapping regression slip past this suite.
+  installErrorHandler(app);
   app.addHook("onRequest", async (req) => {
     (req as unknown as { tk: unknown }).tk = tkOverride === undefined ? current : tkOverride;
   });
@@ -121,11 +126,11 @@ describe("optimistic concurrency over HTTP", () => {
     return { id: res.json<{ id: string }>().id, etag: String(res.headers["etag"]) };
   }
 
-  it("PUT without If-Match -> 428 if_match_required", async () => {
+  it("PUT without If-Match -> 428 IF_MATCH_REQUIRED", async () => {
     const c = await newCase();
     const res = await app.inject({ method: "PUT", url: `/v1/cases/${c.id}/steps`, payload: { steps: [] } });
     expect(res.statusCode).toBe(428);
-    expect(res.json<{ code: string }>().code).toBe("if_match_required");
+    expect(res.json<{ code: string }>().code).toBe("IF_MATCH_REQUIRED");
   });
 
   it("If-Match: * -> 428 (concurrency check cannot be disabled)", async () => {
@@ -158,11 +163,32 @@ describe("optimistic concurrency over HTTP", () => {
       code: string;
       diff: { baseVersion: number; currentVersion: number; mine: unknown[]; theirs: unknown[]; conflicts: string[] };
     }>();
-    expect(body.code).toBe("version_conflict");
+    expect(body.code).toBe("VERSION_CONFLICT");
     expect(body.diff.baseVersion).toBe(1);
     expect(body.diff.currentVersion).toBe(2);
     expect(body.diff.mine.length).toBeGreaterThan(0);
     expect(body.diff.theirs.length).toBeGreaterThan(0);
+  });
+
+  it("submit-review a case that is already in_review -> 409 INVALID_CASE_STATE, not 500 (NIT-16, proves CONS-F1's shared handler)", async () => {
+    // CaseStateError is only ever exercised at the `toErrorPayload()` unit level elsewhere
+    // (errors-http.test.ts) — this drives it through a REAL route with no local
+    // error-handling plugin left in the way, the thing CONS-F1 removed.
+    const c = await newCase();
+    const submitted = await app.inject({
+      method: "POST",
+      url: `/v1/cases/${c.id}/submit-review`,
+      headers: { "if-match": c.etag },
+    });
+    expect(submitted.statusCode).toBe(200);
+
+    const secondSubmit = await app.inject({
+      method: "POST",
+      url: `/v1/cases/${c.id}/submit-review`,
+      headers: { "if-match": String(submitted.headers["etag"]) },
+    });
+    expect(secondSubmit.statusCode).toBe(409);
+    expect(secondSubmit.json<{ code: string }>().code).toBe("INVALID_CASE_STATE");
   });
 });
 
@@ -198,7 +224,7 @@ describe("tenant isolation + scope", () => {
     expect(res.json<{ code: string }>().code).toBe("FORBIDDEN");
   });
 
-  it("four-eyes over HTTP: the last editor self-promoting -> 403 four_eyes_self_promote", async () => {
+  it("four-eyes over HTTP: the last editor self-promoting -> 403 FOUR_EYES_SELF_PROMOTE", async () => {
     const created = await app.inject({
       method: "POST",
       url: `/v1/projects/${projectId}/cases`,
@@ -225,7 +251,7 @@ describe("tenant isolation + scope", () => {
       headers: { "if-match": String(reviewed.headers["etag"]) },
     });
     expect(res.statusCode).toBe(403);
-    expect(res.json<{ code: string }>().code).toBe("four_eyes_self_promote");
+    expect(res.json<{ code: string }>().code).toBe("FOUR_EYES_SELF_PROMOTE");
   });
 
   it("malformed body -> 400, not 500", async () => {

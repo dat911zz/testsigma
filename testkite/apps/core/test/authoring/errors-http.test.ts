@@ -30,10 +30,10 @@ const diff: ThreeWayDiffDto = {
 describe("authoring errors map to HTTP through the shared handler", () => {
   const cases: { error: Error; status: number; code: string }[] = [
     { error: new CaseNotFoundError("c1"), status: 404, code: "NOT_FOUND" },
-    { error: new IfMatchRequiredError("absent"), status: 428, code: "if_match_required" },
-    { error: new VersionConflictError(diff), status: 409, code: "version_conflict" },
-    { error: new CaseStateError("bad state"), status: 409, code: "invalid_case_state" },
-    { error: new FourEyesViolationError("c1"), status: 403, code: "four_eyes_self_promote" },
+    { error: new IfMatchRequiredError("absent"), status: 428, code: "IF_MATCH_REQUIRED" },
+    { error: new VersionConflictError(diff), status: 409, code: "VERSION_CONFLICT" },
+    { error: new CaseStateError("bad state"), status: 409, code: "INVALID_CASE_STATE" },
+    { error: new FourEyesViolationError("c1"), status: 403, code: "FOUR_EYES_SELF_PROMOTE" },
   ];
 
   for (const c of cases) {
@@ -43,6 +43,9 @@ describe("authoring errors map to HTTP through the shared handler", () => {
       expect(status).toBe(c.status);
       expect(payload.code).toBe(c.code);
       expect(payload.requestId).toBe("req-1");
+      // CONS-F4: the authoring taxonomy's own codes must follow the SCREAMING_SNAKE
+      // convention the rest of @testkite/contract's HTTP-facing errors use.
+      expect(payload.code).toMatch(/^[A-Z][A-Z0-9_]*$/);
     });
   }
 
@@ -50,5 +53,10 @@ describe("authoring errors map to HTTP through the shared handler", () => {
     const err = new VersionConflictError(diff);
     expect(err.diff).toBe(diff);
     expect(err.httpStatus).toBe(409);
+  });
+
+  it("VersionConflictError's diff reaches the payload through publicExtras(), not duck-typing", () => {
+    const { payload } = toErrorPayload(new VersionConflictError(diff), "req-1");
+    expect(payload.diff).toEqual(diff);
   });
 });

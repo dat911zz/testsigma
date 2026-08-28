@@ -18,6 +18,29 @@ function tsFiles(dir: string): string[] {
   });
 }
 
+/**
+ * All THREE ways a file can name a module path: a static `from "..."`, a dynamic
+ * `import("...")` expression, and a CommonJS `require("...")` call — `await
+ * import("../modules/x/db/repo.js")` reaches into the module's internals exactly as much
+ * as a static import would, and the old regex (only `from`) let it through (TEST-F5).
+ */
+const MODULE_SPECIFIER_PATTERNS: readonly RegExp[] = [
+  /from\s+["'](\.\.?\/[^"']*modules\/[^"']+)["']/g,
+  /\bimport\s*\(\s*["'](\.\.?\/[^"']*modules\/[^"']+)["']\s*\)/g,
+  /\brequire\s*\(\s*["'](\.\.?\/[^"']*modules\/[^"']+)["']\s*\)/g,
+];
+
+function shellModuleSpecifiers(source: string): string[] {
+  const specs: string[] = [];
+  for (const pattern of MODULE_SPECIFIER_PATTERNS) {
+    for (const m of source.matchAll(pattern)) if (m[1] !== undefined) specs.push(m[1]);
+  }
+  return specs;
+}
+
+/** Allowed: .../modules/<name>/index.js and .../modules/<name>/routes.js */
+const ALLOWED_MODULE_SPEC = /modules\/[a-z-]+\/(index|routes)\.js$/;
+
 describe("HTTP shell tier", () => {
   const shell = [...tsFiles(path.join(SRC, "http")), path.join(SRC, "composition-root.ts")];
 
@@ -29,14 +52,24 @@ describe("HTTP shell tier", () => {
     const bad: string[] = [];
     for (const file of shell) {
       const src = readFileSync(file, "utf8");
-      for (const m of src.matchAll(/from\s+["'](\.\.?\/[^"']*modules\/[^"']+)["']/g)) {
-        const spec = m[1] ?? "";
-        // Allowed: .../modules/<name>/index.js and .../modules/<name>/routes.js
-        if (/modules\/[a-z-]+\/(index|routes)\.js$/.test(spec)) continue;
+      for (const spec of shellModuleSpecifiers(src)) {
+        if (ALLOWED_MODULE_SPEC.test(spec)) continue;
         bad.push(`${path.relative(SRC, file)} -> ${spec}`);
       }
     }
     expect(bad).toEqual([]);
+  });
+
+  it("shellModuleSpecifiers() also catches a dynamic import() and a require(), not just static `from` (TEST-F5 regression)", () => {
+    expect(shellModuleSpecifiers(`import { x } from "../modules/authoring/index.js";`)).toEqual([
+      "../modules/authoring/index.js",
+    ]);
+    expect(
+      shellModuleSpecifiers(`const repo = await import("../modules/authoring/db/repo.js");`),
+    ).toEqual(["../modules/authoring/db/repo.js"]);
+    expect(
+      shellModuleSpecifiers(`const repo = require("../modules/authoring/db/repo.js");`),
+    ).toEqual(["../modules/authoring/db/repo.js"]);
   });
 
   it("the shell contains NO SQL queries — business logic lives in the modules", () => {

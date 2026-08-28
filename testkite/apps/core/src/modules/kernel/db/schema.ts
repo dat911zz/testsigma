@@ -37,9 +37,14 @@ export const relayRole = pgRole(RELAY_ROLE);
  * Role for the AUTHENTICATION PATH. Exists because of a real deadlock (spike 2026-08-28):
  * RLS fail-closed works exactly as designed ⇒ `testkite_app`, before `app.team_id` is set,
  * reads `api_tokens` as 0 rows, but getting `app.team_id` requires looking up the token
- * first. This role breaks that loop with the narrowest privilege possible: SELECT ONLY, ONLY on
- * api_tokens/memberships/users, via its own `auth_lookup` policy. It does NOT BYPASSRLS —
- * it has its own policy, which is a very different risk level.
+ * first. This role breaks that loop with the narrowest privilege possible: SELECT ONLY, on
+ * api_tokens/memberships/idn_oidc_connectors/idn_oidc_login_states, via each table's own
+ * `auth_lookup` policy — it does NOT BYPASSRLS.
+ *
+ * `users` is the ONE EXCEPTION: it is GLOBAL (one person, many teams) and NOT
+ * tenant-scoped (identity/db/schema.ts), so it has no RLS — no `tenant_isolation` policy
+ * and no `auth_lookup` policy either. This role's read access to it comes from a plain
+ * GRANT (migration 0016), the same as every other role that can read `users` at all.
  */
 export const AUTH_ROLE = "testkite_auth" as const;
 export const authRole = pgRole(AUTH_ROLE);

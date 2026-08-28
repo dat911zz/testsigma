@@ -15,7 +15,7 @@
  *     if/loop → block tree, data-driven fan-out + expected_to_fail          → phase2-expand.ts
  *  3. bind verb → op registry (COLLECT EVERY ERROR, no first-fail)          → phase3-bind.ts
  *  4. element → LocatorSet (pending_locator ⇒ its own diagnostic)           → phase45-resolve.ts
- *  5. merge data/env; a secret is ONLY a $secretRef — never the value       → phase45-resolve.ts
+ *  5. merge data/env; a secret is ONLY $secret:<name> — never the value    → phase45-resolve.ts
  *  6. stamp policy/tenant (timeout, retry=infra-only, screenshots per lane) → phase67-freeze.ts
  *  7. freeze: canonicalize → SHA-256 → planFormatVersion (zstd: TODO M2)    → phase67-freeze.ts
  */

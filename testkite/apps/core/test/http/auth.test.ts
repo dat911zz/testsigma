@@ -128,12 +128,27 @@ describe("auth hook", () => {
     expect((after.json() as { scopes: string[] }).scopes).not.toContain("case:write");
   });
 
-  it("a token from team B can NEVER see team A's data", async () => {
+  it("a token from team B can NEVER see team A's data — a real cross-tenant request, not just its own /me", async () => {
+    // The exhaustive version of this rule (every route × path param) lives in
+    // isolation/cross-tenant.test.ts; this is a standalone smoke test kept right next to
+    // the auth hook's other assertions, so this file alone still proves the 404-not-403
+    // rule end to end without depending on that generated suite.
+    const created = await h.app.inject({
+      method: "POST",
+      url: `/v1/projects/${h.ids.projectA}/cases`,
+      headers: { authorization: `Bearer ${h.tokens.adminA}` },
+      payload: { name: "Team A's case", isStepGroup: false },
+    });
+    expect(created.statusCode).toBe(201);
+    const caseId = created.json<{ id: string }>().id;
+
     const r = await h.app.inject({
-      method: "GET", url: "/v1/auth/me",
+      method: "GET",
+      url: `/v1/cases/${caseId}`,
       headers: { authorization: `Bearer ${h.tokens.adminB}` },
     });
-    expect(r.json()).toMatchObject({ teamId: h.ids.teamB });
+    expect(r.statusCode).toBe(404);
+    expect(r.statusCode).not.toBe(403);
   });
 
   it("every response carries a requestId for log tracing", async () => {

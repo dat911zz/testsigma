@@ -5,10 +5,12 @@
  *  3. Success writes audit LOW, failure writes audit MEDIUM.
  */
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
+import { Algorithm, hash as argon2Hash } from "@node-rs/argon2";
 import { makeTestApp, type TestApp } from "../harness/http.js";
 import {
   hashPassword,
   loginWithPassword,
+  needsRehash,
   LOGIN_FAILED_MESSAGE,
 } from "../../src/modules/identity/index.js";
 import { writeAuditEvent } from "../../src/modules/governance/index.js";
@@ -186,13 +188,34 @@ describe("internal password login", () => {
   });
 
   it("a password hashed with old parameters gets silently rehashed on a correct login", async () => {
-    await h.db.raw.query(
-      `UPDATE users SET password_hash='$argon2id$v=19$m=4096,t=1,p=1$c2FsdHNhbHQ$aGFzaGhhc2g' WHERE id=$1`,
+    // A REAL argon2id hash of the SAME password login uses below, but with deliberately
+    // weak parameters (t=1, m=4096) — needsRehash() must flag it, and only a genuinely
+    // CORRECT verify (login.ts's `if (!(await verifyPassword(...)))` branch, lines
+    // ~164-171) reaches the rehash. A bogus/undecodable hash would always 401 without ever
+    // exercising that branch at all — this is the round-trip that closes NIT-52.
+    const weakHash = await argon2Hash("mat-khau-dai-hon-12", {
+      algorithm: Algorithm.Argon2id,
+      memoryCost: 4096,
+      timeCost: 1,
+      parallelism: 1,
+      outputLen: 32,
+    });
+    expect(needsRehash(weakHash)).toBe(true);
+    await h.db.raw.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [
+      weakHash,
+      h.ids.authorUser,
+    ]);
+
+    const res = await login({ email: "author@acme.test", password: "mat-khau-dai-hon-12" });
+    expect(res.statusCode).toBe(200);
+
+    const row = await h.db.raw.query<{ password_hash: string }>(
+      `SELECT password_hash FROM users WHERE id = $1`,
       [h.ids.authorUser],
     );
-    // The old hash can't verify this password ⇒ 401; rehash only happens on a CORRECT verify.
-    expect(
-      (await login({ email: "author@acme.test", password: "mat-khau-dai-hon-12" })).statusCode,
-    ).toBe(401);
+    const newHash = row.rows[0]?.password_hash;
+    expect(newHash).toBeDefined();
+    expect(newHash).not.toBe(weakHash);
+    expect(needsRehash(newHash ?? "")).toBe(false);
   });
 });

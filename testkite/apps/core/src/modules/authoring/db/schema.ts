@@ -199,6 +199,10 @@ export const autSteps = pgTable(
       columns: [t.teamId, t.parentStepId],
       foreignColumns: [t.teamId, t.id],
     }).onDelete("cascade"),
+    // Deliberately NO .onDelete("cascade") here, unlike its two sibling FKs above: a case
+    // being deleted may still be referenced as the step_group of a step_group step living
+    // in a DIFFERENT case. Cascading would silently gut that other case's steps; the
+    // default NO ACTION instead blocks the delete so the conflict surfaces loudly.
     foreignKey({
       name: "aut_steps_step_group_fk",
       columns: [t.teamId, t.stepGroupCaseId],

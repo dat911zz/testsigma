@@ -60,7 +60,15 @@ describeRealPg("relay under REAL contention (real Postgres, multiple connections
     ]);
     const ids = [...seenA, ...seenB].map((x) => String(x.id));
     expect(new Set(ids).size).toBe(ids.length); // NO duplicates
-    const consumed = await r.db.execute(sql`SELECT count(*)::int AS n FROM krn_outbox_consumed`);
+    expect(ids.length).toBe(20);
+    // Scoped to THIS test's own team + consumer: an unscoped `count(*) FROM
+    // krn_outbox_consumed` would also count any row left over from a different context
+    // sharing this real Postgres instance, and go red for a reason unrelated to this test.
+    const consumed = await r.db.execute(sql`
+      SELECT count(*)::int AS n
+      FROM krn_outbox_consumed c
+      JOIN krn_outbox o ON o.id = c.outbox_id
+      WHERE o.team_id = ${teamA} AND c.consumer = 'relay-1'`);
     expect(Number(consumed.rows[0]?.["n"])).toBe(20);
   });
 

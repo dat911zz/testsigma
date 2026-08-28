@@ -26,7 +26,7 @@ export class CaseNotFoundError extends NotFoundError {
 
 /** 428 Precondition Required — a mutation arrived without a valid If-Match. */
 export class IfMatchRequiredError extends AppError {
-  readonly code = "if_match_required";
+  readonly code = "IF_MATCH_REQUIRED";
   readonly httpStatus = 428;
   readonly retryable = false;
   readonly tenantVisible = true;
@@ -38,7 +38,7 @@ export class IfMatchRequiredError extends AppError {
 
 /** 409 — the client's version differs from the server's. Carries the 3-way diff. */
 export class VersionConflictError extends AppError {
-  readonly code = "version_conflict";
+  readonly code = "VERSION_CONFLICT";
   readonly httpStatus = 409;
   readonly retryable = false;
   readonly tenantVisible = true;
@@ -48,11 +48,14 @@ export class VersionConflictError extends AppError {
     this.name = "VersionConflictError";
     this.diff = diff;
   }
+  override publicExtras(): Readonly<Record<string, unknown>> {
+    return { diff: this.diff };
+  }
 }
 
 /** 409 — the operation is invalid for the case's current state (e.g. submit a ready case). */
 export class CaseStateError extends AppError {
-  readonly code = "invalid_case_state";
+  readonly code = "INVALID_CASE_STATE";
   readonly httpStatus = 409;
   readonly retryable = false;
   readonly tenantVisible = true;
@@ -68,7 +71,7 @@ export class CaseStateError extends AppError {
  * seen the case, so nothing leaks; a 404 here would lie that the case vanished.
  */
 export class FourEyesViolationError extends AppError {
-  readonly code = "four_eyes_self_promote";
+  readonly code = "FOUR_EYES_SELF_PROMOTE";
   readonly httpStatus = 403;
   readonly retryable = false;
   readonly tenantVisible = true;

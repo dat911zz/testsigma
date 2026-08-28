@@ -106,8 +106,13 @@ export async function runRelayOnce(
   let failed = 0;
 
   for (const row of pending) {
-    const id = readId(row);
+    // `id` is read INSIDE the try: a row whose id can't be parsed is exactly the kind of
+    // single-event failure this loop's invariant (see doc-comment above) promises never
+    // blocks the rest of the batch. Parsing it outside the try would let that one row's
+    // error escape runRelayOnce entirely instead of just counting toward `failed`.
+    let id: bigint | undefined;
     try {
+      id = readId(row);
       const rec = toOutboxRecord(row, id);
       const done = await db.transaction(async (tx): Promise<boolean> => {
         // Re-lock exactly this row; SKIP LOCKED so a second relay moves on to another row
@@ -139,13 +144,18 @@ export async function runRelayOnce(
       if (done) published += 1;
     } catch (err) {
       failed += 1;
-      const message = err instanceof Error ? err.message : String(err);
-      await db.execute(sql`
-        UPDATE krn_outbox
-        SET attempts = attempts + 1,
-            last_error = ${message},
-            available_at = now() + make_interval(secs => ${backoffMs / 1000})
-        WHERE id = ${String(id)}`);
+      // `id` can still be undefined here if `readId(row)` itself threw: there is then no
+      // key to mark on krn_outbox, so skip the UPDATE — the row stays as-is and is
+      // re-claimed (and re-fails the same way) on the next round rather than crashing.
+      if (id !== undefined) {
+        const message = err instanceof Error ? err.message : String(err);
+        await db.execute(sql`
+          UPDATE krn_outbox
+          SET attempts = attempts + 1,
+              last_error = ${message},
+              available_at = now() + make_interval(secs => ${backoffMs / 1000})
+          WHERE id = ${String(id)}`);
+      }
     }
   }
 

@@ -27,11 +27,25 @@ function listTsFiles(dir: string): string[] {
   return out;
 }
 
-/** Only relative specifiers (`./` or `../`) matter — external packages aren't a module boundary concern. */
+/**
+ * Only relative specifiers (`./` or `../`) matter — external packages aren't a module
+ * boundary concern. Scans all THREE ways a file can reach another module's path: a static
+ * `import ... from "..."` (or `export ... from "..."`), a dynamic `import("...")`
+ * expression, and a CommonJS `require("...")` call — a boundary crossing hidden behind
+ * `await import(...)` is just as real as a static one (NIT-TEST-F5).
+ */
+const SPECIFIER_PATTERNS: readonly RegExp[] = [
+  /from\s*["'](\.[^"']+)["']/g,
+  /\bimport\s*\(\s*["'](\.[^"']+)["']\s*\)/g,
+  /\brequire\s*\(\s*["'](\.[^"']+)["']\s*\)/g,
+];
+
 function relativeSpecifiers(source: string): string[] {
-  return [...source.matchAll(/from\s*["'](\.[^"']+)["']/g)]
-    .map((m) => m[1])
-    .filter((s): s is string => s !== undefined);
+  const specs: string[] = [];
+  for (const pattern of SPECIFIER_PATTERNS) {
+    for (const m of source.matchAll(pattern)) if (m[1] !== undefined) specs.push(m[1]);
+  }
+  return specs;
 }
 
 /** The name of the module that owns a file, i.e. the first segment under `src/modules/`. */
@@ -68,5 +82,17 @@ describe("module boundaries", () => {
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("relativeSpecifiers() also catches a dynamic import() and a require(), not just static `from` (TEST-F5 regression)", () => {
+    expect(relativeSpecifiers(`import { x } from "../other-module/index.js";`)).toEqual([
+      "../other-module/index.js",
+    ]);
+    expect(relativeSpecifiers(`const repo = await import("../other-module/db/repo.js");`)).toEqual([
+      "../other-module/db/repo.js",
+    ]);
+    expect(relativeSpecifiers(`const repo = require("../other-module/db/repo.js");`)).toEqual([
+      "../other-module/db/repo.js",
+    ]);
   });
 });

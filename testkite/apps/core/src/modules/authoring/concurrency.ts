@@ -5,7 +5,7 @@
 import { IfMatchRequiredError } from "./errors.js";
 
 export function formatETag(version: number): string {
-  return `"${String(version)}"`;
+  return `"${version}"`;
 }
 
 const ETAG_RE = /^(?:W\/)?"?(\d+)"?$/;

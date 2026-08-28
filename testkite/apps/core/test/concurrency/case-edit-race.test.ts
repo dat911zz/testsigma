@@ -124,7 +124,7 @@ describeRealPg("replaceSteps under REAL contention (real Postgres, two connectio
       const reason: unknown = l.reason;
       expect(reason).toBeInstanceOf(VersionConflictError);
       const conflict = reason as VersionConflictError;
-      expect(conflict.code).toBe("version_conflict");
+      expect(conflict.code).toBe("VERSION_CONFLICT");
       expect(conflict.httpStatus).toBe(409);
       expect(conflict.diff.baseVersion).toBe(1);
       expect(conflict.diff.currentVersion).toBe(2);

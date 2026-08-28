@@ -602,6 +602,13 @@ describe("aut_cases — workflow columns", () => {
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/case-schema.test.ts`
 Expected: FAIL ngay test đầu — `pg_type` không có `aut_case_status` (0 row).
 
+> **NIT-49 (M2 polish):** ba `rejects.toThrow(/.../i)` ở block trên (CHECK constraint) đổi
+> thành soi thẳng `cause.code`/`cause.constraint` qua helper `violationOf()` — cùng pattern
+> gốc đã ghi ở m1-kernel-db.md Task 3 (`test/schema/tenancy.test.ts`). Áp dụng y hệt ở
+> `test/authoring/step-schema.test.ts`, `revision-schema.test.ts` và `review-service.test.ts`
+> trong plan này (đều CHECK/UNIQUE violation qua drizzle-orm 0.45, không nhắc lại riêng
+> từng chỗ).
+
 - [x] **Step 3: Thêm cột vào `teams` (module identity)**
 
 Trong `apps/core/src/modules/identity/db/schema.ts`, thêm import `boolean`:
@@ -2070,6 +2077,17 @@ export interface RevisionPayload {
 
 - [x] **Step 4: Implement `apps/core/src/modules/authoring/revision/diff.ts`**
 
+> **NIT-44 (M2 polish) — audit-trail đúng cho một lệch so với khối code bên dưới:** file
+> đã ship KHÔNG import `RevisionStep` (chỉ `RevisionPayload`) — khối mẫu dưới đây vẫn giữ
+> cả hai như lúc lên kế hoạch, KHÔNG viết đè (đây là bản ghi lịch sử của bước implement).
+> Lý do bỏ import là ĐÚNG — `RevisionStep` quả thật không dùng tới trong thân file — nhưng
+> không phải vì bất kỳ gate máy nào ép buộc: đã grep `tsconfig.base.json`,
+> `apps/core/tsconfig.json` và `eslint.config.mjs`, repo KHÔNG bật
+> `noUnusedLocals`/`noUnusedParameters` của tsc, và không có rule `no-unused-vars` (ESLint)
+> áp cho `apps/**`. Nói cách khác: không có gì tự động chặn được nếu import này bị bỏ sót
+> hoặc bị thêm lại thừa — chỉ là con người viết code không dùng nó nên không đưa vào. Không
+> revert; không viết lại commit đã đẩy — chỉ ghi đúng lý do vào đây.
+
 ```ts
 /**
  * Diff 3 chiều cho payload revision. THUẦN — không I/O, không Date.now().
@@ -2878,7 +2896,7 @@ git commit -m "M2-AUT T8: phang hoa cay step -> row + RevisionPayload"
 - Produces:
   - `type Actor = { readonly userId: string }`
   - `class CaseRepo extends TenantRepo` — `insertCase`, `findById`, `listStepRows`, `deleteSteps`, `insertSteps`, `applyEdit`
-  - `class RevisionRepo extends TenantRepo` — `insert`, `findByCaseVersion`, `findById`, `loadPayload`
+  - `class RevisionRepo extends TenantRepo` — `insert`, `findByCaseVersion`, `loadPayload` (NIT-10: đã bỏ `findById` khỏi danh sách — code mẫu Step 4 của chính task này chỉ hiện thực 3 hàm trên, xem `db/revision-repo.ts`)
   - `createCase(tx, ctx, actor, input): Promise<CaseSummaryDto>`
   - `replaceSteps(tx, ctx, actor, input): Promise<CaseSummaryDto>` với `input = { caseId: string; expectedVersion: number; steps: readonly StepInputDto[] }`
   - `toCaseSummary(row): CaseSummaryDto`
@@ -5189,10 +5207,21 @@ git commit -m "M2-AUT T13: buildCompileSnapshot (pin ready/latest) noi voi run-c
 | PUT | `/cases/:caseId/steps` | `case:write` | **có** | 200 + `ETag` + `CaseSummary` |
 | POST | `/cases/:caseId/submit-review` | `case:write` | **có** | 200 + `ETag` + `CaseSummary` |
 | POST | `/cases/:caseId/withdraw-review` | `case:write` | **có** | 200 + `ETag` + `CaseSummary` |
-| POST | `/cases/:caseId/review` | `case:review` | **có** | 200 + `ETag` + `CaseSummary` |
+| POST | `/cases/:caseId/review` | `case:promote` | **có** | 200 + `ETag` + `CaseSummary` |
 | POST | `/cases/:caseId/promote` | `case:promote` | **có** | 200 + `ETag` + `CaseSummary` |
 
-Mã lỗi: 404 `case_not_found` (kể cả id của tenant khác — **không bao giờ 403**), 428 `if_match_required`, 409 `version_conflict` (body = `ThreeWayDiff`), 409 `invalid_case_state`, 403 `four_eyes_self_promote`, 403 `insufficient_scope`.
+Mã lỗi: 404 `NOT_FOUND` (kể cả id của tenant khác — **không bao giờ 403**), 428 `if_match_required`, 409 `version_conflict` (body = `ThreeWayDiff`), 409 `invalid_case_state`, 403 `four_eyes_self_promote`, 403 `FORBIDDEN`.
+
+> **NIT-15 (M2 polish) — bảng trên đã SỬA cho khớp code đã ship, lệch nặng hơn báo cáo gốc:**
+> review dùng CHUNG scope `case:promote` với promote (không có scope `case:review` riêng —
+> scope đó chưa từng tồn tại trong `permissions.ts`); `InsufficientScopeError` kế thừa
+> `ForbiddenError` của contract nên trả code chung `FORBIDDEN`, không phải `insufficient_scope`
+> riêng; `CaseNotFoundError` kế thừa `NotFoundError` nên trả `NOT_FOUND`, không phải
+> `case_not_found`. Các khối code mẫu Step 1/Step 3/Step 5 bên dưới (dòng ~5243, ~5376,
+> ~5384, ~5459, ~5617) vẫn còn giữ nguyên `case:review`/`insufficient_scope`/`case_not_found`
+> như lúc lên kế hoạch — đó là bản ghi lịch sử của bước implement, KHÔNG viết đè; code thật
+> đứng trên (bảng + dòng Mã lỗi) và trong `apps/core/src/modules/authoring/routes/` mới là
+> nguồn sự thật hiện tại.
 
 - [x] **Step 1: Viết test ĐỎ `apps/core/test/authoring/routes.test.ts`**
 

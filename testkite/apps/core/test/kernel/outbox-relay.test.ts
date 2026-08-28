@@ -202,6 +202,55 @@ describe("runRelayOnce", () => {
     expect(res.claimed).toBe(2);
   });
 
+  it("a row whose id cannot be parsed is caught — counted in failed, never thrown out of the batch (NIT-38)", async () => {
+    // Minimal hand-built db: only the two members runRelayOnce actually calls (execute,
+    // transaction) — real PGlite can never hand back an unparseable id, so this is the
+    // one way to exercise readId() throwing from inside the loop.
+    let dbExecuteCalls = 0;
+    const stubDb = {
+      execute: async (): Promise<{ rows: readonly Record<string, unknown>[] }> => {
+        dbExecuteCalls += 1;
+        if (dbExecuteCalls === 1) {
+          return {
+            rows: [
+              // `id` is a boolean — readId() has no branch for it and throws.
+              { id: true, team_id: "teamA", topic: "poison", payload: {}, attempts: 0 },
+              { id: "2", team_id: "teamA", topic: "good", payload: {}, attempts: 0 },
+            ],
+          };
+        }
+        // The poisoned row must never reach the failure-marking UPDATE (there is no id to
+        // key it on) — a second top-level execute() call would mean that guard regressed.
+        throw new Error(`unexpected db.execute() call #${String(dbExecuteCalls)}`);
+      },
+      transaction: async (fn: (tx: unknown) => Promise<unknown>): Promise<unknown> => {
+        let txExecuteCalls = 0;
+        const tx = {
+          execute: async (): Promise<{ rows: readonly Record<string, unknown>[] }> => {
+            txExecuteCalls += 1;
+            // 1st call: the per-row FOR UPDATE lock-select (finds the row); 2nd: the
+            // consumed INSERT (its result is unused).
+            return txExecuteCalls === 1 ? { rows: [{ id: "2" }] } : { rows: [] };
+          },
+        };
+        return fn(tx);
+      },
+    } as unknown as TkDb;
+
+    const published: string[] = [];
+    const res = await runRelayOnce(
+      stubDb,
+      async (r) => {
+        published.push(r.topic);
+      },
+      { consumer: "relay-1" },
+    );
+
+    expect(res).toEqual({ claimed: 2, published: 1, failed: 1 });
+    // The batch kept going PAST the poisoned row: the second, well-formed row still published.
+    expect(published).toEqual(["good"]);
+  });
+
   it("uses FOR UPDATE SKIP LOCKED in the claim query", async () => {
     // Static contract: PGlite has one connection so disjointness CANNOT be proven here.
     // Real behavioral proof lives in test/concurrency/relay-race.test.ts (real Postgres).

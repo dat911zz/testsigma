@@ -5,7 +5,8 @@ import { compileSnapshotSchema } from "@testkite/contract";
 import { withTenant } from "../../src/modules/kernel/index.js";
 import { createCase, replaceSteps } from "../../src/modules/authoring/case-service.js";
 import { decideReview, promoteCase, submitForReview } from "../../src/modules/authoring/review-service.js";
-import { buildCompileSnapshot } from "../../src/modules/authoring/snapshot.js";
+import { buildCompileSnapshot, revisionPayloadToAuthoredCase } from "../../src/modules/authoring/snapshot.js";
+import type { RevisionPayload } from "../../src/modules/authoring/revision/payload.js";
 import { makeTestDb, type TestDb } from "../harness/pglite.js";
 
 let t: TestDb;
@@ -195,5 +196,48 @@ describe("buildCompileSnapshot", () => {
       ),
     ).catch((e: unknown) => e);
     expect((err as { httpStatus?: number }).httpStatus).toBe(404);
+  });
+});
+
+describe("revisionPayloadToAuthoredCase", () => {
+  it("an orphaned step (parentId pointing at an id absent from the flat list) throws — never silently drops it from the tree (NIT-14)", () => {
+    const payload: RevisionPayload = {
+      case: { name: "Broken", isStepGroup: false },
+      steps: [
+        { id: "s1", kind: "action", parentId: null, after: null, renderedSentence: "step 1", verbOpKey: "goto" },
+        // parentId references an id that matches no step in this list AND isn't null —
+        // toAuthoredSteps(steps, null) only ever recurses with parentId values it has
+        // itself walked into, so "missing-parent" is never one of them: s2 is unreachable.
+        {
+          id: "s2",
+          kind: "action",
+          parentId: "missing-parent",
+          after: null,
+          renderedSentence: "orphan",
+          verbOpKey: "click",
+        },
+      ],
+    };
+    expect(() => revisionPayloadToAuthoredCase("case-1", "rev-1", payload)).toThrow(/orphaned parentId/i);
+  });
+
+  it("a well-formed payload with no orphans passes the count check", () => {
+    const payload: RevisionPayload = {
+      case: { name: "Ok", isStepGroup: false },
+      steps: [
+        { id: "s1", kind: "action", parentId: null, after: null, renderedSentence: "step 1", verbOpKey: "goto" },
+        {
+          id: "s2",
+          kind: "if",
+          parentId: null,
+          after: "s1",
+          renderedSentence: "branch",
+          conditionExpected: ["SUCCESS"],
+        },
+        { id: "s3", kind: "action", parentId: "s2", after: null, renderedSentence: "child", verbOpKey: "click" },
+      ],
+    };
+    const authored = revisionPayloadToAuthoredCase("case-1", "rev-1", payload);
+    expect(authored.steps.map((s) => s.kind)).toEqual(["action", "if"]);
   });
 });

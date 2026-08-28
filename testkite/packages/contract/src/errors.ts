@@ -11,6 +11,17 @@ export abstract class AppError extends Error {
   abstract readonly retryable: boolean;
   /** true = message may be returned verbatim to the tenant; false = mask with a generic sentence. */
   abstract readonly tenantVisible: boolean;
+
+  /**
+   * Extra machine-readable fields merged into the HTTP error payload alongside
+   * code/message/requestId (e.g. ValidationFailedError's `issues`, the authoring
+   * module's VersionConflictError `diff`). Override in a subclass that carries such
+   * data; the shared handler (apps/core/src/http/errors.ts) spreads this instead of
+   * duck-typing individual field names. Default is no extras.
+   */
+  publicExtras(): Readonly<Record<string, unknown>> {
+    return {};
+  }
 }
 
 /** Infra error that CAN be retried: browser_oom, context_crash, host_death, lease_expired, network. */
@@ -55,6 +66,9 @@ export class ValidationFailedError extends AppError {
   constructor(message: string, issues: readonly string[] = []) {
     super(message);
     this.issues = issues;
+  }
+  override publicExtras(): Readonly<Record<string, unknown>> {
+    return { issues: this.issues };
   }
 }
 

@@ -28,7 +28,7 @@ describe("parseIfMatch", () => {
       parseIfMatch(undefined);
     } catch (e) {
       expect((e as IfMatchRequiredError).httpStatus).toBe(428);
-      expect((e as IfMatchRequiredError).code).toBe("if_match_required");
+      expect((e as IfMatchRequiredError).code).toBe("IF_MATCH_REQUIRED");
     }
   });
 
@@ -61,7 +61,7 @@ describe("VersionConflictError", () => {
     };
     const err = new VersionConflictError(diff);
     expect(err.httpStatus).toBe(409);
-    expect(err.code).toBe("version_conflict");
+    expect(err.code).toBe("VERSION_CONFLICT");
     expect(err.diff).toBe(diff);
   });
 });

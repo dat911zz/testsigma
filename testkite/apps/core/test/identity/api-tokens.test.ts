@@ -97,7 +97,27 @@ describe("api_tokens", () => {
     expect(mem.rows[0]?.role).toBe("author");
   });
 
-  it("testkite_auth can only READ, and only from exactly 3 tables", async () => {
+  it("testkite_auth can only READ, and only from an explicit, closed set of tables", async () => {
+    // Spot-checking a couple of denied tables (the old shape of this test) only proves
+    // those two are blocked — it says nothing about the FULL set testkite_auth can read,
+    // so a later migration widening the GRANT would slip past silently. Enumerate the
+    // grant catalog instead and match it against a named set: any future GRANT to this
+    // role — intentional or not — has to touch this list to stay green.
+    // (0016 grants api_tokens/memberships/users; 0019 adds idn_oidc_connectors +
+    // idn_oidc_login_states — 5 tables in total, see the migration comments.)
+    const grants = await t.raw.query<{ table_name: string; privilege_type: string }>(
+      `SELECT table_name, privilege_type FROM information_schema.role_table_grants
+       WHERE grantee = 'testkite_auth' AND table_schema = 'public'
+       ORDER BY table_name, privilege_type`,
+    );
+    const tableNames = [...new Set(grants.rows.map((r) => r.table_name))].sort();
+    expect(tableNames).toEqual(
+      ["api_tokens", "idn_oidc_connectors", "idn_oidc_login_states", "memberships", "users"].sort(),
+    );
+    // Every grant row is SELECT — no INSERT/UPDATE/DELETE snuck in anywhere in the set.
+    expect(new Set(grants.rows.map((r) => r.privilege_type))).toEqual(new Set(["SELECT"]));
+
+    // Still prove it's enforced at the engine level, not just declared in the catalog.
     await t.raw.exec(`SET ROLE testkite_auth`);
     await expect(t.raw.query(`UPDATE api_tokens SET revoked_at = now()`)).rejects.toThrow(/permission denied/i);
     await expect(t.raw.query(`SELECT count(*) FROM teams`)).rejects.toThrow(/permission denied/i);

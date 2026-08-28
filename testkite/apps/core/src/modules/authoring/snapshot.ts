@@ -122,11 +122,35 @@ function toAuthoredSteps(steps: readonly RevisionStep[], parentId: string | null
   });
 }
 
+/** Recursively counts every step reachable in a rebuilt tree — self plus all descendants. */
+function countTreeSteps(nodes: readonly AuthoredStepDto[]): number {
+  let total = nodes.length;
+  for (const node of nodes) {
+    if (node.kind === "if" || node.kind === "for" || node.kind === "while") {
+      total += countTreeSteps(node.children);
+    }
+  }
+  return total;
+}
+
 export function revisionPayloadToAuthoredCase(
   caseId: string,
   revisionId: string,
   payload: RevisionPayload,
 ): AuthoredCaseDto {
+  const steps = toAuthoredSteps(payload.steps, null);
+  // A step whose parentId points at an id absent from this revision's flat list never
+  // matches any `parentId === X` filter above (X only ever ranges over `null` and ids
+  // toAuthoredSteps has actually recursed into) — it silently falls out of the tree, and
+  // the run-compiler would then compile and execute the case one step short with no
+  // signal at all. Corrupted data must fail loud right here, not flow downstream missing a step.
+  const rebuilt = countTreeSteps(steps);
+  if (rebuilt !== payload.steps.length) {
+    throw new Error(
+      `revisionPayloadToAuthoredCase: rebuilt step tree for case ${caseId} (revision ${revisionId}) has ` +
+        `${String(rebuilt)} of ${String(payload.steps.length)} steps — an orphaned parentId in the revision payload?`,
+    );
+  }
   return {
     id: caseId,
     revisionId,
@@ -134,7 +158,7 @@ export function revisionPayloadToAuthoredCase(
     isStepGroup: payload.case.isStepGroup,
     ...(payload.case.prereqCaseId === undefined ? {} : { prereqCaseId: payload.case.prereqCaseId }),
     ...(payload.case.dataProfileId === undefined ? {} : { dataProfileId: payload.case.dataProfileId }),
-    steps: toAuthoredSteps(payload.steps, null),
+    steps,
   };
 }
 

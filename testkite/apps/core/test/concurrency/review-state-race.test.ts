@@ -155,7 +155,7 @@ describeRealPg("review state machine under REAL contention (real Postgres, two c
     for (const reason of lost) {
       expect(reason).toBeInstanceOf(VersionConflictError);
       const conflict = reason as VersionConflictError;
-      expect(conflict.code).toBe("version_conflict");
+      expect(conflict.code).toBe("VERSION_CONFLICT");
       expect(conflict.httpStatus).toBe(409);
       expect(conflict.diff.baseVersion).toBe(c.version);
       expect(conflict.diff.currentVersion).toBe(c.version + 1);
