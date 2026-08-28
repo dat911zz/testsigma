@@ -258,6 +258,57 @@ export const idnOidcConnectors = pgTable(
 ).enableRLS();
 
 /**
+ * Neo `(connector, subject)` → user. ĐÂY LÀ MỎ NEO DANH TÍNH, không phải email.
+ *
+ * VÌ SAO PHẢI CÓ BẢNG NÀY: `users` là bảng TOÀN CỤC (xem ghi chú ở trên) còn connector
+ * OIDC thì MỖI TEAM tự cấu hình — team nào cũng trỏ được về Keycloak của chính mình và
+ * khai claim `email` tuỳ ý. Khớp identity vào user cũ bằng email ⇒ team B mint được
+ * phiên mang userId thật của người chỉ thuộc team A. `sub` của IdP là thứ duy nhất ổn
+ * định và không giả được bởi team KHÁC (nó chỉ có nghĩa trong phạm vi connector này),
+ * nên nó là khoá tra cứu; email chỉ còn dùng cho lần đầu, dưới hai điều kiện chặt
+ * (xem `oidc/connector.ts`).
+ *
+ * KHÔNG có policy `auth_lookup`: mọi truy cập đều xảy ra SAU khi đã biết team (team của
+ * connector), tức luôn đi qua `withTenant` + role app. Đường `testkite_auth` không cần
+ * đọc bảng này, nên không được cấp quyền đọc nó.
+ */
+export const idnOidcIdentities = pgTable(
+  "idn_oidc_identities",
+  {
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id),
+    id: uuid("id").primaryKey().defaultRandom(),
+    connectorId: uuid("connector_id").notNull(),
+    /** `sub` của IdP — định danh bất biến, không đổi khi user đổi email. */
+    subject: text("subject").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("idn_oidc_identities_team_id_unique").on(t.teamId, t.id),
+    // Một subject của một connector chỉ trỏ tới ĐÚNG MỘT user.
+    uniqueIndex("idn_oidc_identities_connector_subject_uidx").on(t.connectorId, t.subject),
+    index("idn_oidc_identities_team_idx").on(t.teamId),
+    // Composite FK: neo không bao giờ trỏ sang connector của team khác (lớp L2).
+    foreignKey({
+      name: "idn_oidc_identities_connector_fk",
+      columns: [t.teamId, t.connectorId],
+      foreignColumns: [idnOidcConnectors.teamId, idnOidcConnectors.id],
+    }),
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: tenantPredicate,
+      withCheck: tenantPredicate,
+    }),
+  ],
+).enableRLS();
+
+/**
  * State của một lượt đăng nhập OIDC. Sống trong DB chứ không cookie/bộ nhớ tiến trình:
  * (a) nhiều instance API, (b) state phải DÙNG MỘT LẦN — `consumed_at` là thứ chặn replay.
  * `code_verifier` là bí mật ngắn hạn (10 phút), xoá bằng job dọn hoặc TTL.

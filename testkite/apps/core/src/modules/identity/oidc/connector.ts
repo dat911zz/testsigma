@@ -9,12 +9,30 @@
  *  2. `allowInsecureRequests` CHỈ khi connector bật cờ `allow_insecure_http` (mock/dev).
  *     Mặc định openid-client chặn http:// với "only requests to HTTPS are allowed".
  *  3. state DÙNG MỘT LẦN, có hạn 10 phút, lưu trong DB — không cookie, không bộ nhớ tiến trình.
+ *
+ * ĐIỀU THỨ TƯ, về ghép identity vào `users` — cùng hạng nghiêm trọng với ba điều trên:
+ * `users` là bảng TOÀN CỤC còn connector thì MỖI TEAM tự cấu hình (Keycloak của chính
+ * họ, admin của họ tự quản). Ghép bằng email ⇒ team B khai `email` của người chỉ thuộc
+ * team A là mint được phiên mang userId thật của người đó. Nên:
+ *   - Khoá tra cứu là `(connector_id, sub)` trong `idn_oidc_identities` — `sub` chỉ có
+ *     nghĩa trong phạm vi connector, team khác không giả được.
+ *   - Email CHỈ dùng ở lần đầu của một `sub`, và chỉ được phép trỏ vào một tài khoản ĐÃ
+ *     CÓ khi thoả CẢ HAI: IdP khẳng định `email_verified`, VÀ team này đã tự bảo lãnh
+ *     người đó bằng membership sẵn có (luồng "mời trước, SSO sau"). Không đủ ⇒ 401.
+ *   - Email chưa ai dùng ⇒ tạo user mới, và `email_verified_at` chép ĐÚNG những gì IdP
+ *     nói, không tự tuyên bố là đã xác minh.
  */
 import * as client from "openid-client";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { NotFoundError, UnauthorizedError } from "@testkite/contract";
 import { withAuthRole, withTenant, type TkDb } from "../../kernel/index.js";
-import { idnOidcConnectors, idnOidcLoginStates, memberships, users } from "../db/schema.js";
+import {
+  idnOidcConnectors,
+  idnOidcIdentities,
+  idnOidcLoginStates,
+  memberships,
+  users,
+} from "../db/schema.js";
 import type { MembershipRole } from "../rbac/permissions.js";
 
 export const OIDC_STATE_TTL_MS = 600_000;
@@ -168,26 +186,82 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
       const mapped = groups.map((g) => mapping[g]).find((r): r is string => r !== undefined);
       const role = (mapped ?? row.defaultRole) as MembershipRole;
 
+      // Claim chuẩn OIDC, đi cặp với `email`. IdP không phát ⇒ coi như CHƯA xác minh.
+      const emailVerified = claims["email_verified"] === true;
+
       const userId = await withTenant(deps.db, { teamId: row.teamId }, async (tx) => {
+        // (1) Neo theo (connector, sub): đường đi của mọi lần đăng nhập sau lần đầu.
+        //     Không đụng tới email — user đổi email ở IdP vẫn là đúng người đó.
+        const anchored = await tx
+          .select({ userId: idnOidcIdentities.userId })
+          .from(idnOidcIdentities)
+          .where(
+            and(
+              eq(idnOidcIdentities.connectorId, row.id),
+              eq(idnOidcIdentities.subject, subject),
+            ),
+          )
+          .limit(1);
+        const known = anchored[0]?.userId;
+        if (known !== undefined) {
+          await tx
+            .insert(memberships)
+            .values({ teamId: row.teamId, userId: known, role })
+            .onConflictDoNothing({ target: [memberships.teamId, memberships.userId] });
+          return known;
+        }
+
+        // (2) Lần đầu của `sub` này. Email đối chiếu theo lower() — đúng cột của
+        //     unique index `users_email_lower_uidx`, không để "A@x" lách thành user khác.
         const existing = await tx
           .select({ id: users.id })
           .from(users)
-          .where(eq(users.email, email))
+          .where(sql`lower(${users.email}) = lower(${email})`)
           .limit(1);
-        const id =
-          existing[0]?.id ??
-          (
-            await tx
-              .insert(users)
-              .values({ email, displayName: email.split("@")[0] ?? email, emailVerifiedAt: now() })
-              .returning({ id: users.id })
-          )[0]?.id;
-        if (id === undefined) throw new Error("oidc: không tạo được user");
-        // Provisioning just-in-time: có tài khoản IdP + connector của team ⇒ có membership.
+        const found = existing[0];
+
+        let id: string;
+        if (found !== undefined) {
+          // Tài khoản ĐÃ CÓ (có thể thuộc team khác): chỉ được liên kết khi IdP xác
+          // minh email VÀ team này đã tự mời người đó. Thiếu một trong hai ⇒ CÙNG
+          // một 401 với mọi nhánh hỏng khác, không nói vì sao (không làm oracle).
+          if (!emailVerified) throw invalid;
+          const member = await tx
+            .select({ id: memberships.id })
+            .from(memberships)
+            .where(and(eq(memberships.teamId, row.teamId), eq(memberships.userId, found.id)))
+            .limit(1);
+          if (member[0] === undefined) throw invalid;
+          id = found.id;
+        } else {
+          // Email chưa ai dùng ⇒ không có tài khoản nào để chiếm: tạo mới, ghi
+          // email_verified_at ĐÚNG như IdP nói (null khi chưa xác minh).
+          const created = await tx
+            .insert(users)
+            .values({
+              email,
+              displayName: email.split("@")[0] ?? email,
+              emailVerifiedAt: emailVerified ? now() : null,
+            })
+            .returning({ id: users.id });
+          const newId = created[0]?.id;
+          if (newId === undefined) throw new Error("oidc: không tạo được user");
+          id = newId;
+          // Provisioning just-in-time: có tài khoản IdP + connector của team ⇒ có membership.
+          await tx
+            .insert(memberships)
+            .values({ teamId: row.teamId, userId: id, role })
+            .onConflictDoNothing({ target: [memberships.teamId, memberships.userId] });
+        }
+
+        // Neo lại để lần sau không còn phải hỏi tới email nữa. Hai tab đăng nhập
+        // song song cùng `sub` ⇒ một cái thắng, cái kia bỏ qua (cùng userId).
         await tx
-          .insert(memberships)
-          .values({ teamId: row.teamId, userId: id, role })
-          .onConflictDoNothing({ target: [memberships.teamId, memberships.userId] });
+          .insert(idnOidcIdentities)
+          .values({ teamId: row.teamId, connectorId: row.id, subject, userId: id })
+          .onConflictDoNothing({
+            target: [idnOidcIdentities.connectorId, idnOidcIdentities.subject],
+          });
         return id;
       });
 

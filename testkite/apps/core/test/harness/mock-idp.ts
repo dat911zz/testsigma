@@ -30,6 +30,13 @@ type Pending = {
   challenge: string | null;
   mode: string;
   email: string;
+  /**
+   * `tk_email_verified`: "true" (mặc định) | "false" | "absent".
+   * "absent" = IdP KHÔNG phát claim `email_verified` (Keycloak có thể tắt scope email).
+   * Đây là công tắc để test được luật "email chưa xác minh thì không liên kết vào
+   * tài khoản đã có" — mà không có nó thì không kiểm chứng được từ bên ngoài.
+   */
+  emailVerified: string;
   groups: string[];
   sub: string;
 };
@@ -86,6 +93,7 @@ export async function startMockIdp(
           challenge: url.searchParams.get("code_challenge"),
           mode: url.searchParams.get("tk_mode") ?? "ok",
           email: url.searchParams.get("tk_email") ?? "oidc@acme.test",
+          emailVerified: url.searchParams.get("tk_email_verified") ?? "true",
           groups: (url.searchParams.get("tk_groups") ?? "qa-authors").split(","),
           sub: url.searchParams.get("tk_sub") ?? "kc-user-1",
         });
@@ -122,11 +130,13 @@ export async function startMockIdp(
           }
         }
         const now = Math.floor(Date.now() / 1000);
-        const claims = {
+        const claims: Record<string, unknown> = {
           email: rec.email,
-          email_verified: true,
           groups: rec.groups,
           nonce: rec.nonce ?? undefined,
+          ...(rec.emailVerified === "absent"
+            ? {}
+            : { email_verified: rec.emailVerified === "true" }),
         };
         const sign = (
           iss: string,
