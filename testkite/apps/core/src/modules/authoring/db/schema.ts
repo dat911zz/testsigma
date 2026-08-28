@@ -21,6 +21,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   type PgTableExtraConfigValue,
 } from "drizzle-orm/pg-core";
@@ -340,6 +341,69 @@ export const autCaseRevisions = pgTable(
     check("aut_case_revisions_codec_known", sql`codec IN ('zstd','raw')`),
     check("aut_case_revisions_no_positive", sql`revision_no > 0 AND case_version > 0`),
     check("aut_case_revisions_sha256_hex", sql`payload_sha256 ~ '^[0-9a-f]{64}$'`),
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: tenantPredicate,
+      withCheck: tenantPredicate,
+    }),
+  ],
+).enableRLS();
+
+export const autReviewState = pgEnum("aut_review_state", [
+  "open",
+  "approved",
+  "changes_requested",
+  "withdrawn",
+]);
+
+/**
+ * Bản ghi review, một dòng cho mỗi lần đưa case ra xét. Lịch sử giữ lại (không
+ * xoá dòng cũ) nên UI thấy được case đã bị trả về sửa mấy lần.
+ */
+export const autCaseReviews = pgTable(
+  "aut_case_reviews",
+  {
+    teamId: uuid("team_id").notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    /** Bản CỤ THỂ được đưa ra xét — review một bản, không phải review "cái case". */
+    revisionId: uuid("revision_id").notNull(),
+    state: autReviewState("state").notNull().default("open"),
+    requestedBy: uuid("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    decidedBy: uuid("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    comment: text("comment"),
+  },
+  (t) => [
+    unique("aut_case_reviews_team_id_unique").on(t.teamId, t.id),
+    index("aut_case_reviews_case_idx").on(t.teamId, t.caseId, t.requestedAt),
+    /**
+     * Tối đa MỘT review đang mở cho mỗi case — ràng buộc ở DB chứ không ở service,
+     * vì hai request submit song song sẽ cùng đọc "chưa có review nào" rồi cùng ghi.
+     * Partial index (WHERE state='open') là cách duy nhất diễn đạt "unique có điều
+     * kiện" trong Postgres. Đã kiểm chứng chạy trên PGlite 18.3 (spike 2026-08-28).
+     */
+    uniqueIndex("aut_case_reviews_one_open")
+      .on(t.teamId, t.caseId)
+      .where(sql`state = 'open'`),
+    foreignKey({
+      name: "aut_case_reviews_case_fk",
+      columns: [t.teamId, t.caseId],
+      foreignColumns: [autCases.teamId, autCases.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "aut_case_reviews_revision_fk",
+      columns: [t.teamId, t.revisionId],
+      foreignColumns: [autCaseRevisions.teamId, autCaseRevisions.id],
+    }),
+    check(
+      "aut_case_reviews_decided_shape",
+      sql`(state = 'open' AND decided_by IS NULL AND decided_at IS NULL)
+       OR (state <> 'open' AND decided_at IS NOT NULL)`,
+    ),
     pgPolicy("tenant_isolation", {
       as: "permissive",
       for: "all",

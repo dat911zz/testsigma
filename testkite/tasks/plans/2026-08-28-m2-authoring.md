@@ -3560,7 +3560,7 @@ git commit -m "M2-AUT T9: review fixes"
 > ```
 > `approve` KHÔNG tự đẩy sang `ready`: promote là hành động riêng, có người riêng (four-eyes) và có advisory lock riêng.
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/test/authoring/review-service.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/test/authoring/review-service.test.ts`**
 
 ```ts
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
@@ -3754,12 +3754,12 @@ describe("withdrawReview", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/review-service.test.ts`
 Expected: FAIL — `aut_review_state` không tồn tại.
 
-- [ ] **Step 3: Thêm bảng review vào `apps/core/src/modules/authoring/db/schema.ts`**
+- [x] **Step 3: Thêm bảng review vào `apps/core/src/modules/authoring/db/schema.ts`**
 
 Thêm `uniqueIndex` vào import từ `drizzle-orm/pg-core`, rồi thêm cuối file:
 
@@ -3828,7 +3828,7 @@ export const autCaseReviews = pgTable(
 ).enableRLS();
 ```
 
-- [ ] **Step 4: Sinh migration + grants**
+- [x] **Step 4: Sinh migration + grants**
 
 Run: `cd testkite/apps/core && pnpm db:generate --name=aut_case_reviews`
 
@@ -3846,7 +3846,7 @@ GRANT SELECT, INSERT, UPDATE ON aut_case_reviews TO "testkite_app";
 
 Thêm entry `_journal.json` (`"tag": "0013_aut_case_reviews_grants"`).
 
-- [ ] **Step 5: Implement `apps/core/src/modules/authoring/db/review-repo.ts`**
+- [x] **Step 5: Implement `apps/core/src/modules/authoring/db/review-repo.ts`**
 
 ```ts
 import { and, desc, eq } from "drizzle-orm";
@@ -3919,7 +3919,7 @@ export class ReviewRepo extends TenantRepo {
 }
 ```
 
-- [ ] **Step 6: Thêm hai phương thức vào `apps/core/src/modules/authoring/db/case-repo.ts`**
+- [x] **Step 6: Thêm hai phương thức vào `apps/core/src/modules/authoring/db/case-repo.ts`**
 
 ```ts
   /** draft -> in_review. Bump version vì trạng thái đổi cũng là một thay đổi. */
@@ -3967,7 +3967,7 @@ export class ReviewRepo extends TenantRepo {
   }
 ```
 
-- [ ] **Step 7: Implement `apps/core/src/modules/authoring/review-service.ts`**
+- [x] **Step 7: Implement `apps/core/src/modules/authoring/review-service.ts`**
 
 ```ts
 /**
@@ -4113,12 +4113,22 @@ export async function decideReview(
 }
 ```
 
-- [ ] **Step 8: Chạy test, xác nhận XANH**
+- [x] **Step 8: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/review-service.test.ts`
 Expected: PASS 9 test.
 
-- [ ] **Step 9: Verify + commit**
+> **Lệch thực tế (2026-08-28):** PASS **10** test — plan đếm nhầm, file test của Step 1
+> có 10 khối `it` (3 hình dạng + 3 submit + 3 decide + 1 withdraw).
+>
+> **Một khẳng định phải sửa so với block Step 1:** `rejects.toThrow(/duplicate key|unique/i)`
+> cho partial unique index KHÔNG BAO GIỜ xanh được — drizzle-orm 0.45 bọc lỗi driver
+> nên `message` chỉ là `"Failed query: <sql>\nparams: …"`, không chứa chữ nào trong hai
+> chữ đó (đã dựng lại: test đỏ đúng ở đây trong khi index ĐÃ từ chối). Thay bằng đúng
+> pattern đã chốt ở M1/T3 — đọc `cause`, khẳng định SQLSTATE `23505` + `constraint`
+> `aut_case_reviews_one_open`. Chặt hơn regex: nó chỉ đích danh partial index này.
+
+- [x] **Step 9: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm lint && pnpm --filter @testkite/core test`
 

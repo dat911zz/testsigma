@@ -158,6 +158,55 @@ export class CaseRepo extends TenantRepo {
     return row;
   }
 
+  /** draft -> in_review. Bump version vì trạng thái đổi cũng là một thay đổi. */
+  async applySubmit(
+    caseId: string,
+    nextVersion: number,
+    actorUserId: string,
+    revisionId: string,
+  ): Promise<CaseRow> {
+    const rows = await this.tx
+      .update(autCases)
+      .set({
+        version: nextVersion,
+        status: "in_review",
+        submittedAt: new Date(),
+        submittedBy: actorUserId,
+        updatedAt: new Date(),
+        latestRevisionId: revisionId,
+      })
+      .where(and(eq(autCases.teamId, this.teamId), eq(autCases.id, caseId)))
+      .returning();
+    const row = rows[0];
+    if (row === undefined) throw new Error("aut_cases: UPDATE không trả row");
+    return row;
+  }
+
+  /**
+   * Kết quả review. `approved` GIỮ in_review (promote là bước riêng);
+   * `changes_requested` và `withdraw` đưa về draft.
+   */
+  async applyDecision(
+    caseId: string,
+    nextVersion: number,
+    nextStatus: "draft" | "in_review",
+    reviewer: { readonly userId: string; readonly stampReviewed: boolean },
+  ): Promise<CaseRow> {
+    const rows = await this.tx
+      .update(autCases)
+      .set({
+        version: nextVersion,
+        status: nextStatus,
+        updatedAt: new Date(),
+        ...(reviewer.stampReviewed ? { reviewedAt: new Date(), reviewedBy: reviewer.userId } : {}),
+      })
+      .where(and(eq(autCases.teamId, this.teamId), eq(autCases.id, caseId)))
+      .returning();
+    const row = rows[0];
+    if (row === undefined) throw new Error("aut_cases: UPDATE không trả row");
+    return row;
+  }
+
   async setLatestRevision(caseId: string, revisionId: string): Promise<CaseRow> {
     const rows = await this.tx
       .update(autCases)
