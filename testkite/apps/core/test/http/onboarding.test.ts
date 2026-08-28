@@ -6,6 +6,7 @@
  */
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { makeTestApp, type TestApp } from "../harness/http.js";
+import { onboardTeam, teamIdFor } from "../../src/http/usecases/onboard-team.js";
 
 let h: TestApp;
 beforeAll(async () => {
@@ -28,13 +29,28 @@ const payload = (over: Record<string, unknown> = {}): Record<string, unknown> =>
   ...over,
 });
 
+/**
+ * Tạo team mới đòi `team:create` — quyền CHỈ org_admin/instance_operator có. Một
+ * team_admin bình thường không mở được cửa này (xem test leo thang bên dưới).
+ */
 const onboard = (over: Record<string, unknown> = {}): ReturnType<TestApp["app"]["inject"]> =>
   h.app.inject({
     method: "POST",
     url: "/v1/teams",
-    headers: { authorization: `Bearer ${h.tokens.adminA}` },
+    headers: { authorization: `Bearer ${h.tokens.orgAdminA}` },
     payload: payload(over),
   });
+
+/** Gom message của cả chuỗi `cause` — lỗi DB thật nằm ở tầng dưới lớp bọc drizzle. */
+const flattenError = (e: unknown): string => {
+  let out = "";
+  let cur: unknown = e;
+  for (let i = 0; i < 6 && cur instanceof Error; i += 1) {
+    out += `${cur.message}\n`;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return out;
+};
 
 type OnboardBody = {
   teamId: string;
@@ -115,15 +131,56 @@ describe("onboarding team", () => {
     expect(teams.rows[0]?.n).toBe(1);
   });
 
-  it("lỗi giữa chừng ⇒ rollback TOÀN BỘ, không có team mồ côi", async () => {
-    // base_url không phải URL ⇒ hợp đồng chặn; nếu lọt qua thì CHECK của
-    // pln_environments chặn ⇒ transaction phải cuốn cả team vừa tạo.
-    const r = await onboard({ slug: "team-hong", baseUrl: "khong-phai-url", idempotencyKey: "k-hong" });
-    expect(r.statusCode).toBe(400);
+  it("baseUrl hỏng ⇒ 400 của TẦNG HỢP ĐỒNG (kể cả scheme lạ), không phải 500", async () => {
+    // `z.string().url()` một mình nhận cả ftp:/mailto:/file: — trong khi CHECK của
+    // pln_environments chỉ cho http(s). Lệch ấy biến một lỗi input của client thành
+    // 500 INTERNAL. Hợp đồng phải chặn CẢ HAI kiểu hỏng ở 400.
+    // `idempotencyKey` phải đủ 8 ký tự, nếu không CHÍNH NÓ mới là thứ bị 400 và test
+    // lại không nói gì về baseUrl (bẫy của phiên bản trước).
+    for (const bad of ["khong-phai-url", "ftp://bad.example.test"]) {
+      const r = await onboard({ slug: "team-hong", baseUrl: bad, idempotencyKey: "k-hong-0001" });
+      expect(r.statusCode).toBe(400);
+      expect((r.json() as { code: string }).code).toBe("VALIDATION_FAILED");
+    }
     const rows = await h.db.raw.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM teams WHERE slug='team-hong'`,
     );
     expect(rows.rows[0]?.n).toBe(0);
+  });
+
+  it("lỗi giữa chừng ⇒ rollback TOÀN BỘ (team + user + membership + token + quota)", async () => {
+    // Gọi THẲNG use case: chỉ đường này mới mở được transaction rồi chết ở giữa. Đi
+    // qua HTTP thì hợp đồng chặn từ trước khi chạm DB — "rollback" kiểu đó không
+    // chứng minh được gì.
+    const key = "k-rollback-that-su";
+    const teamId = teamIdFor(h.ids.orgId, key);
+    const err = await onboardTeam(
+      { db: h.db.db },
+      {
+        orgId: h.ids.orgId,
+        name: "Team Hỏng",
+        slug: "team-hong-that",
+        adminEmail: "hong@acme.test",
+        baseUrl: "ftp://bad.example.test",
+        idempotencyKey: key,
+        actorUserId: h.ids.orgAdminUser,
+      },
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    // Chết đúng ở CHECK của pln_environments ⇒ team/user/token đã được ghi TRƯỚC đó
+    // trong cùng transaction, nên các số 0 dưới đây là rollback thật.
+    expect(flattenError(err)).toContain("pln_environments_base_url_check");
+
+    const count = async (sqlText: string, params: unknown[]): Promise<number | undefined> =>
+      (await h.db.raw.query<{ n: number }>(sqlText, params)).rows[0]?.n;
+    expect(await count(`SELECT count(*)::int AS n FROM teams WHERE id=$1`, [teamId])).toBe(0);
+    expect(await count(`SELECT count(*)::int AS n FROM memberships WHERE team_id=$1`, [teamId])).toBe(0);
+    expect(await count(`SELECT count(*)::int AS n FROM api_tokens WHERE team_id=$1`, [teamId])).toBe(0);
+    expect(await count(`SELECT count(*)::int AS n FROM quota_limits WHERE team_id=$1`, [teamId])).toBe(0);
+    expect(await count(`SELECT count(*)::int AS n FROM projects WHERE team_id=$1`, [teamId])).toBe(0);
+    expect(await count(`SELECT count(*)::int AS n FROM users WHERE email=$1`, ["hong@acme.test"])).toBe(0);
   });
 
   it("mọi thứ tạo ra thuộc ĐÚNG team mới, không rơi sang team người gọi", async () => {
@@ -145,14 +202,50 @@ describe("onboarding team", () => {
     expect(r.rows[0]).toMatchObject({ severity: "HIGH", team_id: body.teamId });
   });
 
-  it("thiếu quyền team:manage ⇒ 403", async () => {
+  it("thiếu quyền team:create ⇒ 403", async () => {
     const r = await h.app.inject({
       method: "POST",
       url: "/v1/teams",
       headers: { authorization: `Bearer ${h.tokens.authorA}` },
-      payload: payload({ slug: "team-khac", idempotencyKey: "k2" }),
+      payload: payload({ slug: "team-khac", idempotencyKey: "k-author-0001" }),
     });
     expect(r.statusCode).toBe(403);
+  });
+
+  it("team_admin THƯỜNG không tạo được team mới — team:manage KHÔNG mở được cửa này", async () => {
+    // Leo thang đã tái hiện được trước đây: `team:manage` có ở MỌI team_admin, nên bất
+    // kỳ ai cũng tự dựng team rồi tự gắn admin. Tạo team là quyền cấp ORG.
+    const r = await h.app.inject({
+      method: "POST",
+      url: "/v1/teams",
+      headers: { authorization: `Bearer ${h.tokens.adminA}` },
+      payload: payload({ slug: "team-leo-thang", idempotencyKey: "k-leo-thang" }),
+    });
+    expect(r.statusCode).toBe(403);
+    const teams = await h.db.raw.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM teams WHERE slug='team-leo-thang'`,
+    );
+    expect(teams.rows[0]?.n).toBe(0);
+  });
+
+  it("KHÔNG ép một tài khoản có sẵn vào team mới: adminEmail của người khác ⇒ 409", async () => {
+    // Không có bước mời-chấp-nhận ở M2 ⇒ đường an toàn duy nhất là TỪ CHỐI, chứ không
+    // phải lặng lẽ gắn membership team_admin cho một người không hề hay biết.
+    const r = await onboard({
+      adminEmail: "author@acme.test",
+      slug: "team-ep-buoc",
+      idempotencyKey: "k-ep-buoc",
+    });
+    expect(r.statusCode).toBe(409);
+    const mem = await h.db.raw.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM memberships WHERE user_id=$1`,
+      [h.ids.authorUser],
+    );
+    expect(mem.rows[0]?.n).toBe(1); // vẫn đúng một membership cũ ở team A
+    const teams = await h.db.raw.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM teams WHERE slug='team-ep-buoc'`,
+    );
+    expect(teams.rows[0]?.n).toBe(0);
   });
 
   it("egress observe hết đúng 14 ngày kể từ lúc onboard", async () => {

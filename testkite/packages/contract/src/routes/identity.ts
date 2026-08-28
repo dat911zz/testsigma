@@ -162,13 +162,20 @@ export const identityRoutes: readonly RouteDescriptor[] = [
     path: "/v1/teams",
     summary: "Onboarding một team trong MỘT transaction idempotent",
     auth: "required",
-    permission: "team:manage",
+    // DỰNG team mới là quyền cấp org, KHÔNG phải `team:manage` (thứ mọi team_admin đều
+    // có): gộp hai thứ ấy là để bất kỳ team_admin nào cũng tự dựng team tuỳ ý.
+    permission: "team:create",
     body: z.object({
       orgId: uuid,
       name: z.string().min(1).max(120),
       slug: z.string().regex(/^[a-z0-9-]{2,40}$/),
       adminEmail: z.string().email(),
-      baseUrl: z.string().url(),
+      /**
+       * `.url()` một mình nhận CẢ ftp:/mailto:/file: — trong khi CHECK của
+       * `pln_environments` chỉ cho http(s). Không chặn scheme ở đây thì một input sai
+       * của client đi tới tận DB rồi bật lên thành 500 INTERNAL.
+       */
+      baseUrl: z.string().url().regex(/^https?:\/\//, "baseUrl phải dùng http hoặc https"),
       idempotencyKey: z.string().min(8).max(120),
     }),
     responses: {
@@ -179,7 +186,10 @@ export const identityRoutes: readonly RouteDescriptor[] = [
         serviceTokenPrefix: z.string(),
         created: z.boolean(),
       }),
+      400: errorResponseSchema,
       403: errorResponseSchema,
+      /** slug đã có trong org, hoặc adminEmail trỏ vào một tài khoản đã tồn tại. */
+      409: errorResponseSchema,
     },
   }),
   defineRoute({

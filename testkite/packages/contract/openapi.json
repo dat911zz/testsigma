@@ -1132,7 +1132,8 @@
                   },
                   "baseUrl": {
                     "type": "string",
-                    "format": "uri"
+                    "format": "uri",
+                    "pattern": "^https?:\\/\\/"
                   },
                   "idempotencyKey": {
                     "type": "string",
@@ -1193,8 +1194,72 @@
               }
             }
           },
+          "400": {
+            "description": "Dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          },
           "403": {
             "description": "Thiếu quyền trong chính team của mình",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Xung đột phiên bản",
             "content": {
               "application/json": {
                 "schema": {

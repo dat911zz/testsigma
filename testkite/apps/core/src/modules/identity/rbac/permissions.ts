@@ -11,7 +11,7 @@ export const PERMISSIONS = [
   "testdata:read", "testdata:write",
   "env:read", "env:write",
   "secret:read", "secret:write",
-  "member:manage", "team:manage", "team:purge",
+  "member:manage", "team:manage", "team:create", "team:purge",
   "token:issue:user", "token:issue:service",
   "quota:read", "quota:set",
   "audit:read", "audit:read:all",
@@ -38,6 +38,13 @@ const AUTHOR: readonly Permission[] = [
   "token:issue:user",
 ];
 
+/**
+ * `team:manage` = quản trị team ĐANG CÓ (đổi cấu hình, quản người trong đó). Nó KHÔNG
+ * bao hàm việc DỰNG team mới: dựng team là hành vi cấp org (chọn org, cấp hạn mức, chỉ
+ * định admin đầu tiên) nên đứng riêng thành `team:create`. Gộp hai thứ này là đường leo
+ * thang: mọi team_admin đều có `team:manage`, tức mọi team_admin đều tự cấp cho mình
+ * một team mới và tự gắn admin cho người khác.
+ */
 const TEAM_ADMIN: readonly Permission[] = [
   ...AUTHOR,
   "member:manage", "team:manage",
@@ -50,7 +57,8 @@ const TEAM_ADMIN: readonly Permission[] = [
  * break-glass ghi audit HIGH (blueprint §3). Vai này quản người + hạn mức, không xem test.
  */
 const ORG_ADMIN: readonly Permission[] = [
-  "member:manage", "team:manage", "quota:read", "quota:set", "audit:read", "audit:read:all",
+  "member:manage", "team:manage", "team:create",
+  "quota:read", "quota:set", "audit:read", "audit:read:all",
 ];
 
 /** Vai hạ tầng: vận hành instance, không phải người dùng nghiệp vụ. */
@@ -79,7 +87,7 @@ export const NEVER_GRANTABLE: readonly Permission[] = [
 /** Action HIGH: bỏ qua cache 60s, luôn đọc DB, luôn ghi audit severity=HIGH. */
 export const HIGH_RISK: readonly Permission[] = [
   ...NEVER_GRANTABLE,
-  "member:manage", "team:manage", "secret:read", "audit:read:all", "token:issue:user",
+  "member:manage", "team:manage", "team:create", "secret:read", "audit:read:all", "token:issue:user",
 ];
 
 const PERMISSION_SET: ReadonlySet<string> = new Set(PERMISSIONS);

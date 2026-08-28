@@ -26,6 +26,7 @@ export type TestApp = {
     projectB: string;
     adminUser: string;
     authorUser: string;
+    orgAdminUser: string;
   };
   readonly tokens: {
     adminA: string;
@@ -34,6 +35,8 @@ export type TestApp = {
     expiredA: string;
     revokedA: string;
     adminB: string;
+    /** Vai org_admin ở team A — vai DUY NHẤT (cùng instance_operator) tạo được team mới. */
+    orgAdminA: string;
   };
   readonly counters: { authLookups: number; reset: () => void };
   /** Đợi mọi việc `defer` (audit đăng nhập hỏng) chạy xong — xem ghi chú ở dưới. */
@@ -124,6 +127,7 @@ export async function makeTestApp(): Promise<TestApp> {
     projectB: "",
     adminUser: "",
     authorUser: "",
+    orgAdminUser: "",
   };
   const tokens = {
     adminA: "",
@@ -132,6 +136,7 @@ export async function makeTestApp(): Promise<TestApp> {
     expiredA: "",
     revokedA: "",
     adminB: "",
+    orgAdminA: "",
   };
 
   async function issue(
@@ -191,8 +196,12 @@ export async function makeTestApp(): Promise<TestApp> {
     const ub = await db.db.execute(
       sql`INSERT INTO users (email,display_name) VALUES ('author@acme.test','Author') RETURNING id`,
     );
+    const uo = await db.db.execute(
+      sql`INSERT INTO users (email,display_name) VALUES ('orgadmin@acme.test','OrgAdmin') RETURNING id`,
+    );
     ids.adminUser = String(ua.rows[0]?.["id"]);
     ids.authorUser = String(ub.rows[0]?.["id"]);
+    ids.orgAdminUser = String(uo.rows[0]?.["id"]);
     await db.db.execute(
       sql`INSERT INTO memberships (team_id,user_id,role) VALUES (${ids.teamA},${ids.adminUser},'team_admin')`,
     );
@@ -202,10 +211,16 @@ export async function makeTestApp(): Promise<TestApp> {
     await db.db.execute(
       sql`INSERT INTO memberships (team_id,user_id,role) VALUES (${ids.teamB},${ids.adminUser},'team_admin')`,
     );
+    await db.db.execute(
+      sql`INSERT INTO memberships (team_id,user_id,role) VALUES (${ids.teamA},${ids.orgAdminUser},'org_admin')`,
+    );
 
     const ADMIN = ["case:read", "member:manage", "token:issue:user", "audit:read", "team:manage"];
     const AUTHOR = ["case:read", "case:write", "run:trigger"];
+    // org_admin: quản người + tạo team, KHÔNG đọc tài sản team (break-glass mới đọc).
+    const ORG_ADMIN = ["member:manage", "audit:read", "team:manage", "team:create"];
     tokens.adminA = await issue(ids.teamA, ids.adminUser, ADMIN, { days: 30 });
+    tokens.orgAdminA = await issue(ids.teamA, ids.orgAdminUser, ORG_ADMIN, { days: 30 });
     tokens.authorA = await issue(ids.teamA, ids.authorUser, AUTHOR, { days: 30 });
     tokens.authorAOverreach = await issue(ids.teamA, ids.authorUser, [...AUTHOR, "member:manage"], {
       days: 30,

@@ -72,15 +72,40 @@ export async function provisionTeamCore(
     (await tx.select({ id: projects.id }).from(projects).where(eq(projects.teamId, teamId)).limit(1))[0]?.id;
   if (projectId === undefined) throw new Error("onboarding: không tạo được project");
 
-  // `users` là bảng TOÀN CỤC: người này có thể đã là thành viên team khác từ trước.
+  /**
+   * `users` là bảng TOÀN CỤC. Onboarding chỉ được phép TẠO tài khoản admin đầu tiên,
+   * KHÔNG được vơ một tài khoản có sẵn vào team mới chỉ vì người gọi gõ đúng email:
+   * làm vậy là ép người khác vào một team họ chưa từng đồng ý, không lời mời, không
+   * thông báo. Chưa có luồng mời-chấp-nhận (M3) thì đường an toàn duy nhất là TỪ CHỐI.
+   *
+   * Ngoại lệ DUY NHẤT: người ấy ĐÃ là thành viên của chính team này — tức đây là lần
+   * chạy lại idempotent của cùng một onboarding, không phải một lần gắn mới.
+   *
+   * Đánh đổi đã cân: 409 ở đây nói cho người gọi biết email ấy có tài khoản. Kênh dò
+   * đó chỉ mở cho org_admin/instance_operator (quyền `team:create`), và đổi lại ta bịt
+   * được đường ép membership cho người ngoài — cái giá nhỏ hơn hẳn.
+   */
   const email = input.adminEmail.toLowerCase();
   const existingUser = await tx
     .select({ id: users.id })
     .from(users)
     .where(sql`lower(${users.email}) = ${email}`)
     .limit(1);
+  const existingUserId = existingUser[0]?.id;
+  if (existingUserId !== undefined) {
+    const alreadyMember = await tx
+      .select({ id: memberships.id })
+      .from(memberships)
+      .where(and(eq(memberships.teamId, teamId), eq(memberships.userId, existingUserId)))
+      .limit(1);
+    if (alreadyMember[0] === undefined) {
+      throw new ConflictError(
+        `adminEmail đã thuộc một tài khoản có sẵn: ${input.adminEmail} — thêm họ bằng luồng mời, không bằng onboarding`,
+      );
+    }
+  }
   const adminUserId =
-    existingUser[0]?.id ??
+    existingUserId ??
     (
       await tx
         .insert(users)

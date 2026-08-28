@@ -50,6 +50,19 @@ describe("ma trận quyền 6 vai", () => {
     expect(ROLE_PERMISSIONS.org_admin).toContain("audit:read:all");
   });
 
+  it("tạo team mới là quyền CẤP ORG: team_admin không có team:create", () => {
+    // Gộp việc dựng team vào `team:manage` là đường leo thang — mọi team_admin đều có
+    // `team:manage`, và team_admin là vai thường gặp nhất trong hệ.
+    expect(ROLE_PERMISSIONS.team_admin).toContain("team:manage");
+    expect(ROLE_PERMISSIONS.team_admin).not.toContain("team:create");
+    expect(ROLE_PERMISSIONS.org_admin).toContain("team:create");
+    expect(ROLE_PERMISSIONS.instance_operator).toContain("team:create");
+    for (const role of ["author", "runner", "viewer"] as const) {
+      expect(ROLE_PERMISSIONS[role]).not.toContain("team:create");
+    }
+    expect(isHighRisk("team:create")).toBe(true);
+  });
+
   it("instance_operator là vai hạ tầng: không đọc tài sản, có team:purge", () => {
     expect(ROLE_PERMISSIONS.instance_operator).not.toContain("case:read");
     expect(ROLE_PERMISSIONS.instance_operator).toContain("team:purge");
