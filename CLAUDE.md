@@ -37,6 +37,7 @@ Bắt buộc theo đúng nghi thức:
 | Gặp bug | `systematic-debugging` — tìm root cause, không vá mù |
 | Trước khi tuyên bố "xong" | `verification-before-completion` — chạy verify thật, dán output |
 | Review | `requesting-code-review` / `receiving-code-review` |
+| Cuối mỗi milestone | **Polish wave** (chốt 28-08-2026): gặt toàn bộ nit các reviewer đã ghi + 3 lượt rà soát chéo (an ninh end-to-end · đơn giản hoá/nhất quán · chất lượng test), phân loại áp/bỏ/hoãn có lý do, áp fix bằng pipeline impl/review thường lệ TRƯỚC khi nghiệm thu milestone |
 
 ## Luật 3 — Phân model theo việc (tiết kiệm chi phí)
 
