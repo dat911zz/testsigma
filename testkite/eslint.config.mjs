@@ -1,14 +1,15 @@
 /**
- * Flat config của TestKite. `.mjs` chứ không `.js`: workspace root không khai
- * `"type": "module"`, nên `.js` ở đây là CommonJS còn flat config bắt buộc ESM.
+ * TestKite's flat config. `.mjs`, not `.js`: the workspace root does not declare
+ * `"type": "module"`, so `.js` here would be CommonJS while flat config requires ESM.
  *
- * M1 CHỈ cưỡng chế LUẬT KIẾN TRÚC, không luật style:
- *  - DAG một chiều giữa 12 module apps/core        (Task B2)
- *  - run-compiler PURE + queue chỉ trong kernel     (Task B3)
- * Rule style/recommended để dành — chúng kéo theo hàng loạt sửa vô can.
+ * M1 enforces ARCHITECTURE RULES ONLY, not style rules:
+ *  - one-way DAG across the 12 apps/core modules   (Task B2)
+ *  - run-compiler PURE + queue confined to kernel  (Task B3)
+ * Style/recommended rules are deferred — they drag in a pile of unrelated fixes.
  *
- * `pnpm lint` chỉ soi `apps` và `packages`. `tools/lint-fixtures/**` cố ý VI PHẠM
- * và được test riêng gọi thẳng qua ESLint Node API (xem tools/lint-rules.test.ts).
+ * `pnpm lint` only targets `apps` and `packages`. `tools/lint-fixtures/**` deliberately
+ * VIOLATES the rules and is tested separately through the ESLint Node API directly
+ * (see tools/lint-rules.test.ts).
  */
 import { createRequire } from "node:module";
 import boundaries from "eslint-plugin-boundaries";
@@ -20,17 +21,48 @@ const MODULE_DAG = Object.fromEntries(
 );
 
 /**
- * `no-restricted-imports` CHỈ soi câu lệnh `import` TĨNH: `await import("node:fs")`
- * lọt qua không một lỗi nào (đã dựng lại trên eslint 10.9.1 bằng config tối giản
- * ngoài repo — không phải glob của repo sai). Nên mỗi danh sách cấm phải có bản
- * sao dạng regex gác `ImportExpression` qua `no-restricted-syntax`; hai bản phải
- * luôn khớp nhau — sửa danh sách nào thì sửa cả regex tương ứng.
+ * `no-restricted-imports` ONLY inspects STATIC `import` statements: `await import("node:fs")`
+ * slips through with zero errors (reproduced on eslint 10.9.1 with a minimal config outside
+ * this repo — not a repo glob bug). So every forbidden list needs a regex twin guarding
+ * `ImportExpression` via `no-restricted-syntax`; the two copies must always stay in sync —
+ * edit one list, edit its matching regex too.
  */
 const dynamicImportOf = (modulePattern) => `ImportExpression > Literal[value=/${modulePattern}/]`;
 const IO_MODULES =
   "^(node:)?(fs|net|dns|tls|http|https|child_process|worker_threads|cluster|os|process|path|url|timers)(\\/|$)";
 const SERVICE_MODULES = "^(pg|pg-[^\\/]*|postgres|drizzle-orm|drizzle-kit|bullmq|ioredis|@testkite\\/core)(\\/|$)";
 const QUEUE_MODULES = "^(bullmq|ioredis)(\\/|$)";
+
+/**
+ * L1 isolation (blueprint §3). A raw `TkDb` carries NO tenant: it hasn't run
+ * `SET LOCAL ROLE testkite_app` or `set_config('app.team_id', …)`, so RLS has no predicate to
+ * filter on. Any tenant-scoped query must run on a `TkTx` — the kind `withTenant()` hands out —
+ * or through `TenantRepo` (which only ever touches `this.tx`). `.transaction()` is the worst
+ * offender: opening a transaction straight on the raw handle means the whole transaction lives
+ * without a tenant.
+ *
+ * The list below is the ENTIRE query entrypoint surface of `PgDatabase` (drizzle-orm 0.45.2,
+ * `pg-core/db.d.ts`) — missing even one leaves exactly one way through.
+ */
+const DB_QUERY_ENTRYPOINTS =
+  "^(select|selectDistinct|selectDistinctOn|insert|update|delete|refreshMaterializedView|execute|transaction|query|with|\\$with|\\$count)$";
+
+/**
+ * Identifies a RAW handle BY NAME: `db`, `deps.db`, `this.#db`, or an identifier ending in
+ * `Db` (`appDb`, `testDb`). Deliberately does NOT match `tx`/`this.tx` — that's the valid form.
+ *
+ * This is a syntactic guard, not a proof: assign through an intermediate variable and the
+ * selector won't see it. The load-bearing layer is still the fail-closed `assertTenantContext`
+ * in `kernel/db/repo.ts` plus RLS; this rule only blocks the violation shape that's easiest to
+ * miss when reading a diff.
+ */
+const RAW_DB_RECEIVER = "^(db|.*Db)$";
+
+const rawDbQuery = {
+  selector: `MemberExpression[property.name=/${DB_QUERY_ENTRYPOINTS}/]:matches([object.name=/${RAW_DB_RECEIVER}/], [object.property.name=/${RAW_DB_RECEIVER}/])`,
+  message:
+    "L1 isolation: building a query on a raw DB handle is forbidden — the raw handle has neither an app role nor app.team_id, so RLS filters nothing. Go through withTenant(db, ctx, tx => …) or TenantRepo (docs/SYSTEM_DESIGN.md §3).",
+};
 
 export default [
   {
@@ -42,18 +74,18 @@ export default [
   },
   {
     /**
-     * Glob mở đầu `**` có chủ đích: nó khớp CẢ file production
-     * (`apps/core/src/modules/...`) LẪN fixture (`tools/lint-fixtures/apps/core/src/modules/...`),
-     * nên fixture được phân loại y hệt file thật và test luật lint mới có nghĩa.
+     * The leading `**` glob is deliberate: it matches BOTH production files
+     * (`apps/core/src/modules/...`) AND fixtures (`tools/lint-fixtures/apps/core/src/modules/...`),
+     * so fixtures get classified exactly like real files and the lint-rule tests are meaningful.
      */
     files: ["**/apps/core/src/modules/**/*.ts"],
     plugins: { boundaries },
     settings: {
       "boundaries/include": ["**/apps/core/src/modules/**/*.ts"],
       /**
-       * BẮT BUỘC. Repo dùng NodeNext: import nội bộ viết `./foo.js` trỏ tới `foo.ts`.
-       * Thiếu resolver này, boundaries phân giải dependency ra null và CHO QUA
-       * mọi vi phạm trong im lặng — tệ hơn không có lint.
+       * REQUIRED. The repo uses NodeNext: internal imports are written `./foo.js` pointing at
+       * `foo.ts`. Without this resolver, boundaries resolves the dependency to null and silently
+       * LETS THROUGH every violation — worse than no lint at all.
        */
       "import/resolver": { typescript: { project: "./tsconfig.base.json" } },
       "boundaries/elements": [{ type: "module", pattern: "apps/core/src/modules/*", capture: ["name"] }],
@@ -64,7 +96,7 @@ export default [
         {
           default: "disallow",
           message:
-            "DAG vi phạm: module '{{from.captured.name}}' không được import '{{to.captured.name}}'. Cạnh ngược/ngang đi bằng domain event qua krn_outbox, không phải import (docs/SYSTEM_DESIGN.md §4).",
+            "DAG violation: module '{{from.captured.name}}' must not import '{{to.captured.name}}'. Backward/lateral edges go through a domain event via krn_outbox, not an import (docs/SYSTEM_DESIGN.md §4).",
           policies: Object.entries(MODULE_DAG).map(([name, allowed]) => ({
             from: { element: { type: "module", captured: { name } } },
             allow: allowed.map((target) => ({ to: { element: { type: "module", captured: { name: target } } } })),
@@ -75,9 +107,9 @@ export default [
   },
   {
     /**
-     * Compiler PURE (CLAUDE.md Luật 4): cùng input ⇒ cùng content hash, mãi mãi.
-     * `node:crypto` KHÔNG bị cấm — phase 7 băm bằng `createHash`, đó là tính toán
-     * thuần. `*.test.ts` được miễn: golden.test.ts đọc 20+ fixture bằng node:fs.
+     * Compiler is PURE (CLAUDE.md Rule 4): same input ⇒ same content hash, forever.
+     * `node:crypto` is NOT forbidden — phase 7 hashes via `createHash`, which is pure
+     * computation. `*.test.ts` is exempt: golden.test.ts reads 20+ fixtures via node:fs.
      */
     files: ["**/packages/run-compiler/src/**/*.ts"],
     ignores: ["**/packages/run-compiler/src/**/*.test.ts"],
@@ -88,9 +120,9 @@ export default [
           patterns: [
             {
               /**
-               * Mỗi builtin phải có ĐỦ HAI dạng: `node:x` VÀ `x` trần. Node nạp
-               * `import { execSync } from "child_process"` y hệt `node:child_process`,
-               * nên thiếu dạng trần là để hở đúng cái lỗ mình đang bịt.
+               * Every builtin needs BOTH forms: `node:x` AND bare `x`. Node loads
+               * `import { execSync } from "child_process"` identically to `node:child_process`,
+               * so omitting the bare form leaves open the exact hole this is meant to close.
                */
               group: [
                 "fs", "fs/*", "node:fs", "node:fs/*",
@@ -105,7 +137,7 @@ export default [
                 "timers", "timers/*", "node:timers", "node:timers/*",
               ],
               message:
-                "run-compiler phải PURE: cấm fs/net/process/timer. node:crypto được phép (hash phase 7). Việc đọc dữ liệu thuộc orchestration — compiler chỉ nhận snapshot đã fetch.",
+                "run-compiler must stay PURE: fs/net/process/timer are forbidden. node:crypto is allowed (phase 7 hashing). Fetching data is orchestration's job — the compiler only ever receives an already-fetched snapshot.",
             },
             {
               group: [
@@ -115,7 +147,7 @@ export default [
                 "@testkite/core", "@testkite/core/*",
               ],
               message:
-                "run-compiler phải PURE: cấm db/queue/app. Compiler là hàm, không phải service.",
+                "run-compiler must stay PURE: db/queue/app are forbidden. The compiler is a function, not a service.",
             },
           ],
         },
@@ -125,28 +157,36 @@ export default [
         {
           selector: dynamicImportOf(IO_MODULES),
           message:
-            "run-compiler phải PURE: `await import()` nạp fs/net/process/timer vẫn là I/O, không phải lách luật. node:crypto vẫn được phép.",
+            "run-compiler must stay PURE: `await import()` loading fs/net/process/timer is still I/O, not a loophole. node:crypto is still allowed.",
         },
         {
           selector: dynamicImportOf(SERVICE_MODULES),
-          message: "run-compiler phải PURE: `await import()` nạp db/queue/app vẫn biến compiler thành service.",
+          message: "run-compiler must stay PURE: `await import()` loading db/queue/app still turns the compiler into a service.",
         },
       ],
       "no-restricted-globals": [
         "error",
-        { name: "process", message: "run-compiler phải PURE: env đi vào qua EnvSnapshot, không qua process.env." },
+        { name: "process", message: "run-compiler must stay PURE: env comes in through EnvSnapshot, not process.env." },
       ],
       "no-restricted-properties": [
         "error",
-        { object: "Date", property: "now", message: "run-compiler phải PURE: Date.now() làm content hash trôi giữa hai lần compile." },
-        { object: "Math", property: "random", message: "run-compiler phải PURE: Math.random() làm content hash trôi giữa hai lần compile." },
+        { object: "Date", property: "now", message: "run-compiler must stay PURE: Date.now() makes the content hash drift between two compiles." },
+        { object: "Math", property: "random", message: "run-compiler must stay PURE: Math.random() makes the content hash drift between two compiles." },
       ],
     },
   },
   {
     /**
-     * BullMQ/Valkey chỉ sống trong kernel (relay + dispatcher). Module khác muốn
-     * phát việc thì ghi outbox trong cùng transaction, không tự cầm queue client.
+     * Modules OUTSIDE the kernel. Every rule in this scope is deliberately gathered into ONE
+     * block: flat config does not merge options for the same rule — a later block OVERWRITES
+     * the earlier block's options entirely. Splitting `no-restricted-syntax` into a second
+     * block with the same `files` would silently wipe out the earlier block's selector. Add a
+     * rule in this same scope to the array below.
+     *
+     *  - BullMQ/Valkey only lives in the kernel (relay + dispatcher). A module that needs to
+     *    emit work writes to the outbox in the same transaction — it never holds a queue client
+     *    itself.
+     *  - L1 isolation: no building a query on a raw DB handle (see `rawDbQuery`).
      */
     files: ["**/apps/core/src/modules/**/*.ts"],
     ignores: ["**/apps/core/src/modules/kernel/**"],
@@ -158,7 +198,7 @@ export default [
             {
               group: ["bullmq", "bullmq/*", "ioredis", "ioredis/*"],
               message:
-                "Queue client chỉ được import trong modules/kernel. Module khác phát việc bằng cách ghi krn_outbox trong cùng transaction (docs/SYSTEM_DESIGN.md §4).",
+                "The queue client may only be imported inside modules/kernel. Other modules emit work by writing to krn_outbox in the same transaction (docs/SYSTEM_DESIGN.md §4).",
             },
           ],
         },
@@ -168,9 +208,26 @@ export default [
         {
           selector: dynamicImportOf(QUEUE_MODULES),
           message:
-            "Queue client chỉ được import trong modules/kernel — `await import(\"bullmq\")` cũng vậy. Module khác ghi krn_outbox trong cùng transaction (docs/SYSTEM_DESIGN.md §4).",
+            "The queue client may only be imported inside modules/kernel — `await import(\"bullmq\")` too. Other modules write to krn_outbox in the same transaction (docs/SYSTEM_DESIGN.md §4).",
         },
+        rawDbQuery,
       ],
+    },
+  },
+  {
+    /**
+     * The shell layer (`composition-root.ts`, `main.ts`, `http/**`): where the raw handle is
+     * created and threaded down, so it's also where a tenant-less transaction is most likely to
+     * slip through. The shell PASSES `db` into `withTenant()` and never queries on it directly.
+     *
+     * `ignores` excludes `modules/**` since that scope is already handled by the block right
+     * above — two blocks both setting `no-restricted-syntax` on overlapping files would have
+     * the later block wipe out the earlier block's selector.
+     */
+    files: ["**/apps/core/src/**/*.ts"],
+    ignores: ["**/apps/core/src/modules/**"],
+    rules: {
+      "no-restricted-syntax": ["error", rawDbQuery],
     },
   },
 ];

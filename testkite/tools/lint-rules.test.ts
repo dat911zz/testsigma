@@ -101,3 +101,28 @@ describe("queue only inside kernel", () => {
     expect(await lintFixture("apps/core/src/modules/kernel/queue-dynamic-allowed.ts")).toEqual([]);
   });
 });
+
+describe("isolation L1 — no query builder on a raw DB handle", () => {
+  it("CATCHES all five raw-handle queries in a module outside kernel", async () => {
+    const ids = await lintFixture("apps/core/src/modules/authoring/raw-db-query.ts");
+    expect(ids.filter((r) => r === "no-restricted-syntax")).toHaveLength(5);
+  });
+
+  it("does NOT report the `tx.select()` nested inside that same fixture", async () => {
+    // 5 raw-handle calls and nothing else: were `tx` receivers caught too, this would be 6.
+    const ids = await lintFixture("apps/core/src/modules/authoring/raw-db-query.ts");
+    expect(ids).toEqual(Array.from({ length: 5 }, () => "no-restricted-syntax"));
+  });
+
+  it("ALLOWS withTenant/TenantRepo — every query runs on the TkTx they hand out", async () => {
+    expect(await lintFixture("apps/core/src/modules/authoring/tenant-scoped-ok.ts")).toEqual([]);
+  });
+
+  it("ALLOWS opening a transaction on a raw handle inside kernel — that IS withTenant", async () => {
+    expect(await lintFixture("apps/core/src/modules/kernel/raw-db-allowed.ts")).toEqual([]);
+  });
+
+  it("CATCHES a raw-handle transaction in the shell layer (apps/core/src/http)", async () => {
+    expect(await lintFixture("apps/core/src/http/usecases/raw-db-query.ts")).toContain("no-restricted-syntax");
+  });
+});

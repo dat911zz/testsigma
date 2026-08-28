@@ -77,18 +77,26 @@ jobs:
 
       # Language rule (CLAUDE.md Luật 4 + the i18n-code cleanup pass): source code and
       # tests are English; Vietnamese stays confined to docs/. Scans the same 4 trees the
-      # i18n-code cleanup swept. packages/run-compiler/fixtures/ is deliberately OUT of
-      # scope here — it's compiler test DATA (not src/), and its Vietnamese case/step
-      # names feed into the golden contentHash, so translating it needs a dedicated,
-      # hash-verified golden regen rather than a blanket rewrite.
+      # i18n-code cleanup swept, PLUS the workspace's root-level config/scripts (also
+      # code, just not under src/test) — eslint.config.mjs, any root *.ts config, the
+      # scripts/ dir, and each app's vitest.config.ts / drizzle.config.ts.
+      # packages/run-compiler/fixtures/ is deliberately OUT of scope here — it's compiler
+      # test DATA (not src/), and its Vietnamese case/step names feed into the golden
+      # contentHash, so translating it needs a dedicated, hash-verified golden regen
+      # rather than a blanket rewrite.
       - name: Gate — language (code/test must be English, docs stay Vietnamese)
         run: |
           set -euo pipefail
+          shopt -s nullglob
           export LC_ALL=C.utf8
           PATTERN='[àáảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬĐÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ]'
-          if grep -rlP "$PATTERN" \
-               testkite/apps/core/src testkite/apps/core/test \
-               testkite/packages/*/src testkite/tools 2>/dev/null; then
+          TARGETS=(
+            testkite/apps/core/src testkite/apps/core/test
+            testkite/packages/*/src testkite/tools
+            testkite/*.mjs testkite/*.ts testkite/scripts
+            testkite/apps/*/vitest.config.ts testkite/apps/*/drizzle.config.ts
+          )
+          if grep -rlP "$PATTERN" "${TARGETS[@]}" 2>/dev/null; then
             echo "::error::Vietnamese text found in the source/test files listed above. Rule: code and tests must be written in English (comments, identifiers, test names, error/log/diagnostic messages); Vietnamese is reserved for documentation under docs/. Translate the flagged strings to English, or — if the Vietnamese is genuinely test DATA (not code) — move it under a directory this gate excludes and document why."
             exit 1
           fi

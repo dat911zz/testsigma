@@ -1,11 +1,11 @@
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  // Glob giữ đúng luật ownership: mỗi module tự giữ schema file của mình,
-  // nhưng chỉ có MỘT dòng migration.
+  // The glob keeps the ownership rule intact: each module owns its own schema file,
+  // but there is only ONE migration line.
   schema: "./src/modules/*/db/schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
-  // Role do migration quản lý — drizzle-kit sẽ sinh CREATE ROLE cho pgRole() ở Task 4.
+  // Roles are managed by migrations — drizzle-kit will generate CREATE ROLE for pgRole() in Task 4.
   entities: { roles: true },
 });
