@@ -25,7 +25,7 @@ export async function buildApp(env: KernelEnv): Promise<TkApp> {
     db,
     authenticator,
     registrations: [
-      ...identityRouteRegistrations({ db }),
+      ...identityRouteRegistrations({ db, cache }),
       // authoring nối registration của nó vào đây (một dòng, sau identity).
     ],
   });

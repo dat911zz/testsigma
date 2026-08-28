@@ -2,7 +2,11 @@
  * Cache quyền TTL 60s (blueprint §3). Đây là cache CỦA MỘT TIẾN TRÌNH, không phải
  * Redis: hệ quả là mỗi instance API có thể lệch nhau tối đa 60s sau khi đổi vai.
  * Chấp nhận được vì (a) action HIGH bỏ qua cache hoàn toàn — xem Task 6, và
- * (b) đổi vai gọi invalidateTeam() ngay trong tiến trình xử lý.
+ * (b) đổi vai gọi invalidateTeam() ngay trong tiến trình xử lý — chỗ gọi thật là
+ * `identity/routes.ts::setMemberRole`, ngay sau khi UPDATE commit.
+ *
+ * Key của cache là SHA-256 hex của secret (authenticator.ts), KHÔNG phải secret thô:
+ * không có đường nào để bearer token nằm nguyên văn trong bộ nhớ tiến trình.
  *
  * KHÔNG dùng `now` mặc định là Date.now trong test: clock được tiêm để test TTL
  * không cần sleep.

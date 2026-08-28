@@ -45,7 +45,12 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
     async authenticate(rawSecret, opts) {
       // Sai định dạng thì không tốn một round-trip DB nào.
       if (parseTokenSecret(rawSecret) === null) return null;
-      const cacheKey = rawSecret;
+      // Key cache là SHA-256, KHÔNG phải secret thô: bearer token thật không được
+      // nằm nguyên văn trong heap suốt TTL 60s (heap dump/APM đọc được). Cùng đúng
+      // giá trị DB lưu ở token_hash, và chỉ tốn một phép hash CPU (0,0026ms) —
+      // không thêm round-trip nào so với việc dùng chuỗi thô.
+      const tokenHash = hashTokenSecret(rawSecret);
+      const cacheKey = tokenHash.toString("hex");
 
       if (!opts.fresh) {
         const hit = deps.cache.get(cacheKey);
@@ -62,7 +67,6 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
       }
 
       deps.onLookup?.();
-      const tokenHash = hashTokenSecret(rawSecret);
       const found = await withAuthRole(deps.db, async (tx) => {
         const rows = await tx
           .select({

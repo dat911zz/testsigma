@@ -72,7 +72,7 @@ export async function makeTestApp(): Promise<TestApp> {
     env: ENV,
     db: db.db,
     authenticator,
-    registrations: [...identityRouteRegistrations({ db: db.db })],
+    registrations: [...identityRouteRegistrations({ db: db.db, cache })],
   });
   await app.ready();
 

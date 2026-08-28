@@ -100,6 +100,34 @@ describe("hook xác thực", () => {
     expect(r.statusCode).toBe(403);
   });
 
+  it("hạ vai qua API: action KHÔNG-HIGH cũng mất quyền NGAY, không chờ hết TTL 60s", async () => {
+    // Bài test "hạ vai giữa chừng" ở trên đi qua /v1/members (member:manage = HIGH ⇒
+    // luôn fresh) nên nó KHÔNG chứng minh được gì về cache. Bài này dùng /v1/auth/me
+    // (permission null ⇒ KHÔNG HIGH ⇒ đi qua cache): nếu setMemberRole không xoá cache,
+    // quyền vừa thu hồi vẫn còn hiệu lực tới 60 giây.
+    const before = await h.app.inject({
+      method: "GET", url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${h.tokens.authorA}` },
+    });
+    expect(before.json()).toMatchObject({ role: "author" });
+    expect((before.json() as { scopes: string[] }).scopes).toContain("case:write");
+
+    const patched = await h.app.inject({
+      method: "PATCH", url: `/v1/members/${h.ids.authorUser}`,
+      headers: { authorization: `Bearer ${h.tokens.adminA}` },
+      payload: { role: "viewer" },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json()).toMatchObject({ role: "viewer" });
+
+    const after = await h.app.inject({
+      method: "GET", url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${h.tokens.authorA}` },
+    });
+    expect(after.json()).toMatchObject({ role: "viewer" });
+    expect((after.json() as { scopes: string[] }).scopes).not.toContain("case:write");
+  });
+
   it("token của team B KHÔNG bao giờ nhìn thấy dữ liệu team A", async () => {
     const r = await h.app.inject({
       method: "GET", url: "/v1/auth/me",
