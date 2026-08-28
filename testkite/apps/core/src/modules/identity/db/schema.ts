@@ -7,7 +7,9 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   customType,
+  foreignKey,
   index,
+  jsonb,
   pgEnum,
   pgPolicy,
   pgTable,
@@ -199,6 +201,99 @@ export const apiTokens = pgTable(
       withCheck: tenantPredicate,
     }),
     // Đường xác thực: CHỈ SELECT, KHÔNG withCheck ⇒ role này không ghi được gì.
+    pgPolicy("auth_lookup", { as: "permissive", for: "select", to: authRole, using: sql`true` }),
+  ],
+).enableRLS();
+
+export const oidcDefaultRole = pgEnum("oidc_default_role", [
+  "team_admin",
+  "author",
+  "runner",
+  "viewer",
+]);
+
+/**
+ * Connector OIDC generic. IdP chốt cho prod là Keycloak self-host (28-08-2026),
+ * nhưng KHÔNG có một dòng code nào riêng cho Keycloak: mọi thứ đi qua discovery
+ * document chuẩn ⇒ đổi sang Authentik/Okta chỉ là đổi issuer_url.
+ *
+ * `client_secret` là secret THẬT nằm trong DB. M2 lưu thẳng; M4 (module sec_) sẽ
+ * bọc envelope encryption — ghi vào ARCHITECTURE_AUDIT khi làm.
+ */
+export const idnOidcConnectors = pgTable(
+  "idn_oidc_connectors",
+  {
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id),
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    issuerUrl: text("issuer_url").notNull(),
+    clientId: text("client_id").notNull(),
+    clientSecret: text("client_secret").notNull(),
+    scopes: text("scopes").array().notNull(),
+    claimEmail: text("claim_email").notNull().default("email"),
+    claimGroups: text("claim_groups").notNull().default("groups"),
+    /** group IdP -> vai TestKite. Không khớp gì ⇒ defaultRole. */
+    roleMapping: jsonb("role_mapping").notNull().default({}),
+    defaultRole: oidcDefaultRole("default_role").notNull().default("viewer"),
+    /** CHỈ bật cho mock/dev. Prod Keycloak luôn https. */
+    allowInsecureHttp: boolean("allow_insecure_http").notNull().default(false),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("idn_oidc_connectors_team_id_unique").on(t.teamId, t.id),
+    unique("idn_oidc_connectors_team_name_unique").on(t.teamId, t.name),
+    index("idn_oidc_connectors_team_idx").on(t.teamId),
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: tenantPredicate,
+      withCheck: tenantPredicate,
+    }),
+    pgPolicy("auth_lookup", { as: "permissive", for: "select", to: authRole, using: sql`true` }),
+  ],
+).enableRLS();
+
+/**
+ * State của một lượt đăng nhập OIDC. Sống trong DB chứ không cookie/bộ nhớ tiến trình:
+ * (a) nhiều instance API, (b) state phải DÙNG MỘT LẦN — `consumed_at` là thứ chặn replay.
+ * `code_verifier` là bí mật ngắn hạn (10 phút), xoá bằng job dọn hoặc TTL.
+ */
+export const idnOidcLoginStates = pgTable(
+  "idn_oidc_login_states",
+  {
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id),
+    id: uuid("id").primaryKey().defaultRandom(),
+    connectorId: uuid("connector_id").notNull(),
+    state: text("state").notNull(),
+    nonce: text("nonce").notNull(),
+    codeVerifier: text("code_verifier").notNull(),
+    redirectUri: text("redirect_uri").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("idn_oidc_login_states_team_id_unique").on(t.teamId, t.id),
+    uniqueIndex("idn_oidc_login_states_state_uidx").on(t.state),
+    // Composite FK: state không bao giờ trỏ sang connector của team khác (lớp L2).
+    foreignKey({
+      name: "idn_oidc_login_states_connector_fk",
+      columns: [t.teamId, t.connectorId],
+      foreignColumns: [idnOidcConnectors.teamId, idnOidcConnectors.id],
+    }),
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: tenantPredicate,
+      withCheck: tenantPredicate,
+    }),
     pgPolicy("auth_lookup", { as: "permissive", for: "select", to: authRole, using: sql`true` }),
   ],
 ).enableRLS();

@@ -127,6 +127,20 @@
       "when": 1787980341000,
       "tag": "0017_audit_events",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787906013638,
+      "tag": "0018_oidc",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787906023638,
+      "tag": "0019_oidc_grants",
+      "breakpoints": true
     }
   ]
 }

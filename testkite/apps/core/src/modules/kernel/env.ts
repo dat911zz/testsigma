@@ -17,6 +17,8 @@ export const envSchema = z.object({
   DATABASE_APP_ROLE: z.string().min(1).default("testkite_app"),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  /** Bật mini-IdP in-process cho dev (sandbox không có docker để chạy Keycloak). */
+  OIDC_DEV_MOCK: z.enum(["0", "1"]).default("0"),
 });
 
 export type KernelEnv = z.infer<typeof envSchema>;

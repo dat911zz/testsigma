@@ -8,9 +8,12 @@ import { withTenant, type TkDb } from "../kernel/index.js";
 import { publicRoute, route, type RouteRegistration } from "../../http/types.js";
 import type { AuditPort } from "./audit-port.js";
 import { issueApiToken, revokeApiToken } from "./auth/issue.js";
-import { loginWithPassword, type DeferPort } from "./auth/login.js";
+import { loginWithPassword, SESSION_TTL_DAYS, type DeferPort } from "./auth/login.js";
 import { apiTokens, memberships, users } from "./db/schema.js";
+import { createOidcConnector } from "./oidc/connector.js";
+import { effectiveScopes } from "./rbac/authorize.js";
 import type { AuthzCache } from "./rbac/cache.js";
+import { ROLE_PERMISSIONS } from "./rbac/permissions.js";
 
 /**
  * `cache` là DEPENDENCY, không phải tuỳ chọn: đổi vai / thu hồi token mà không xoá
@@ -43,6 +46,7 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
     ...(deps.now ? { now: deps.now } : {}),
     ...(deps.defer ? { defer: deps.defer } : {}),
   };
+  const oidc = createOidcConnector({ db: deps.db, ...(deps.now ? { now: deps.now } : {}) });
 
   return [
     publicRoute(byId("loginPassword"), async ({ body }) => {
@@ -58,6 +62,60 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
           authKind: "session",
         },
       };
+    }),
+
+    // Descriptor oidcStart/oidcCallback là `auth: "public"` — chúng chạy KHI CHƯA có
+    // credential, nên phải đi qua publicRoute() (route() ném ngay lúc dựng app).
+    publicRoute(byId("oidcStart"), async ({ params, body }) =>
+      oidc.start({ connectorId: params.connectorId, redirectUri: body.redirectUri }),
+    ),
+
+    publicRoute(byId("oidcCallback"), async ({ params, body }) => {
+      const now = clock();
+      const identity = await oidc.callback({
+        connectorId: params.connectorId,
+        callbackUrl: body.callbackUrl,
+      });
+      return withTenant(deps.db, { teamId: identity.teamId }, async (tx) => {
+        const scopes = effectiveScopes(identity.role, ROLE_PERMISSIONS[identity.role], "session");
+        const minted = await issueApiToken(
+          tx,
+          { teamId: identity.teamId },
+          {
+            name: "session",
+            scopes,
+            expiresInDays: SESSION_TTL_DAYS,
+            kind: "session",
+            userId: identity.userId,
+            createdBy: identity.userId,
+          },
+          now,
+        );
+        await deps.audit(tx, { teamId: identity.teamId }, {
+          actorKind: "user",
+          actorId: identity.userId,
+          action: "auth.oidc_login",
+          severity: "LOW",
+          targetKind: "api_token",
+          targetId: minted.id,
+          meta: {
+            subject: identity.subject,
+            connectorId: params.connectorId,
+            groups: identity.groups,
+          },
+        });
+        return {
+          secret: minted.secret,
+          expiresAt: minted.expiresAt.toISOString(),
+          context: {
+            userId: identity.userId,
+            teamId: identity.teamId,
+            role: identity.role,
+            scopes: [...scopes],
+            authKind: "session",
+          },
+        };
+      });
     }),
 
     route(byId("getMe"), async ({ ctx }) => ({
