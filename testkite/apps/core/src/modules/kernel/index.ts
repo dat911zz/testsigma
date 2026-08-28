@@ -14,7 +14,7 @@ export const MODULE = "kernel" as const;
 export { withTenant } from "./db/tenant.js";
 // Role DB do kernel sở hữu. Module xuôi DAG (identity, authoring, ...) gắn RLS policy
 // bằng `appRole` lấy từ ĐÂY — không định nghĩa lại pgRole cùng tên ở module của mình.
-export { APP_ROLE, appRole, RELAY_ROLE, relayRole } from "./db/schema.js";
+export { APP_ROLE, appRole, AUTH_ROLE, authRole, RELAY_ROLE, relayRole } from "./db/schema.js";
 export { MissingTenantContextError, TenantRepo, assertTenantContext } from "./db/repo.js";
 export { createDb, type DbHandle } from "./db/client.js";
 export type { TenantContext, TkDb, TkTx } from "./db/types.js";

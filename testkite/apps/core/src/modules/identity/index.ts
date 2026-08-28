@@ -14,3 +14,12 @@ export const MODULE = "identity" as const;
 export { hashPassword, verifyPassword, needsRehash, passwordPolicy, PASSWORD_MIN_LENGTH } from "./auth/password.js";
 export { users, memberships, teams, organizations, membershipRole, userStatus } from "./db/schema.js";
 export { projects } from "./db/schema.js";
+export { apiTokens, apiTokenKind } from "./db/schema.js";
+export {
+  mintTokenSecret,
+  hashTokenSecret,
+  parseTokenSecret,
+  expiryFromDays,
+  MAX_TOKEN_TTL_DAYS,
+  type MintedToken,
+} from "./auth/token.js";

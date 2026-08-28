@@ -33,6 +33,17 @@ export const appRole = pgRole(APP_ROLE);
 export const RELAY_ROLE = "testkite_relay" as const;
 export const relayRole = pgRole(RELAY_ROLE);
 
+/**
+ * Role của ĐƯỜNG XÁC THỰC. Tồn tại vì một bế tắc có thật (spike 2026-08-28):
+ * RLS fail-closed đúng như thiết kế ⇒ `testkite_app` khi chưa có `app.team_id`
+ * đọc `api_tokens` ra 0 row, mà muốn có `app.team_id` thì phải tra được token
+ * trước. Role này gỡ vòng lặp đó với quyền hẹp nhất có thể: CHỈ SELECT, CHỈ trên
+ * api_tokens/memberships/users, policy riêng `auth_lookup`. Nó KHÔNG BYPASSRLS —
+ * nó có policy của chính nó, khác hẳn về mức độ nguy hiểm.
+ */
+export const AUTH_ROLE = "testkite_auth" as const;
+export const authRole = pgRole(AUTH_ROLE);
+
 export const krnOutbox = pgTable(
   "krn_outbox",
   {

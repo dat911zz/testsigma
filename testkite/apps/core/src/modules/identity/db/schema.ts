@@ -6,6 +6,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  customType,
   index,
   pgEnum,
   pgPolicy,
@@ -17,7 +18,12 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 // Xuôi DAG: identity → kernel qua FACADE. `appRole` là role DB do kernel sở hữu.
-import { appRole } from "../../kernel/index.js";
+import { appRole, authRole } from "../../kernel/index.js";
+
+/** bytea: drizzle 0.45 chưa có builder sẵn. Lưu Buffer thô, không base64/hex. */
+const customBytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
 
 /**
  * Vị từ tenant dùng chung. NULLIF là BẮT BUỘC: `RESET app.team_id` để GUC lại
@@ -150,5 +156,49 @@ export const memberships = pgTable(
       using: tenantPredicate,
       withCheck: tenantPredicate,
     }),
+    // Đường xác thực đọc membership của user KHI CHƯA biết tenant (chọn team nào).
+    pgPolicy("auth_lookup", { as: "permissive", for: "select", to: authRole, using: sql`true` }),
+  ],
+).enableRLS();
+
+export const apiTokenKind = pgEnum("api_token_kind", ["user_pat", "service", "session"]);
+
+/**
+ * Token gắn ĐÚNG MỘT team (blueprint §3). Người ở nhiều team ⇒ nhiều token.
+ * `token_hash` là SHA-256 raw 32 byte; secret không tồn tại ở đâu trong DB.
+ */
+export const apiTokens = pgTable(
+  "api_tokens",
+  {
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id),
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull(),
+    tokenHash: customBytea("token_hash").notNull(),
+    kind: apiTokenKind("kind").notNull(),
+    userId: uuid("user_id").references(() => users.id),
+    scopes: text("scopes").array().notNull(),
+    // Hạn BẮT BUỘC — không có token vĩnh viễn trong hệ này.
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("api_tokens_team_id_unique").on(t.teamId, t.id),
+    uniqueIndex("api_tokens_token_hash_uidx").on(t.tokenHash),
+    index("api_tokens_team_idx").on(t.teamId, t.createdAt),
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: tenantPredicate,
+      withCheck: tenantPredicate,
+    }),
+    // Đường xác thực: CHỈ SELECT, KHÔNG withCheck ⇒ role này không ghi được gì.
+    pgPolicy("auth_lookup", { as: "permissive", for: "select", to: authRole, using: sql`true` }),
   ],
 ).enableRLS();

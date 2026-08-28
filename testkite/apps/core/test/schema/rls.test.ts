@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../harness/pglite.js";
+import { APP_ROLE, AUTH_ROLE } from "../../src/modules/kernel/index.js";
 
 let t: TestDb;
 let teamA = "";
@@ -111,10 +112,28 @@ describe("RLS L2.5", () => {
   });
 
   it("policy dùng NULLIF — không có policy nào cast thẳng current_setting", async () => {
-    const r = await t.db.execute(sql`SELECT policyname, qual FROM pg_policies WHERE schemaname='public'`);
+    const r = await t.db.execute(sql`
+      SELECT policyname, qual, roles::text AS roles, cmd, with_check FROM pg_policies WHERE schemaname='public'`);
     expect(r.rows.length).toBeGreaterThanOrEqual(3);
+    let tenantPolicies = 0;
     for (const row of r.rows) {
-      expect(String(row["qual"])).toContain("NULLIF");
+      const roles = String(row["roles"]);
+      // Vị từ tenant CHỈ ràng buộc policy của đường request (testkite_app): đó là chỗ
+      // `''::uuid` sẽ ném 22P02 thay vì fail-closed nếu quên NULLIF.
+      if (roles.includes(APP_ROLE)) {
+        tenantPolicies += 1;
+        expect(String(row["qual"]), `policy ${String(row["policyname"])} thiếu NULLIF`).toContain("NULLIF");
+        continue;
+      }
+      // Ngoại lệ DUY NHẤT được phép, và bị ghim chặt: policy `auth_lookup` của đường
+      // xác thực (spike 2026-08-28) — nó USING (true) vì lúc tra token còn CHƯA biết
+      // tenant. Đổi lại nó phải chỉ thuộc testkite_auth, chỉ SELECT, và không
+      // with_check (⇒ không ghi được gì).
+      expect(String(row["policyname"])).toBe("auth_lookup");
+      expect(roles).toBe(`{${AUTH_ROLE}}`);
+      expect(String(row["cmd"])).toBe("SELECT");
+      expect(row["with_check"]).toBeNull();
     }
+    expect(tenantPolicies).toBeGreaterThanOrEqual(3);
   });
 });
