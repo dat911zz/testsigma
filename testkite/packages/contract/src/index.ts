@@ -26,3 +26,11 @@ export * from "./errors.js";
 // ---------------------------------------------------------------------------
 
 export { buildOpenApiDocument, OPENAPI_INFO, OPENAPI_SCHEMA_NAMES, serializeOpenApiDocument } from "./openapi.js";
+
+// ---------------------------------------------------------------------------
+// Sổ đăng ký route (`ROUTES`) + kiểu `RouteDescriptor`: MỘT nguồn cho OpenAPI,
+// router Fastify và bộ test cross-tenant L3. `routes/*` chỉ đọc `./errors.js`
+// (module lá) nên re-export ở đây không tạo vòng.
+// ---------------------------------------------------------------------------
+
+export * from "./routes/index.js";
