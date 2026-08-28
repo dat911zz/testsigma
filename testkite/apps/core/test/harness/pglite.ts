@@ -1,11 +1,11 @@
 /**
  * Harness test DB — PGlite in-process.
  *
- * VÌ SAO PGlite chứ không Testcontainers: sandbox/CI runner không đảm bảo có
- * docker daemon (spike 2026-08-27: /var/run/docker.sock không tồn tại).
- * GIỚI HẠN ĐÃ BIẾT: PGlite chỉ có MỘT connection — mọi transaction xếp hàng
- * tuần tự, KHÔNG có lock contention. Test race/lease/SKIP LOCKED phải dùng
- * Postgres thật, xem test/harness/realpg.ts.
+ * WHY PGlite AND NOT Testcontainers: the sandbox/CI runner does not guarantee a
+ * docker daemon (spike 2026-08-27: /var/run/docker.sock does not exist).
+ * KNOWN LIMITATION: PGlite has only ONE connection — every transaction queues up
+ * sequentially, with NO lock contention. Race/lease/SKIP LOCKED tests must use
+ * real Postgres — see test/harness/realpg.ts.
  */
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
@@ -25,13 +25,13 @@ export type TestDb = {
 export async function makeTestDb(): Promise<TestDb> {
   const raw = await new PGlite();
   const db = drizzle(raw) as unknown as TkDb;
-  // Spike: migrate() trên PGlite ~3,6s — vì vậy CHỈ chạy một lần cho mỗi file test
-  // (beforeAll), giữa các test dùng reset() (~2ms).
+  // Spike: migrate() on PGlite is ~3.6s — so it runs ONLY once per test file
+  // (beforeAll); between tests, use reset() (~2ms).
   await migrate(db as never, { migrationsFolder: MIGRATIONS_FOLDER });
   return {
     db,
     raw,
-    // Spike: TRUNCATE ~2ms vs new PGlite() ~2.3s — luôn reset, không dựng lại.
+    // Spike: TRUNCATE ~2ms vs new PGlite() ~2.3s — always reset, never rebuild.
     reset: async () => {
       const r = await raw.query<{ t: string }>(
         `SELECT tablename AS t FROM pg_tables

@@ -1,35 +1,35 @@
 /**
- * BẰNG CHỨNG cho câu "advisory lock (team, case) hoạt động" — chỉ chạy trên Postgres THẬT.
+ * PROOF that "advisory lock (team, case) works" — runs ONLY on REAL Postgres.
  *
- * VÌ SAO PHẢI CÓ FILE RIÊNG: test promote ở tầng PGlite (test/authoring/promote.test.ts)
- * chứng minh được "lock CÓ ĐƯỢC LẤY" (canh `pg_locks`), nhưng KHÔNG chứng minh được
- * "lock CÓ TÁC DỤNG": PGlite chỉ có MỘT connection wasm nên hai `withTenant` "song song"
- * ở đó xếp hàng tuần tự — khoá không bao giờ bị tranh chấp, test xanh kể cả khi bỏ khoá.
- * Tranh chấp thật đòi hai connection thật, tức Postgres thật.
+ * WHY A SEPARATE FILE IS NEEDED: the promote test at the PGlite layer (test/authoring/promote.test.ts)
+ * proves "the lock IS ACQUIRED" (checking `pg_locks`), but does NOT prove
+ * "the lock HAS AN EFFECT": PGlite has only ONE wasm connection, so two "parallel" `withTenant`
+ * calls there queue sequentially — the lock is never contended, and the test passes even with the lock removed.
+ * Real contention requires two real connections, i.e. real Postgres.
  *
- * Bốn mệnh đề được đo ở đây:
- *  1. hai `promoteCase` song song cùng `expectedVersion` ⇒ ĐÚNG MỘT thắng, bên thua
- *     thất bại CÓ KIỂM SOÁT (409 hợp đồng, không phải lỗi hạ tầng);
- *  2. DB sau cuộc đua khớp bên thắng — đúng một row `ready`, version bump ĐÚNG MỘT lần,
- *     `ready_revision_id` được ghim (không có promote nào ghi đè lung tung);
- *  3. khoá THẬT SỰ chặn: giữ khoá ở connection A thì connection B phải chờ;
- *  4. khoá theo (team, case) chứ không toàn cục: case khác ⇒ không chặn nhau.
+ * Four claims are measured here:
+ *  1. two parallel `promoteCase` calls with the same `expectedVersion` ⇒ EXACTLY ONE wins, the loser
+ *     fails in a CONTROLLED way (contractual 409, not an infrastructure error);
+ *  2. the DB after the race matches the winner — exactly one `ready` row, version bumped EXACTLY ONCE,
+ *     `ready_revision_id` is pinned (no promote overwrites it haphazardly);
+ *  3. the lock ACTUALLY blocks: holding the lock on connection A makes connection B wait;
+ *  4. the lock is per (team, case), not global: a different case ⇒ they don't block each other.
  *
- * Không có TESTKITE_TEST_PG_URL ⇒ cả suite skip (`eval "$(scripts/test-pg.sh start)"` để
- * dựng cluster tạm). CI job postgres:17 luôn set biến ⇒ CI là nơi bằng chứng được thu.
+ * No TESTKITE_TEST_PG_URL ⇒ the whole suite skips (`eval "$(scripts/test-pg.sh start)"` to
+ * spin up a temporary cluster). The postgres:17 CI job always sets the var ⇒ CI is where proof is collected.
  *
- * LỆCH CÓ CHỦ ĐÍCH SO VỚI BLOCK TRONG PLAN — thêm cổng chặn `makeGate(2)` (y hệt
- * review-state-race.test.ts) vào hai test đầu. ĐO THẬT trên PostgreSQL 16.13, sau khi gỡ
- * `cases.lockCase(...)` khỏi `loadForMutation`:
- *   - block NGUYÊN VĂN của plan: `Test Files 1 passed | Tests 4 passed` — XANH kể cả khi
- *     KHÔNG có khoá, tức nó không chứng minh gì cả. Nguyên nhân gốc: `Promise.all` khởi
- *     động hai `withTenant`, nhưng bên thứ hai phải mở một connection VẬT LÝ MỚI (pool
- *     lạnh, TCP + auth) nên nó đọc `version` SAU khi bên thứ nhất đã COMMIT — hai
- *     transaction không bao giờ chồng lấn ở cửa sổ check-then-act. Đúng loại "xanh giả"
- *     mà chính task này sinh ra để diệt;
- *   - với cổng chặn: cả hai transaction đã BEGIN + `SET LOCAL ROLE` + `set_config` xong
- *     rồi mới có bên nào được đọc ⇒ gỡ khoá là ĐỎ ngay (`expected 2 to be 1`, cả hai
- *     promote cùng trả version 5 — lost update im lặng).
+ * DELIBERATE DEVIATION FROM THE BLOCK IN THE PLAN — added a blocking gate `makeGate(2)` (exactly like
+ * review-state-race.test.ts) to the first two tests. MEASURED FOR REAL on PostgreSQL 16.13, after removing
+ * `cases.lockCase(...)` from `loadForMutation`:
+ *   - the plan's block VERBATIM: `Test Files 1 passed | Tests 4 passed` — PASSES even
+ *     WITHOUT the lock, meaning it proves nothing at all. Root cause: `Promise.all` starts
+ *     two `withTenant` calls, but the second one must open a BRAND NEW PHYSICAL connection (cold
+ *     pool, TCP + auth), so it reads `version` AFTER the first one has already COMMITted — the two
+ *     transactions never overlap in the check-then-act window. Exactly the kind of "false green"
+ *     this task exists to kill;
+ *   - with the gate: both transactions have finished BEGIN + `SET LOCAL ROLE` + `set_config`
+ *     before either can read ⇒ removing the lock goes RED immediately (`expected 2 to be 1`, both
+ *     promotes return version 5 — a silent lost update).
  */
 import { expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
@@ -42,7 +42,7 @@ import {
 } from "../../src/modules/authoring/review-service.js";
 import { describeRealPg, makeRealDb, type RealDb } from "../harness/realpg.js";
 
-/** Cổng chặn: mở khi đủ `n` bên đã tới. Ép hai transaction cùng MỞ trước khi bên nào đọc. */
+/** A blocking gate: opens once `n` parties have arrived. Forces both transactions to OPEN before either reads. */
 function makeGate(n: number): () => Promise<void> {
   let arrived = 0;
   let open: () => void = () => undefined;
@@ -57,12 +57,12 @@ function makeGate(n: number): () => Promise<void> {
 }
 
 /**
- * Lệch có chủ đích so với block trong plan: plan viết
+ * Deliberate deviation from the block in the plan: the plan wrote
  * `expect((loser as { httpStatus?: number }).httpStatus).toBe(409)`.
- * Cast từ `unknown` sang một shape là thứ chuẩn code TestKite cấm, và nó còn YẾU hơn:
- * nếu `loser` là `undefined` (cả hai cùng thắng — đúng hỏng hóc task này săn) thì phép
- * cast ném TypeError, test đỏ vì lý do sai. Hàm dưới đây trả `undefined` cho mọi thứ
- * không phải lỗi có `httpStatus`, nên assertion `toBe(409)` bắt đúng cả hai kiểu hỏng.
+ * Casting from `unknown` to a shape is what TestKite's code standard bans, and it's even WEAKER:
+ * if `loser` is `undefined` (both sides won — exactly the bug this task hunts for), the
+ * cast throws a TypeError, and the test goes red for the wrong reason. The function below returns `undefined`
+ * for anything that isn't an error with `httpStatus`, so the `toBe(409)` assertion correctly catches both kinds of failure.
  */
 function httpStatusOf(value: unknown): number | undefined {
   if (!(value instanceof Error)) return undefined;
@@ -70,7 +70,7 @@ function httpStatusOf(value: unknown): number | undefined {
   return typeof status === "number" ? status : undefined;
 }
 
-describeRealPg("promote dưới tranh chấp thật (Postgres thật, hai connection)", () => {
+describeRealPg("promote under real contention (real Postgres, two connections)", () => {
   let r: RealDb;
   let teamId = "";
   let projectId = "";
@@ -116,9 +116,9 @@ describeRealPg("promote dưới tranh chấp thật (Postgres thật, hai connec
   const ctx = (): { teamId: string } => ({ teamId });
 
   /**
-   * Case đã được duyệt và SẴN SÀNG promote. Alice là người-sửa-cuối, Bob là người duyệt
-   * ⇒ cả Bob lẫn Carol đều qua được cửa four-eyes (403 four-eyes không được phép làm
-   * nhiễu bằng chứng về khoá).
+   * A case that's been approved and is READY to promote. Alice is the last-editor, Bob is the approver
+   * ⇒ both Bob and Carol pass the four-eyes gate (a 403 four-eyes must not be allowed to
+   * muddy the evidence about the lock).
    */
   async function approvedCase(): Promise<{ id: string; version: number }> {
     const created = await withTenant(r.db, ctx(), (tx) =>
@@ -144,7 +144,7 @@ describeRealPg("promote dưới tranh chấp thật (Postgres thật, hai connec
     return { id: decided.id, version: decided.version };
   }
 
-  it("hai promote song song: ĐÚNG MỘT cái thắng, cái kia thất bại có kiểm soát", async () => {
+  it("two parallel promotes: EXACTLY ONE wins, the other fails in a controlled way", async () => {
     const c = await approvedCase();
     const gate = makeGate(2);
     const attempt = (): Promise<unknown> =>
@@ -159,12 +159,12 @@ describeRealPg("promote dưới tranh chấp thật (Postgres thật, hai connec
     const okCount = [x, y].filter((v) => v === "ok").length;
     expect(okCount).toBe(1);
 
-    // Cái thua KHÔNG được là lỗi hạ tầng — phải là 409 (version đã bị cái thắng bump).
+    // The loser must NOT be an infrastructure error — it must be 409 (version was already bumped by the winner).
     const loser = [x, y].find((v) => v !== "ok");
     expect(httpStatusOf(loser)).toBe(409);
   });
 
-  it("promote nối tiếp không sinh ready_revision_id lung tung — đúng 1 row ready", async () => {
+  it("sequential promotes don't scramble ready_revision_id — exactly 1 ready row", async () => {
     const c = await approvedCase();
     const gate = makeGate(2);
     await Promise.all([
@@ -185,7 +185,7 @@ describeRealPg("promote dưới tranh chấp thật (Postgres thật, hai connec
     expect(res.rows[0]?.["ready_revision_id"]).not.toBeNull();
   });
 
-  it("advisory lock THẬT SỰ chặn: giữ khoá ở connection A thì connection B phải chờ", async () => {
+  it("the advisory lock ACTUALLY blocks: holding the lock on connection A makes connection B wait", async () => {
     const c = await approvedCase();
     const a = await r.pool.connect();
     const b = await r.pool.connect();
@@ -208,7 +208,7 @@ describeRealPg("promote dưới tranh chấp thật (Postgres thật, hai connec
       })();
 
       await new Promise((resolve) => setTimeout(resolve, 300));
-      // Bằng chứng lock có tranh chấp thật — thứ PGlite KHÔNG THỂ chứng minh.
+      // Proof of real lock contention — something PGlite CANNOT prove.
       expect(bAcquired).toBe(false);
 
       await a.query("COMMIT");
@@ -220,7 +220,7 @@ describeRealPg("promote dưới tranh chấp thật (Postgres thật, hai connec
     }
   });
 
-  it("khoá của case KHÁC không chặn nhau (khoá theo (team, case), không phải khoá toàn cục)", async () => {
+  it("locks on DIFFERENT cases don't block each other (locked by (team, case), not a global lock)", async () => {
     const c1 = await approvedCase();
     const a = await r.pool.connect();
     const b = await r.pool.connect();
@@ -231,7 +231,7 @@ describeRealPg("promote dưới tranh chấp thật (Postgres thật, hai connec
         c1.id,
       ]);
       await b.query("BEGIN");
-      // case id khác ⇒ khoá khác ⇒ lấy được ngay, không chờ.
+      // Different case id ⇒ different lock ⇒ acquired immediately, no waiting.
       await b.query(`SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))`, [
         teamId,
         "00000000-0000-0000-0000-0000000000ff",

@@ -40,9 +40,9 @@ beforeEach(async () => {
 });
 
 /**
- * drizzle-orm 0.45 bọc lỗi driver trong `DrizzleQueryError`: `.message` chỉ là
- * "Failed query: <sql>" còn lỗi Postgres thật — kèm TÊN CONSTRAINT — nằm ở `.cause`.
- * Test L2 phải soi đúng tên constraint (không chỉ "có ném lỗi"), nên gom cả chuỗi cause.
+ * drizzle-orm 0.45 wraps the driver error in `DrizzleQueryError`: `.message` is only
+ * "Failed query: <sql>" while the real Postgres error — with the CONSTRAINT NAME — lives in `.cause`.
+ * The L2 test must inspect the exact constraint name (not just "it threw"), so collect the whole cause chain.
  */
 async function rejectionMessage(run: () => Promise<unknown>): Promise<string> {
   try {
@@ -56,17 +56,17 @@ async function rejectionMessage(run: () => Promise<unknown>): Promise<string> {
     }
     return parts.join(" | ");
   }
-  throw new Error("query đáng lẽ phải bị Postgres từ chối, nhưng nó chạy thành công");
+  throw new Error("query was expected to be rejected by Postgres, but it succeeded");
 }
 
 describe("composite FK (L2)", () => {
-  it("ghi hợp lệ trong cùng tenant thì OK", async () => {
+  it("a valid write within the same tenant is OK", async () => {
     const r = await t.db.execute(sql`
       INSERT INTO aut_cases (team_id, project_id, name) VALUES (${teamA},${projA},'login') RETURNING id`);
     expect(String(r.rows[0]?.["id"])).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("case của team A trỏ project của team B ⇒ CHẾT tại Postgres, không cần app check", async () => {
+  it("team A's case pointing at team B's project ⇒ DIES at Postgres, no app check needed", async () => {
     const msg = await rejectionMessage(() =>
       t.db.execute(sql`
         INSERT INTO aut_cases (team_id, project_id, name) VALUES (${teamA},${projB},'evil')`),
@@ -74,7 +74,7 @@ describe("composite FK (L2)", () => {
     expect(msg).toMatch(/aut_cases_project_fk|foreign key/i);
   });
 
-  it("prereq trỏ case của team khác ⇒ CHẾT tại composite self-FK", async () => {
+  it("prereq pointing at another team's case ⇒ DIES at the composite self-FK", async () => {
     const b = await t.db.execute(sql`
       INSERT INTO aut_cases (team_id, project_id, name) VALUES (${teamB},${projB},'b-case') RETURNING id`);
     const bCase = String(b.rows[0]?.["id"]);
@@ -86,7 +86,7 @@ describe("composite FK (L2)", () => {
     expect(msg).toMatch(/aut_cases_prereq_fk|foreign key/i);
   });
 
-  it("prereq cùng tenant thì OK", async () => {
+  it("prereq within the same tenant is OK", async () => {
     const p = await t.db.execute(sql`
       INSERT INTO aut_cases (team_id, project_id, name) VALUES (${teamA},${projA},'login') RETURNING id`);
     const login = String(p.rows[0]?.["id"]);
@@ -97,7 +97,7 @@ describe("composite FK (L2)", () => {
     ).resolves.toBeDefined();
   });
 
-  it("FK khai báo đúng dạng composite (team_id đi kèm), không phải FK cột đơn", async () => {
+  it("FK is declared as a true composite (team_id included), not a single-column FK", async () => {
     const r = await t.db.execute(sql`
       SELECT c.conname, pg_get_constraintdef(c.oid) AS def
       FROM pg_constraint c JOIN pg_class t2 ON t2.oid = c.conrelid
@@ -115,7 +115,7 @@ describe("composite FK (L2)", () => {
     ).toBe(true);
   });
 
-  it("aut_cases cũng bật RLS (L2.5 chồng lên L2)", async () => {
+  it("aut_cases also has RLS enabled (L2.5 layers on top of L2)", async () => {
     const r = await t.db.execute(sql`
       SELECT relrowsecurity FROM pg_class WHERE relname='aut_cases' AND relkind='r'`);
     expect(r.rows[0]?.["relrowsecurity"]).toBe(true);

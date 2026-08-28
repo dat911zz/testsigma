@@ -32,7 +32,7 @@ beforeEach(async () => {
   await t.db.execute(sql`INSERT INTO projects (team_id,name,slug) VALUES (${teamB},'PB','pb')`);
 });
 
-/** Chạy một khối SQL đúng như request-path thật: role app + app.team_id. */
+/** Run a block of SQL exactly like the real request path: app role + app.team_id. */
 async function asTeam<T>(teamId: string, fn: () => Promise<T>): Promise<T> {
   await t.raw.exec(`SET ROLE testkite_app`);
   await t.raw.query(`SELECT set_config('app.team_id', $1, false)`, [teamId]);
@@ -45,7 +45,7 @@ async function asTeam<T>(teamId: string, fn: () => Promise<T>): Promise<T> {
 }
 
 describe("RLS L2.5", () => {
-  it("role testkite_app KHÔNG superuser và KHÔNG bypassrls", async () => {
+  it("role testkite_app is NOT a superuser and does NOT bypassrls", async () => {
     const r = await t.db.execute(sql`
       SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'testkite_app'`);
     expect(r.rows.length).toBe(1);
@@ -53,7 +53,7 @@ describe("RLS L2.5", () => {
     expect(r.rows[0]?.["rolbypassrls"]).toBe(false);
   });
 
-  it("mọi bảng tenant-scoped bật row security", async () => {
+  it("every tenant-scoped table has row security enabled", async () => {
     const r = await t.db.execute(sql`
       SELECT relname, relrowsecurity FROM pg_class
       WHERE relname IN ('teams','projects','memberships') AND relkind='r'`);
@@ -61,7 +61,7 @@ describe("RLS L2.5", () => {
     expect(r.rows.length).toBe(3);
   });
 
-  it("SELECT chỉ thấy row của team trong app.team_id", async () => {
+  it("SELECT only sees rows for the team in app.team_id", async () => {
     const namesA = await asTeam(teamA, async () =>
       (
         await t.raw.query<{ name: string }>(`SELECT name FROM projects ORDER BY name`)
@@ -76,14 +76,14 @@ describe("RLS L2.5", () => {
     expect(namesB).toEqual(["PB"]);
   });
 
-  it("KHÔNG set app.team_id ⇒ 0 row (fail-closed), không ném lỗi", async () => {
+  it("app.team_id NOT set ⇒ 0 rows (fail-closed), no error thrown", async () => {
     await t.raw.exec(`SET ROLE testkite_app`);
     const r = await t.raw.query<{ n: number }>(`SELECT count(*)::int AS n FROM projects`);
     await t.raw.exec(`RESET ROLE`);
     expect(r.rows[0]?.n).toBe(0);
   });
 
-  it("app.team_id = '' (dạng RESET để lại) ⇒ 0 row, KHÔNG lỗi 22P02", async () => {
+  it("app.team_id = '' (the shape RESET leaves behind) ⇒ 0 rows, NO 22P02 error", async () => {
     await t.raw.exec(`SET ROLE testkite_app`);
     await t.raw.query(`SELECT set_config('app.team_id', '', false)`);
     const r = await t.raw.query<{ n: number }>(`SELECT count(*)::int AS n FROM projects`);
@@ -92,7 +92,7 @@ describe("RLS L2.5", () => {
     expect(r.rows[0]?.n).toBe(0);
   });
 
-  it("WITH CHECK chặn INSERT sang team khác", async () => {
+  it("WITH CHECK blocks an INSERT into a different team", async () => {
     await expect(
       asTeam(teamA, () =>
         t.raw.query(`INSERT INTO projects (team_id,name,slug) VALUES ($1,'evil','evil')`, [teamB]),
@@ -100,7 +100,7 @@ describe("RLS L2.5", () => {
     ).rejects.toThrow(/row-level security/i);
   });
 
-  it("UPDATE/DELETE row team khác ảnh hưởng 0 row (vô hình, không 403)", async () => {
+  it("UPDATE/DELETE on another team's row affects 0 rows (invisible, not a 403)", async () => {
     const upd = await asTeam(teamA, () =>
       t.raw.query(`UPDATE projects SET name='hacked' WHERE team_id=$1 RETURNING id`, [teamB]),
     );
@@ -111,24 +111,24 @@ describe("RLS L2.5", () => {
     expect(del.rows.length).toBe(0);
   });
 
-  it("policy dùng NULLIF — không có policy nào cast thẳng current_setting", async () => {
+  it("policies use NULLIF — no policy directly casts current_setting", async () => {
     const r = await t.db.execute(sql`
       SELECT policyname, qual, roles::text AS roles, cmd, with_check FROM pg_policies WHERE schemaname='public'`);
     expect(r.rows.length).toBeGreaterThanOrEqual(3);
     let tenantPolicies = 0;
     for (const row of r.rows) {
       const roles = String(row["roles"]);
-      // Vị từ tenant CHỈ ràng buộc policy của đường request (testkite_app): đó là chỗ
-      // `''::uuid` sẽ ném 22P02 thay vì fail-closed nếu quên NULLIF.
+      // The tenant predicate ONLY binds the request-path policy (testkite_app): that's where
+      // `''::uuid` would throw 22P02 instead of fail-closed if NULLIF were forgotten.
       if (roles.includes(APP_ROLE)) {
         tenantPolicies += 1;
-        expect(String(row["qual"]), `policy ${String(row["policyname"])} thiếu NULLIF`).toContain("NULLIF");
+        expect(String(row["qual"]), `policy ${String(row["policyname"])} is missing NULLIF`).toContain("NULLIF");
         continue;
       }
-      // Ngoại lệ DUY NHẤT được phép, và bị ghim chặt: policy `auth_lookup` của đường
-      // xác thực (spike 2026-08-28) — nó USING (true) vì lúc tra token còn CHƯA biết
-      // tenant. Đổi lại nó phải chỉ thuộc testkite_auth, chỉ SELECT, và không
-      // with_check (⇒ không ghi được gì).
+      // The ONE permitted exception, and it's pinned down tightly: the `auth_lookup` policy
+      // of the authentication path (spike 2026-08-28) — it's USING (true) because at token
+      // lookup time the tenant is NOT YET known. In exchange it must belong only to
+      // testkite_auth, be SELECT-only, and have no with_check (⇒ it can write nothing).
       expect(String(row["policyname"])).toBe("auth_lookup");
       expect(roles).toBe(`{${AUTH_ROLE}}`);
       expect(String(row["cmd"])).toBe("SELECT");

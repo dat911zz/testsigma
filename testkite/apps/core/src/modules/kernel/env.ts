@@ -1,6 +1,6 @@
 /**
- * Env của control plane, validate bằng zod, GOM mọi lỗi rồi exit(1).
- * Không bao giờ đọc process.env rải rác trong code — mọi nơi dùng KernelEnv.
+ * Control plane env, validated with zod, COLLECTS all errors then exit(1).
+ * Never read process.env scattered across the code — use KernelEnv everywhere.
  */
 import { z } from "zod";
 
@@ -11,13 +11,13 @@ export const envSchema = z.object({
     .string()
     .url()
     .refine((u) => u.startsWith("postgres://") || u.startsWith("postgresql://"), {
-      message: "DATABASE_URL phải là postgres:// hoặc postgresql:// (blueprint §3: PostgreSQL 17)",
+      message: "DATABASE_URL must be postgres:// or postgresql:// (blueprint §3: PostgreSQL 17)",
     }),
-  /** Role non-superuser mà request-path dùng — RLS chỉ có hiệu lực khi KHÔNG phải owner/superuser. */
+  /** Non-superuser role used by the request path — RLS only takes effect when NOT owner/superuser. */
   DATABASE_APP_ROLE: z.string().min(1).default("testkite_app"),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
-  /** Bật mini-IdP in-process cho dev (sandbox không có docker để chạy Keycloak). */
+  /** Enable the in-process mini-IdP for dev (sandbox has no docker to run Keycloak). */
   OIDC_DEV_MOCK: z.enum(["0", "1"]).default("0"),
 });
 
@@ -37,7 +37,7 @@ export function parseEnv(raw: NodeJS.ProcessEnv): ParseEnvResult {
 export function loadEnv(raw: NodeJS.ProcessEnv = process.env): KernelEnv {
   const r = parseEnv(raw);
   if (r.ok) return r.env;
-  console.error("Cấu hình env KHÔNG hợp lệ — không khởi động:");
+  console.error("Env configuration is INVALID — not starting:");
   for (const issue of r.issues) console.error(`  - ${issue}`);
   process.exit(1);
 }

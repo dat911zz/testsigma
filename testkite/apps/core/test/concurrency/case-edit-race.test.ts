@@ -1,14 +1,14 @@
 /**
- * Tầng test CONCURRENCY cho authoring — chỉ chạy trên Postgres THẬT (nhiều connection).
+ * The CONCURRENCY test layer for authoring — runs ONLY on REAL Postgres (multiple connections).
  *
- * VÌ SAO KHÔNG NẰM Ở TẦNG PGlite: `replaceSteps` là check-then-act cổ điển — đọc
- * `version`, so với `expectedVersion`, rồi mới ghi. PGlite chỉ có MỘT connection wasm
- * nên hai `withTenant` "song song" ở đó chỉ xếp hàng tuần tự: 8 test trong
- * `test/authoring/case-service.test.ts` đều `await` tuần tự và KHÔNG BAO GIỜ chạm được
- * cửa sổ giữa "đọc version" và "ghi". Bằng chứng chỉ tồn tại ở đây.
+ * WHY THIS DOESN'T LIVE IN THE PGlite LAYER: `replaceSteps` is a classic check-then-act — read
+ * `version`, compare with `expectedVersion`, then write. PGlite has only ONE wasm connection,
+ * so two "parallel" `withTenant` calls there just queue sequentially: the 8 tests in
+ * `test/authoring/case-service.test.ts` all `await` sequentially and NEVER touch the
+ * window between "read version" and "write". Proof only exists here.
  *
- * Không có TESTKITE_TEST_PG_URL ⇒ cả suite skip (`bash scripts/test-pg.sh start` để
- * dựng cluster tạm). CI job postgres:17 luôn set biến ⇒ CI là nơi bằng chứng được thu.
+ * No TESTKITE_TEST_PG_URL ⇒ the whole suite skips (`bash scripts/test-pg.sh start` to
+ * spin up a temporary cluster). The postgres:17 CI job always sets the var ⇒ CI is where proof is collected.
  */
 import { expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
@@ -18,7 +18,7 @@ import { createCase, replaceSteps } from "../../src/modules/authoring/case-servi
 import { VersionConflictError } from "../../src/modules/authoring/errors.js";
 import { describeRealPg, makeRealDb, type RealDb } from "../harness/realpg.js";
 
-/** Cổng chặn: mở khi đủ `n` bên đã tới. Ép hai transaction cùng MỞ trước khi bên nào đọc. */
+/** A blocking gate: opens once `n` parties have arrived. Forces both transactions to OPEN before either reads. */
 function makeGate(n: number): () => Promise<void> {
   let arrived = 0;
   let open: () => void = () => undefined;
@@ -32,7 +32,7 @@ function makeGate(n: number): () => Promise<void> {
   };
 }
 
-/** Chốt thủ công: `wait` chỉ đi tiếp sau khi ai đó gọi `signal`. */
+/** A manual latch: `wait` only proceeds after someone calls `signal`. */
 function makeLatch(): { readonly signal: () => void; readonly wait: Promise<void> } {
   let signal: () => void = () => undefined;
   const wait = new Promise<void>((resolve) => {
@@ -41,7 +41,7 @@ function makeLatch(): { readonly signal: () => void; readonly wait: Promise<void
   return { signal: () => signal(), wait };
 }
 
-describeRealPg("replaceSteps dưới tranh chấp THẬT (Postgres thật, hai connection)", () => {
+describeRealPg("replaceSteps under REAL contention (real Postgres, two connections)", () => {
   let r: RealDb;
   let teamId = "";
   let projectId = "";
@@ -92,13 +92,13 @@ describeRealPg("replaceSteps dưới tranh chấp THẬT (Postgres thật, hai c
       createCase(tx, ctx(), alice, { projectId, name, isStepGroup: false }),
     );
 
-  it("hai edit song song cùng expectedVersion: một thắng, bên thua nhận VersionConflictError SẠCH (không phải lỗi DB thô)", async () => {
+  it("two parallel edits with the same expectedVersion: one wins, the loser gets a CLEAN VersionConflictError (not a raw DB error)", async () => {
     const c = await seedCase("Checkout");
     const gate = makeGate(2);
 
-    // Cả hai transaction đã BEGIN + SET LOCAL trước khi bên nào kịp đọc `version`.
-    // Không có khoá, cả hai đọc trúng version=1 (chưa ai commit) nên CẢ HAI đi qua
-    // nhánh so version rồi cùng chèn step ordinal=1 ⇒ bên thua ăn 23505 thô.
+    // Both transactions have BEGUN + SET LOCAL before either gets to read `version`.
+    // With no lock, both read version=1 (nobody has committed yet), so BOTH go through
+    // the version-comparison branch and both insert step ordinal=1 ⇒ the loser eats a raw 23505.
     const edit = (actor: { userId: string }, sentence: string): Promise<CaseSummaryDto> =>
       withTenant(r.db, ctx(), async (tx) => {
         await gate();
@@ -110,8 +110,8 @@ describeRealPg("replaceSteps dưới tranh chấp THẬT (Postgres thật, hai c
       });
 
     const results = await Promise.allSettled([
-      edit(alice, "alice mở trang login"),
-      edit(bob, "bob bấm banner cookie"),
+      edit(alice, "alice opens the login page"),
+      edit(bob, "bob clicks the cookie banner"),
     ]);
     const won = results.filter(
       (x): x is PromiseFulfilledResult<CaseSummaryDto> => x.status === "fulfilled",
@@ -130,7 +130,7 @@ describeRealPg("replaceSteps dưới tranh chấp THẬT (Postgres thật, hai c
       expect(conflict.diff.currentVersion).toBe(2);
     }
 
-    // Bên thua rollback sạch: đúng một bộ step, đúng hai revision (#1 tạo + #2 của bên thắng).
+    // The loser rolls back cleanly: exactly one set of steps, exactly two revisions (#1 create + #2 the winner's).
     const steps = await r.db.execute(
       sql`SELECT rendered_sentence FROM aut_steps WHERE case_id = ${c.id} ORDER BY ordinal`,
     );
@@ -143,7 +143,7 @@ describeRealPg("replaceSteps dưới tranh chấp THẬT (Postgres thật, hai c
     expect(Number(row.rows[0]?.["version"])).toBe(2);
   });
 
-  it("khoá theo (team, case): edit case B KHÔNG bị transaction đang giữ khoá case A chặn", async () => {
+  it("locked by (team, case): editing case B is NOT blocked by a transaction holding case A's lock", async () => {
     const a = await seedCase("Case A");
     const b = await seedCase("Case B");
     const locked = makeLatch();
@@ -153,7 +153,7 @@ describeRealPg("replaceSteps dưới tranh chấp THẬT (Postgres thật, hai c
       const summary = await replaceSteps(tx, ctx(), alice, {
         caseId: a.id,
         expectedVersion: a.version,
-        steps: oneStep("A ghi xong, transaction VẪN MỞ nên khoá case A chưa nhả"),
+        steps: oneStep("A finished writing, transaction is STILL OPEN so case A's lock is not yet released"),
       });
       locked.signal();
       await release.wait;
@@ -161,12 +161,12 @@ describeRealPg("replaceSteps dưới tranh chấp THẬT (Postgres thật, hai c
     });
 
     await locked.wait;
-    // Khoá toàn cục (hoặc khoá bảng) sẽ treo ở đây tới khi test timeout.
+    // A global lock (or a table lock) would hang here until the test times out.
     const summaryB = await withTenant(r.db, ctx(), (tx) =>
       replaceSteps(tx, ctx(), bob, {
         caseId: b.id,
         expectedVersion: b.version,
-        steps: oneStep("B đi qua trong lúc A còn giữ khoá"),
+        steps: oneStep("B goes through while A still holds its lock"),
       }),
     );
     expect(summaryB.version).toBe(2);

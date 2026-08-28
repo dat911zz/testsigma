@@ -8,15 +8,15 @@ export type OutboxEvent = {
 };
 
 /**
- * Ghi domain event vào outbox. CHỈ nhận TkTx (không nhận TkDb): kiểu ép người gọi
- * phải đang ở trong một transaction, nên event không bao giờ tồn tại mà thiếu
- * domain write đi kèm — và ngược lại. Không có side-effect nào ngoài transaction.
+ * Write a domain event to the outbox. Accepts ONLY TkTx (never TkDb): the type forces the
+ * caller to already be inside a transaction, so an event can never exist without its
+ * accompanying domain write — and vice versa. No side-effect exists outside the transaction.
  *
- * Lệch có chủ đích so với block trong plan: dùng query builder thay cho
- * `tx.execute(sql`INSERT ... RETURNING id`)`. Lý do: `TkTx` là kiểu driver-agnostic
- * (`PgQueryResultHKT` chưa gắn driver) nên `execute()` trả `unknown` — đọc `.rows`
- * bắt buộc phải cast, mà TS strict của TestKite cấm cast vô cớ. `.returning()` cho
- * kiểu thật `{ id: bigint }[]`, SQL sinh ra vẫn là INSERT ... RETURNING "id".
+ * Deliberate deviation from the block in the plan: uses the query builder instead of
+ * `tx.execute(sql`INSERT ... RETURNING id`)`. Reason: `TkTx` is a driver-agnostic type
+ * (`PgQueryResultHKT` isn't bound to a driver yet), so `execute()` returns `unknown` — reading `.rows`
+ * would require a cast, and TestKite's TS strict mode bans casts without justification. `.returning()` gives
+ * the real type `{ id: bigint }[]`; the generated SQL is still INSERT ... RETURNING "id".
  */
 export async function enqueueOutbox(
   tx: TkTx,
@@ -25,13 +25,13 @@ export async function enqueueOutbox(
 ): Promise<bigint> {
   const teamId = assertTenantContext(ctx);
   if (event.topic.trim().length === 0) {
-    throw new Error("outbox: topic không được rỗng");
+    throw new Error("outbox: topic must not be empty");
   }
   const rows = await tx
     .insert(krnOutbox)
     .values({ teamId, topic: event.topic, payload: event.payload })
     .returning({ id: krnOutbox.id });
   const row = rows[0];
-  if (row === undefined) throw new Error("outbox: INSERT không trả id");
+  if (row === undefined) throw new Error("outbox: INSERT did not return an id");
   return row.id;
 }

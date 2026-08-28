@@ -24,36 +24,36 @@ export type RelayResult = {
   readonly failed: number;
 };
 
-/** Guard chứ không cast: `TkDb` cố ý driver-agnostic nên `execute()` trả `unknown`. */
+/** Guard, not a cast: `TkDb` is intentionally driver-agnostic so `execute()` returns `unknown`. */
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
- * Đọc `rows` của một kết quả `execute()` mà không cast mù. Cả node-postgres lẫn
- * PGlite đều trả `{ rows: [...] }`; shape khác ⇒ ném ngay thay vì đọc bừa.
+ * Read `rows` off an `execute()` result without a blind cast. Both node-postgres and
+ * PGlite return `{ rows: [...] }`; a different shape ⇒ throw immediately instead of reading garbage.
  */
 function rowsOf(result: unknown): readonly Record<string, unknown>[] {
-  if (!isRecord(result)) throw new Error("relay: kết quả query không phải object");
+  if (!isRecord(result)) throw new Error("relay: query result is not an object");
   const rows: unknown = result["rows"];
-  if (!Array.isArray(rows)) throw new Error("relay: kết quả query thiếu mảng rows");
+  if (!Array.isArray(rows)) throw new Error("relay: query result is missing a rows array");
   const list: readonly unknown[] = rows;
   return list.filter(isRecord);
 }
 
-/** `krn_outbox.id` là bigserial — driver trả string (pg) hoặc number/bigint (PGlite). */
+/** `krn_outbox.id` is bigserial — the driver returns string (pg) or number/bigint (PGlite). */
 function readId(row: Record<string, unknown>): bigint {
   const raw = row["id"];
   if (typeof raw === "bigint") return raw;
   if (typeof raw === "string" || typeof raw === "number") return BigInt(raw);
-  throw new Error(`relay: krn_outbox.id không đọc được (typeof=${typeof raw})`);
+  throw new Error(`relay: could not read krn_outbox.id (typeof=${typeof raw})`);
 }
 
 function toOutboxRecord(row: Record<string, unknown>, id: bigint): OutboxRecord {
   const payload = row["payload"];
   if (!isRecord(payload)) {
-    // Poison message: writer luôn ghi object. Ném ở đây ⇒ event bị tính là failed,
-    // tăng attempts và cuối cùng rơi ra khỏi batch qua maxAttempts, không kẹt relay.
-    throw new Error(`relay: payload của event ${String(id)} không phải object JSON`);
+    // Poison message: the writer always writes an object. Throwing here ⇒ the event counts
+    // as failed, attempts increments, and it eventually falls out of the batch via maxAttempts — the relay never gets stuck.
+    throw new Error(`relay: payload of event ${String(id)} is not a JSON object`);
   }
   return {
     id,
@@ -65,20 +65,20 @@ function toOutboxRecord(row: Record<string, unknown>, id: bigint): OutboxRecord 
 }
 
 /**
- * Một vòng relay. Mỗi event là MỘT transaction riêng:
- *   BEGIN → SELECT ... FOR UPDATE SKIP LOCKED (giữ khoá row)
- *         → publish (side-effect DUY NHẤT, nằm trong khoá)
+ * One relay round. Each event is its OWN transaction:
+ *   BEGIN → SELECT ... FOR UPDATE SKIP LOCKED (hold the row lock)
+ *         → publish (the ONE side-effect, inside the lock)
  *         → INSERT consumed ... ON CONFLICT DO NOTHING → COMMIT
- * Publish ném ⇒ ROLLBACK phần đánh dấu, ghi attempts/last_error/available_at ở một
- * transaction riêng ⇒ at-least-once, không mất event, không chặn event khác.
+ * If publish throws ⇒ ROLLBACK the marking part, write attempts/last_error/available_at in a
+ * separate transaction ⇒ at-least-once, no event is lost, and no event blocks another.
  *
- * Đây là SKELETON: `publish` tiêm từ ngoài. Kernel không import bullmq (luật lint) —
- * đấu nối BullMQ thật là việc M3.
+ * This is a SKELETON: `publish` is injected from outside. Kernel does not import bullmq (lint rule) —
+ * wiring in the real BullMQ is M3's job.
  *
- * `claimed` là số row câu SELECT trả về; `published + failed` có thể NHỎ HƠN khi một
- * relay khác đang giữ khoá row (SKIP LOCKED bỏ qua, không chờ) hoặc đã tiêu thụ xong
- * row đó (NOT EXISTS trong câu khoá) — hiệu số đó chính là phần việc thuộc về instance
- * kia, không phải lỗi.
+ * `claimed` is the row count the SELECT returns; `published + failed` can be SMALLER when another
+ * relay is already holding the row's lock (SKIP LOCKED skips it, doesn't wait) or has already
+ * consumed that row (NOT EXISTS in the locking query) — that difference is work that belongs to
+ * the other instance, not an error.
  */
 export async function runRelayOnce(
   db: TkDb,
@@ -110,16 +110,15 @@ export async function runRelayOnce(
     try {
       const rec = toOutboxRecord(row, id);
       const done = await db.transaction(async (tx): Promise<boolean> => {
-        // Khoá lại đúng row này; SKIP LOCKED để relay thứ hai đi tiếp row khác
-        // thay vì xếp hàng chờ.
+        // Re-lock exactly this row; SKIP LOCKED so a second relay moves on to another row
+        // instead of queueing up to wait.
         //
-        // NOT EXISTS PHẢI lặp lại ở đây, không chỉ ở câu SELECT batch: danh sách
-        // candidate được chốt TRƯỚC mọi transaction nên nó là snapshot CŨ. Relay
-        // khác cùng consumer có thể đã publish + COMMIT consumed cho row này rồi
-        // NHẢ khoá trong lúc ta còn xử lý các row trước đó — khi đó SKIP LOCKED
-        // không skip (row hết khoá) và ta sẽ publish lần hai. Câu này chạy trong
-        // transaction riêng nên snapshot READ COMMITTED của nó thấy được commit
-        // đó ⇒ 0 row ⇒ bỏ qua đúng.
+        // NOT EXISTS MUST be repeated here, not just in the batch SELECT: the candidate list
+        // was fixed BEFORE any transaction, so it's an OLD snapshot. Another relay on the same
+        // consumer may already have published + COMMITted consumed for this row and RELEASED
+        // the lock while we were still processing earlier rows — in that case SKIP LOCKED
+        // doesn't skip (the row is unlocked) and we'd publish a second time. This statement runs in
+        // its own transaction, so its READ COMMITTED snapshot sees that commit ⇒ 0 rows ⇒ correctly skipped.
         const locked = rowsOf(
           await tx.execute(sql`
             SELECT o.id FROM krn_outbox o
@@ -129,7 +128,7 @@ export async function runRelayOnce(
                 WHERE c.outbox_id = o.id AND c.consumer = ${opts.consumer})
             FOR UPDATE SKIP LOCKED`),
         );
-        if (locked.length === 0) return false; // relay khác đang cầm hoặc đã xong — bỏ qua
+        if (locked.length === 0) return false; // another relay is holding it or already finished — skip
         await publish(rec);
         await tx.execute(sql`
           INSERT INTO krn_outbox_consumed (outbox_id, consumer)

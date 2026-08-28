@@ -1,14 +1,14 @@
 /**
- * Tầng test CONCURRENCY — chỉ chạy trên Postgres THẬT (nhiều connection).
+ * The CONCURRENCY test layer — runs ONLY on REAL Postgres (multiple connections).
  *
- * VÌ SAO KHÔNG NẰM Ở TẦNG PGlite: PGlite chỉ có MỘT connection wasm, hai transaction
- * đồng thời chỉ xếp hàng tuần tự (spike 2026-08-27) ⇒ mọi khẳng định "SKIP LOCKED
- * claim disjoint" test ở đó đều XANH GIẢ. Bằng chứng thật (PG 16.13 local): conn A
- * giữ khoá ids=[1,2], conn B SKIP LOCKED nhận ids=[3,4] (disjoint), còn FOR UPDATE
- * thường thì BLOCKED sau 602ms.
+ * WHY THIS DOESN'T LIVE IN THE PGlite LAYER: PGlite has only ONE wasm connection, two concurrent
+ * transactions just queue sequentially (spike 2026-08-27) ⇒ any "SKIP LOCKED
+ * claim disjoint" assertion tested there is a FALSE GREEN. Real proof (local PG 16.13): conn A
+ * holds the lock on ids=[1,2], conn B's SKIP LOCKED gets ids=[3,4] (disjoint), while a plain
+ * FOR UPDATE is BLOCKED for 602ms.
  *
- * Không có TESTKITE_TEST_PG_URL ⇒ cả suite này skip (máy dev không có Postgres vẫn
- * `pnpm test` xanh). CI luôn set biến này với postgres:17 — engine có thẩm quyền.
+ * No TESTKITE_TEST_PG_URL ⇒ this whole suite skips (a dev machine without Postgres still gets
+ * a green `pnpm test`). CI always sets this var with postgres:17 — the engine of record.
  */
 import { expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
@@ -17,7 +17,7 @@ import { withTenant } from "../../src/modules/kernel/db/tenant.js";
 import { enqueueOutbox } from "../../src/modules/kernel/outbox/writer.js";
 import { runRelayOnce, type OutboxRecord } from "../../src/modules/kernel/outbox/relay.js";
 
-describeRealPg("relay dưới tranh chấp THẬT (Postgres thật, nhiều connection)", () => {
+describeRealPg("relay under REAL contention (real Postgres, multiple connections)", () => {
   let r: RealDb;
   let teamA = "";
 
@@ -47,7 +47,7 @@ describeRealPg("relay dưới tranh chấp THẬT (Postgres thật, nhiều conn
     });
   });
 
-  it("hai relay chạy song song: mỗi event publish ĐÚNG MỘT LẦN", async () => {
+  it("two relays running in parallel: each event is published EXACTLY ONCE", async () => {
     const seenA: OutboxRecord[] = [];
     const seenB: OutboxRecord[] = [];
     const slow = (bucket: OutboxRecord[]) => async (rec: OutboxRecord) => {
@@ -59,12 +59,12 @@ describeRealPg("relay dưới tranh chấp THẬT (Postgres thật, nhiều conn
       runRelayOnce(r.db, slow(seenB), { consumer: "relay-1" }),
     ]);
     const ids = [...seenA, ...seenB].map((x) => String(x.id));
-    expect(new Set(ids).size).toBe(ids.length); // KHÔNG trùng
+    expect(new Set(ids).size).toBe(ids.length); // NO duplicates
     const consumed = await r.db.execute(sql`SELECT count(*)::int AS n FROM krn_outbox_consumed`);
     expect(Number(consumed.rows[0]?.["n"])).toBe(20);
   });
 
-  it("SKIP LOCKED cho claim disjoint khi một connection đang giữ khoá", async () => {
+  it("SKIP LOCKED gives a disjoint claim when one connection is holding the lock", async () => {
     const a = await r.pool.connect();
     const b = await r.pool.connect();
     try {
@@ -83,7 +83,7 @@ describeRealPg("relay dưới tranh chấp THẬT (Postgres thật, nhiều conn
     }
   });
 
-  it("RLS vẫn cách ly khi qua pool nhiều connection", async () => {
+  it("RLS still isolates across a pool of multiple connections", async () => {
     const org = await r.db.execute(sql`SELECT id FROM organizations LIMIT 1`);
     const orgId = String(org.rows[0]?.["id"]);
     const bTeam = await r.db.execute(
@@ -104,7 +104,7 @@ describeRealPg("relay dưới tranh chấp THẬT (Postgres thật, nhiều conn
     expect(nb).toEqual(["PB"]);
   });
 
-  it("session var KHÔNG rò sang connection kế tiếp trong pool", async () => {
+  it("session var does NOT leak to the next connection in the pool", async () => {
     await withTenant(r.db, { teamId: teamA }, async () => undefined);
     const checks = await Promise.all(
       Array.from({ length: 5 }, () =>

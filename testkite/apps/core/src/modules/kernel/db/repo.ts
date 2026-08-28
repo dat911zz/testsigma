@@ -2,24 +2,24 @@ import type { TenantContext, TkTx } from "./types.js";
 
 export class MissingTenantContextError extends Error {
   constructor(reason: string) {
-    super(`TenantContext không hợp lệ: ${reason} — repository fail-closed (blueprint §3 L1)`);
+    super(`Invalid TenantContext: ${reason} — repository fail-closed (blueprint §3 L1)`);
     this.name = "MissingTenantContextError";
   }
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Ném nếu ctx không mang teamId dạng uuid. Gọi TRƯỚC mọi thứ chạm DB. */
+/** Throws if ctx's teamId isn't a uuid. Call BEFORE anything touches the DB. */
 export function assertTenantContext(ctx: TenantContext): string {
-  if (ctx.teamId.length === 0) throw new MissingTenantContextError("teamId rỗng");
+  if (ctx.teamId.length === 0) throw new MissingTenantContextError("teamId is empty");
   if (!UUID_RE.test(ctx.teamId))
-    throw new MissingTenantContextError(`teamId không phải uuid: ${ctx.teamId}`);
+    throw new MissingTenantContextError(`teamId is not a uuid: ${ctx.teamId}`);
   return ctx.teamId;
 }
 
 /**
- * Lớp cách ly L1: mọi repository kế thừa từ đây nên KHÔNG THỂ tồn tại
- * một repo không biết mình đang phục vụ tenant nào.
+ * Isolation layer L1: every repository extends from here, so a repo that doesn't
+ * know which tenant it's serving CANNOT exist.
  */
 export abstract class TenantRepo {
   readonly #tx: TkTx;

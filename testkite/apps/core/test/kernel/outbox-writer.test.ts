@@ -1,9 +1,9 @@
 /**
- * Outbox writer — transactional outbox (blueprint §4): gọi NGƯỢC/NGANG trên DAG module
- * đi qua bảng krn_outbox, ghi CÙNG transaction với domain write.
+ * Outbox writer — transactional outbox (blueprint §4): any BACKWARD/SIDEWAYS call across the module DAG
+ * goes through the krn_outbox table, written in the SAME transaction as the domain write.
  *
- * krn_outbox KHÔNG bật RLS (relay phải đọc event của MỌI team); cách ly thay thế là
- * least-privilege theo role — testkite_app chỉ được INSERT, không được SELECT bảng.
+ * krn_outbox does NOT enable RLS (the relay must read events for EVERY team); isolation instead comes from
+ * least-privilege by role — testkite_app can only INSERT, never SELECT the table.
  */
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -45,9 +45,9 @@ const count = async (): Promise<number> => {
 };
 
 /**
- * drizzle 0.45 bọc lỗi driver trong DrizzleQueryError ("Failed query: ...") và giữ
- * lỗi Postgres thật ở `cause` — nên khẳng định phải soi cả chuỗi cause, không chỉ
- * message ngoài cùng.
+ * drizzle 0.45 wraps the driver error in DrizzleQueryError ("Failed query: ...") and keeps
+ * the real Postgres error in `cause` — so the assertion must inspect the whole cause chain, not just
+ * the outer message.
  */
 const errorChain = (e: unknown): string => {
   const parts: string[] = [];
@@ -61,12 +61,12 @@ const errorChain = (e: unknown): string => {
 
 const failureOf = async (p: Promise<unknown>): Promise<string> =>
   p.then(
-    () => "KHÔNG NÉM LỖI",
+    () => "DID NOT THROW",
     (e: unknown) => errorChain(e),
   );
 
 describe("enqueueOutbox", () => {
-  it("ghi event cùng transaction với domain write", async () => {
+  it("writes the event in the same transaction as the domain write", async () => {
     await withTenant(t.db, { teamId: teamA }, async (tx) => {
       await tx.execute(
         sql`INSERT INTO aut_cases (team_id,project_id,name) VALUES (${teamA},${projA},'c1')`,
@@ -80,7 +80,7 @@ describe("enqueueOutbox", () => {
     expect(r.rows[0]?.["attempts"]).toBe(0);
   });
 
-  it("ATOMIC: rollback domain write ⇒ event biến mất cùng nó", async () => {
+  it("ATOMIC: rolling back the domain write ⇒ the event disappears with it", async () => {
     await expect(
       withTenant(t.db, { teamId: teamA }, async (tx) => {
         await tx.execute(
@@ -99,7 +99,7 @@ describe("enqueueOutbox", () => {
     expect(c.rows[0]?.["n"]).toBe(0);
   });
 
-  it("gắn team_id từ TenantContext, không nhận team_id tuỳ ý", async () => {
+  it("attaches team_id from TenantContext, never an arbitrary team_id", async () => {
     await withTenant(t.db, { teamId: teamA }, async (tx) => {
       await enqueueOutbox(tx, { teamId: teamA }, { topic: "x", payload: {} });
     });
@@ -107,7 +107,7 @@ describe("enqueueOutbox", () => {
     expect(r.rows[0]?.["team_id"]).toBe(teamA);
   });
 
-  it("từ chối TenantContext rỗng", async () => {
+  it("rejects an empty TenantContext", async () => {
     await expect(
       withTenant(t.db, { teamId: teamA }, async (tx) =>
         enqueueOutbox(tx, { teamId: "" }, { topic: "x", payload: {} }),
@@ -115,7 +115,7 @@ describe("enqueueOutbox", () => {
     ).rejects.toThrow(MissingTenantContextError);
   });
 
-  it("từ chối topic rỗng", async () => {
+  it("rejects an empty topic", async () => {
     await expect(
       withTenant(t.db, { teamId: teamA }, async (tx) =>
         enqueueOutbox(tx, { teamId: teamA }, { topic: "", payload: {} }),
@@ -123,7 +123,7 @@ describe("enqueueOutbox", () => {
     ).rejects.toThrow(/topic/i);
   });
 
-  it("trả về id tăng dần để relay sắp thứ tự", async () => {
+  it("returns increasing ids so the relay can order them", async () => {
     const ids = await withTenant(t.db, { teamId: teamA }, async (tx) => [
       await enqueueOutbox(tx, { teamId: teamA }, { topic: "a", payload: {} }),
       await enqueueOutbox(tx, { teamId: teamA }, { topic: "b", payload: {} }),
@@ -131,7 +131,7 @@ describe("enqueueOutbox", () => {
     expect((ids[1] ?? 0n) > (ids[0] ?? 0n)).toBe(true);
   });
 
-  it("role app CHỈ được INSERT vào krn_outbox, không được SELECT", async () => {
+  it("app role can ONLY INSERT into krn_outbox, never SELECT", async () => {
     await withTenant(t.db, { teamId: teamA }, async (tx) => {
       await enqueueOutbox(tx, { teamId: teamA }, { topic: "a", payload: {} });
       expect(await failureOf(tx.execute(sql`SELECT * FROM krn_outbox`))).toMatch(
@@ -140,7 +140,7 @@ describe("enqueueOutbox", () => {
     });
   });
 
-  it("role app không đọc lén được payload của event nào, kể cả team mình", async () => {
+  it("app role cannot sneak a read of any event's payload, even its own team's", async () => {
     await withTenant(t.db, { teamId: teamA }, async (tx) => {
       await enqueueOutbox(tx, { teamId: teamA }, { topic: "a", payload: { secret: 1 } });
       expect(await failureOf(tx.execute(sql`SELECT payload FROM krn_outbox`))).toMatch(

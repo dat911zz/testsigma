@@ -1,12 +1,12 @@
 /**
- * Mini-IdP OIDC in-process cho test và dev.
+ * In-process mini-IdP OIDC for test and dev.
  *
- * VÌ SAO KHÔNG DÙNG KEYCLOAK THẬT Ở ĐÂY: sandbox/CI runner không đảm bảo có docker
- * daemon (spike M1: /var/run/docker.sock không tồn tại). VÌ SAO KHÔNG oauth2-mock-server:
- * nó không phát được id_token hỏng theo yêu cầu, mà ca âm bản mới là thứ đáng test.
+ * WHY NOT USE REAL KEYCLOAK HERE: the sandbox/CI runner does not guarantee a docker
+ * daemon (spike M1: /var/run/docker.sock does not exist). WHY NOT oauth2-mock-server:
+ * it can't emit a broken id_token on demand, and the negative cases are exactly what's worth testing.
  *
- * IdP thật ở prod là Keycloak self-host (quyết định 28-08-2026). Mọi thứ mini-IdP này
- * phát ra đều là OIDC chuẩn: discovery, JWKS, authorization code + PKCE S256, RS256.
+ * The real IdP in prod is self-hosted Keycloak (decision 2026-08-28). Everything this mini-IdP
+ * emits is standard OIDC: discovery, JWKS, authorization code + PKCE S256, RS256.
  */
 import { createServer, type Server } from "node:http";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
@@ -31,10 +31,10 @@ type Pending = {
   mode: string;
   email: string;
   /**
-   * `tk_email_verified`: "true" (mặc định) | "false" | "absent".
-   * "absent" = IdP KHÔNG phát claim `email_verified` (Keycloak có thể tắt scope email).
-   * Đây là công tắc để test được luật "email chưa xác minh thì không liên kết vào
-   * tài khoản đã có" — mà không có nó thì không kiểm chứng được từ bên ngoài.
+   * `tk_email_verified`: "true" (default) | "false" | "absent".
+   * "absent" = the IdP does NOT emit the `email_verified` claim (Keycloak can turn off the email scope).
+   * This is the switch that lets us test the rule "an unverified email is not linked to an
+   * existing account" — without it, there'd be no way to verify this from outside.
    */
   emailVerified: string;
   groups: string[];
@@ -51,7 +51,7 @@ export async function startMockIdp(
   jwk.kid = await calculateJwkThumbprint(jwk);
   jwk.alg = "RS256";
   jwk.use = "sig";
-  // Khoá KHÔNG có trong JWKS — dùng cho ca unknown_kid.
+  // A key NOT present in the JWKS — used for the unknown_kid case.
   const rogue = await generateKeyPair("RS256", { extractable: true });
 
   const codes = new Map<string, Pending>();
@@ -158,11 +158,11 @@ export async function startMockIdp(
           rec.mode === "expired"
             ? await sign(issuer, clientId, now - 60, kid, privateKey)
             : rec.mode === "wrong_aud"
-              ? await sign(issuer, "ke-khac", now + 300, kid, privateKey)
+              ? await sign(issuer, "other-aud", now + 300, kid, privateKey)
               : rec.mode === "wrong_iss"
                 ? await sign("https://evil.example", clientId, now + 300, kid, privateKey)
                 : rec.mode === "unknown_kid"
-                  ? await sign(issuer, clientId, now + 300, "kid-khong-ton-tai", rogue.privateKey)
+                  ? await sign(issuer, clientId, now + 300, "kid-does-not-exist", rogue.privateKey)
                   : await sign(issuer, clientId, now + 300, kid, privateKey);
         json(200, {
           access_token: randomBytes(24).toString("base64url"),

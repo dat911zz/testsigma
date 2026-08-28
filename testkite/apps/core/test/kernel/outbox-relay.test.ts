@@ -1,17 +1,17 @@
 /**
- * Relay outbox — vòng đọc `krn_outbox` rồi giao cho một `Publisher` tiêm từ ngoài.
+ * Outbox relay — a loop that reads `krn_outbox` then hands each event to a `Publisher` injected from outside.
  *
- * Ba tính chất được canh gác ở đây:
- *  1. IDEMPOTENT theo cặp (outbox_id, consumer) — chạy lại không publish lại,
- *     nhưng consumer khác vẫn nhận được cùng event.
- *  2. IDEMPOTENT cả khi danh sách candidate đã CŨ — event bị relay khác cùng consumer
- *     đánh dấu consumed *sau* câu SELECT batch thì không được publish lần hai.
- *  3. AT-LEAST-ONCE — publish ném ⇒ không đánh dấu consumed, tăng attempts, lùi
- *     available_at; một event hỏng không chặn phần còn lại của batch.
+ * Three properties are guarded here:
+ *  1. IDEMPOTENT per (outbox_id, consumer) pair — running again does not publish again,
+ *     but a different consumer still receives the same event.
+ *  2. IDEMPOTENT even when the candidate list is STALE — an event marked consumed by another relay
+ *     on the same consumer *after* the batch SELECT must not be published a second time.
+ *  3. AT-LEAST-ONCE — if publish throws ⇒ do not mark consumed, increment attempts, push back
+ *     available_at; one bad event does not block the rest of the batch.
  *
- * GIỚI HẠN ĐÃ BIẾT: PGlite chỉ có MỘT connection ⇒ KHÔNG tồn tại tranh chấp khoá,
- * nên ngữ nghĩa disjoint của SKIP LOCKED không thể chứng minh ở tầng này (test cuối
- * chỉ là hợp đồng tĩnh). Bằng chứng hành vi thật nằm ở test/concurrency (Postgres thật).
+ * KNOWN LIMITATION: PGlite has only ONE connection ⇒ lock contention CANNOT exist,
+ * so SKIP LOCKED's disjoint semantics can't be proven at this layer (the last test is
+ * only a static contract). Real behavioral proof lives in test/concurrency (real Postgres).
  */
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -52,15 +52,15 @@ async function seed(n: number): Promise<void> {
 }
 
 /**
- * Bọc `db` để chèn sự kiện của MỘT RELAY KHÁC vào đúng cửa sổ đua: sau khi câu SELECT
- * batch đã chốt danh sách candidate, trước khi transaction khoá row đầu tiên chạy.
+ * Wrap `db` to inject a DIFFERENT RELAY's event right into the race window: after the batch
+ * SELECT has fixed the candidate list, before the transaction that locks the first row runs.
  *
- * Vì sao phải bọc: PGlite chỉ có một connection nên không dựng được hai `runRelayOnce`
- * chạy song song thật (mọi query xếp hàng qua transaction-mutex; gọi query lồng bên
- * trong một transaction sẽ khoá chết). Wrapper này tái hiện ĐÚNG trạng thái DB mà relay
- * B để lại trên Postgres thật: consumed đã COMMIT và row đã HẾT khoá — nên
- * `FOR UPDATE SKIP LOCKED` của relay A không skip, và chỉ điều kiện NOT EXISTS
- * ngay trong câu khoá mỗi-row mới chặn được publish lần hai.
+ * Why wrapping is needed: PGlite has only one connection, so two `runRelayOnce` calls can't
+ * truly run in parallel (every query queues through the transaction mutex; a nested query call
+ * inside a transaction deadlocks). This wrapper reproduces the EXACT DB state relay
+ * B would leave on real Postgres: consumed has COMMITted and the row is UNLOCKED — so
+ * relay A's `FOR UPDATE SKIP LOCKED` does not skip it, and only the NOT EXISTS condition
+ * right in the per-row locking query blocks the second publish.
  */
 function raceBeforeFirstTx(base: TkDb, otherRelayCommits: () => Promise<void>): TkDb {
   let fired = false;
@@ -84,7 +84,7 @@ const consumedCount = async (): Promise<number> => {
 };
 
 describe("runRelayOnce", () => {
-  it("publish mọi event chưa tiêu thụ, theo thứ tự id", async () => {
+  it("publishes every unconsumed event, in id order", async () => {
     await seed(3);
     const seen: OutboxRecord[] = [];
     const res = await runRelayOnce(
@@ -101,7 +101,7 @@ describe("runRelayOnce", () => {
     expect(await consumedCount()).toBe(3);
   });
 
-  it("IDEMPOTENT: chạy lần 2 không publish lại gì", async () => {
+  it("IDEMPOTENT: a second run publishes nothing again", async () => {
     await seed(2);
     await runRelayOnce(t.db, async () => undefined, { consumer: "relay-1" });
     const seen: OutboxRecord[] = [];
@@ -116,11 +116,11 @@ describe("runRelayOnce", () => {
     expect(seen).toEqual([]);
   });
 
-  it("IDEMPOTENT: relay khác cùng consumer consume xong SAU câu SELECT batch ⇒ không publish lại", async () => {
+  it("IDEMPOTENT: another relay on the same consumer finishes consuming AFTER the batch SELECT ⇒ no republish", async () => {
     await seed(2);
     const seen: string[] = [];
     const raced = raceBeforeFirstTx(t.db, async () => {
-      // Relay B: publish xong t1 và COMMIT consumed. Row t1 KHÔNG còn bị khoá.
+      // Relay B: finished publishing t1 and COMMITted consumed. Row t1 is NO LONGER locked.
       await t.db.execute(sql`
         INSERT INTO krn_outbox_consumed (outbox_id, consumer)
         SELECT id, 'relay-1' FROM krn_outbox WHERE topic = 't1'`);
@@ -137,7 +137,7 @@ describe("runRelayOnce", () => {
     expect(await consumedCount()).toBe(2);
   });
 
-  it("consumer khác vẫn nhận được cùng event (PK ghép outbox_id+consumer)", async () => {
+  it("a different consumer still receives the same event (composite PK outbox_id+consumer)", async () => {
     await seed(2);
     await runRelayOnce(t.db, async () => undefined, { consumer: "relay-1" });
     const res = await runRelayOnce(t.db, async () => undefined, { consumer: "relay-2" });
@@ -145,7 +145,7 @@ describe("runRelayOnce", () => {
     expect(await consumedCount()).toBe(4);
   });
 
-  it("publish lỗi ⇒ KHÔNG đánh dấu consumed, tăng attempts, lùi available_at", async () => {
+  it("publish fails ⇒ does NOT mark consumed, increments attempts, pushes back available_at", async () => {
     await seed(1);
     const res = await runRelayOnce(
       t.db,
@@ -163,7 +163,7 @@ describe("runRelayOnce", () => {
     expect(r.rows[0]?.["deferred"]).toBe(true);
   });
 
-  it("một event lỗi KHÔNG chặn các event còn lại trong batch", async () => {
+  it("one failed event does NOT block the rest of the batch", async () => {
     await seed(3);
     const res = await runRelayOnce(
       t.db,
@@ -176,14 +176,14 @@ describe("runRelayOnce", () => {
     expect(await consumedCount()).toBe(2);
   });
 
-  it("bỏ qua event chưa tới available_at", async () => {
+  it("skips events that haven't reached available_at yet", async () => {
     await seed(1);
     await t.db.execute(sql`UPDATE krn_outbox SET available_at = now() + interval '1 hour'`);
     const res = await runRelayOnce(t.db, async () => undefined, { consumer: "relay-1" });
     expect(res.claimed).toBe(0);
   });
 
-  it("bỏ qua event vượt maxAttempts (dead-letter tại chỗ)", async () => {
+  it("skips events over maxAttempts (dead-letter in place)", async () => {
     await seed(1);
     await t.db.execute(sql`UPDATE krn_outbox SET attempts = 5`);
     const res = await runRelayOnce(t.db, async () => undefined, {
@@ -193,7 +193,7 @@ describe("runRelayOnce", () => {
     expect(res.claimed).toBe(0);
   });
 
-  it("tôn trọng batchSize", async () => {
+  it("honors batchSize", async () => {
     await seed(5);
     const res = await runRelayOnce(t.db, async () => undefined, {
       consumer: "relay-1",
@@ -202,9 +202,9 @@ describe("runRelayOnce", () => {
     expect(res.claimed).toBe(2);
   });
 
-  it("dùng FOR UPDATE SKIP LOCKED trong câu claim", async () => {
-    // Hợp đồng tĩnh: PGlite một connection nên KHÔNG thể chứng minh disjoint ở đây.
-    // Chứng minh hành vi thật nằm ở test/concurrency/relay-race.test.ts (Postgres thật).
+  it("uses FOR UPDATE SKIP LOCKED in the claim query", async () => {
+    // Static contract: PGlite has one connection so disjointness CANNOT be proven here.
+    // Real behavioral proof lives in test/concurrency/relay-race.test.ts (real Postgres).
     const src = await import("node:fs/promises").then((fs) =>
       fs.readFile(new URL("../../src/modules/kernel/outbox/relay.ts", import.meta.url), "utf8"),
     );

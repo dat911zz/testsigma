@@ -1,6 +1,6 @@
 /**
- * Harness HTTP: PGlite đã migrate + 2 team + user/token đủ loại + app Fastify thật.
- * Dùng cho test auth (Task 6), onboarding (Task 10) và bộ cách ly L3 (Task 11).
+ * HTTP harness: a migrated PGlite + 2 teams + every kind of user/token + a real Fastify app.
+ * Used by auth tests (Task 6), onboarding (Task 10), and the L3 isolation suite (Task 11).
  */
 import { sql } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "./pglite.js";
@@ -36,11 +36,11 @@ export type TestApp = {
     expiredA: string;
     revokedA: string;
     adminB: string;
-    /** Vai org_admin ở team A — vai DUY NHẤT (cùng instance_operator) tạo được team mới. */
+    /** org_admin role on team A — the ONLY role (alongside instance_operator) that can create a new team. */
     orgAdminA: string;
   };
   readonly counters: { authLookups: number; reset: () => void };
-  /** Đợi mọi việc `defer` (audit đăng nhập hỏng) chạy xong — xem ghi chú ở dưới. */
+  /** Wait for every `defer`red task (failed-login audit) to finish — see the note below. */
   readonly settleDeferred: () => Promise<void>;
   readonly seed: () => Promise<void>;
   readonly demoteAdminToViewer: () => Promise<void>;
@@ -56,7 +56,7 @@ const ENV = {
   LOG_LEVEL: "error" as const,
 };
 
-/** Postgres array literal cho text[] — PGlite không suy được kiểu từ mảng JS trần. */
+/** Postgres array literal for text[] — PGlite can't infer the type from a bare JS array. */
 function pgTextArray(values: readonly string[]): string {
   return `{${values.map((v) => `"${v.replace(/(["\\])/g, "\\$1")}"`).join(",")}}`;
 }
@@ -70,10 +70,10 @@ export async function makeTestApp(): Promise<TestApp> {
     },
   };
   /**
-   * Cổng `defer` của login: sản phẩm bắn task bằng setImmediate rồi quên (audit của
-   * lần đăng nhập HỎNG không được nằm trên đường phản hồi — kênh dò tài khoản qua
-   * timing). Harness giữ y hệt cách bắn ấy nhưng nhớ promise lại, vì "quên" trong
-   * test nghĩa là dòng audit rơi vào giữa một test khác.
+   * Login's `defer` hook: production fires the task with setImmediate and forgets it (a
+   * FAILED login's audit must not sit on the response path — that's a timing side-channel
+   * for probing accounts). The harness fires it the exact same way but remembers the promise,
+   * because "forgetting" in a test means the audit line lands in the middle of a different test.
    */
   let deferred: Promise<void>[] = [];
   const defer = (task: () => Promise<void>): void => {
@@ -110,11 +110,11 @@ export async function makeTestApp(): Promise<TestApp> {
     db: db.db,
     authenticator,
     registrations: [
-      // Cổng audit tiêm từ tầng shell — y hệt composition-root thật, để test đi qua
-      // đúng đường dây sản xuất chứ không phải một biến thể riêng của harness.
+      // Audit hook injected from the shell layer — exactly like the real composition-root, so tests go through
+      // the actual production wiring instead of a harness-only variant.
       ...identityRouteRegistrations({ db: db.db, cache, audit: writeAuditEvent, defer }),
       ...governanceRouteRegistrations({ db: db.db }),
-      // Onboarding nộp từ tầng shell (nó ghép bốn module) — y hệt composition-root thật.
+      // Onboarding is submitted from the shell layer (it composes four modules) — exactly like the real composition-root.
       onboardRouteRegistration({ db: db.db }),
     ],
     // Authoring is a plugin (same as composition-root); the L3 suite drives its
@@ -167,8 +167,8 @@ export async function makeTestApp(): Promise<TestApp> {
   }
 
   async function seed(): Promise<void> {
-    // Việc hoãn của test TRƯỚC phải xong trước khi TRUNCATE, nếu không nó ghi lén một
-    // dòng audit vào giữa test sau.
+    // The PREVIOUS test's deferred work must finish before TRUNCATE, or it will sneak
+    // an audit line into the middle of a later test.
     await settleDeferred();
     await db.reset();
     cache.invalidateTeam(ids.teamA);
@@ -232,7 +232,7 @@ export async function makeTestApp(): Promise<TestApp> {
       "team:manage",
     ];
     const AUTHOR = ["case:read", "case:write", "run:trigger"];
-    // org_admin: quản người + tạo team, KHÔNG đọc tài sản team (break-glass mới đọc).
+    // org_admin: manages people + creates teams, does NOT read team assets (only break-glass reads).
     const ORG_ADMIN = ["member:manage", "audit:read", "team:manage", "team:create"];
     tokens.adminA = await issue(ids.teamA, ids.adminUser, ADMIN, { days: 30 });
     tokens.orgAdminA = await issue(ids.teamA, ids.orgAdminUser, ORG_ADMIN, { days: 30 });
@@ -242,7 +242,7 @@ export async function makeTestApp(): Promise<TestApp> {
     });
     tokens.revokedA = await issue(ids.teamA, ids.authorUser, AUTHOR, { days: 30, revoked: true });
     tokens.adminB = await issue(ids.teamB, ids.adminUser, ADMIN, { days: 30 });
-    // Token đã hết hạn: expires_at trong quá khứ (ghi thẳng, không qua issue()).
+    // An already-expired token: expires_at in the past (written directly, not via issue()).
     const expired = mintTokenSecret();
     await db.raw.query(
       `INSERT INTO api_tokens (team_id,name,prefix,token_hash,kind,user_id,scopes,expires_at)

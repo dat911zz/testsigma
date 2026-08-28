@@ -1,22 +1,22 @@
 /**
- * Tầng test CONCURRENCY cho MÁY TRẠNG THÁI REVIEW — chỉ chạy trên Postgres THẬT.
+ * The CONCURRENCY test layer for the REVIEW STATE MACHINE — runs ONLY on REAL Postgres.
  *
- * VÌ SAO KHÔNG NẰM Ở TẦNG PGlite: `submitForReview` / `withdrawReview` / `decideReview`
- * đều đi qua `loadForMutation` — đọc `version`, so với `expectedVersion`, rồi mới ghi:
- * check-then-act y hệt `replaceSteps` (xem case-edit-race.test.ts). PGlite chỉ có MỘT
- * connection wasm nên hai `withTenant` "song song" ở đó xếp hàng tuần tự và không bao
- * giờ chạm được cửa sổ giữa "đọc version" và "ghi". Bằng chứng chỉ tồn tại ở đây.
+ * WHY THIS DOESN'T LIVE IN THE PGlite LAYER: `submitForReview` / `withdrawReview` / `decideReview`
+ * all go through `loadForMutation` — read `version`, compare with `expectedVersion`, then write:
+ * check-then-act exactly like `replaceSteps` (see case-edit-race.test.ts). PGlite has only ONE
+ * wasm connection, so two "parallel" `withTenant` calls there queue sequentially and never
+ * touch the window between "read version" and "write". Proof only exists here.
  *
- * Hai hỏng hóc được dựng lại (đo thật trước khi vá):
- *  1. `decide('approved')` song song `withdraw` cùng `expectedVersion` ⇒ CẢ HAI trả
- *     thành công, DB chỉ giữ được một quyết định — LOST UPDATE IM LẶNG: response của
- *     bên thua mô tả một trạng thái không tồn tại trong DB.
- *  2. Hai `submitForReview` song song ⇒ bên thua đâm vào unique (revision_no /
- *     `aut_case_reviews_one_open`) và ném DrizzleQueryError/23505 THÔ thay vì hợp đồng
- *     409 `VersionConflictError`.
+ * Two bugs are reproduced here (measured for real before the fix):
+ *  1. `decide('approved')` in parallel with `withdraw`, same `expectedVersion` ⇒ BOTH return
+ *     success, but the DB can only hold one decision — a SILENT LOST UPDATE: the loser's
+ *     response describes a state that doesn't exist in the DB.
+ *  2. Two parallel `submitForReview` calls ⇒ the loser hits a unique constraint (revision_no /
+ *     `aut_case_reviews_one_open`) and throws a RAW DrizzleQueryError/23505 instead of the
+ *     409 `VersionConflictError` contract.
  *
- * Không có TESTKITE_TEST_PG_URL ⇒ cả suite skip (`bash scripts/test-pg.sh start` để
- * dựng cluster tạm). CI job postgres:17 luôn set biến ⇒ CI là nơi bằng chứng được thu.
+ * No TESTKITE_TEST_PG_URL ⇒ the whole suite skips (`bash scripts/test-pg.sh start` to
+ * spin up a temporary cluster). The postgres:17 CI job always sets the var ⇒ CI is where proof is collected.
  */
 import { expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
@@ -31,7 +31,7 @@ import {
 import { VersionConflictError } from "../../src/modules/authoring/errors.js";
 import { describeRealPg, makeRealDb, type RealDb } from "../harness/realpg.js";
 
-/** Cổng chặn: mở khi đủ `n` bên đã tới. Ép hai transaction cùng MỞ trước khi bên nào đọc. */
+/** A blocking gate: opens once `n` parties have arrived. Forces both transactions to OPEN before either reads. */
 function makeGate(n: number): () => Promise<void> {
   let arrived = 0;
   let open: () => void = () => undefined;
@@ -45,7 +45,7 @@ function makeGate(n: number): () => Promise<void> {
   };
 }
 
-/** Tách hai nhánh của `Promise.allSettled` mà không cần `!` hay cast. */
+/** Split the two branches of `Promise.allSettled` without needing `!` or a cast. */
 function splitResults(results: readonly PromiseSettledResult<CaseSummaryDto>[]): {
   readonly won: readonly CaseSummaryDto[];
   readonly lost: readonly unknown[];
@@ -61,11 +61,11 @@ function splitResults(results: readonly PromiseSettledResult<CaseSummaryDto>[]):
 
 function onlyWinner(won: readonly CaseSummaryDto[]): CaseSummaryDto {
   const [first] = won;
-  if (first === undefined) throw new Error("không có bên nào thắng — cả hai đều hỏng");
+  if (first === undefined) throw new Error("nobody won — both sides failed");
   return first;
 }
 
-describeRealPg("máy trạng thái review dưới tranh chấp THẬT (Postgres thật, hai connection)", () => {
+describeRealPg("review state machine under REAL contention (real Postgres, two connections)", () => {
   let r: RealDb;
   let teamId = "";
   let projectId = "";
@@ -111,7 +111,7 @@ describeRealPg("máy trạng thái review dưới tranh chấp THẬT (Postgres 
     { kind: "action", renderedSentence: sentence, verbOpKey: "goto" },
   ];
 
-  /** Case draft đã có step (submit đòi case có revision thật). */
+  /** A draft case that already has a step (submit requires the case to have a real revision). */
   const seedDraftWithSteps = async (): Promise<CaseSummaryDto> => {
     const created = await withTenant(r.db, ctx(), (tx) =>
       createCase(tx, ctx(), alice, { projectId, name: "Checkout", isStepGroup: false }),
@@ -135,7 +135,7 @@ describeRealPg("máy trạng thái review dưới tranh chấp THẬT (Postgres 
     };
   };
 
-  it("hai submit song song cùng expectedVersion: một thắng, bên thua nhận 409 SẠCH (không phải 23505 thô)", async () => {
+  it("two parallel submits with the same expectedVersion: one wins, the loser gets a CLEAN 409 (not a raw 23505)", async () => {
     const c = await seedDraftWithSteps();
     const gate = makeGate(2);
 
@@ -159,11 +159,11 @@ describeRealPg("máy trạng thái review dưới tranh chấp THẬT (Postgres 
       expect(conflict.httpStatus).toBe(409);
       expect(conflict.diff.baseVersion).toBe(c.version);
       expect(conflict.diff.currentVersion).toBe(c.version + 1);
-      // submit không gửi payload nên nhánh "mine" rỗng (hợp đồng conflictFor).
+      // submit sends no payload, so the "mine" branch is empty (the conflictFor contract).
       expect(conflict.diff.mine).toEqual([]);
     }
 
-    // Bên thua rollback sạch: đúng MỘT review đang mở, DB khớp response bên thắng.
+    // The loser rolls back cleanly: exactly ONE open review, the DB matches the winner's response.
     const reviews = await r.db.execute(
       sql`SELECT state FROM aut_case_reviews WHERE case_id = ${c.id}`,
     );
@@ -171,7 +171,7 @@ describeRealPg("máy trạng thái review dưới tranh chấp THẬT (Postgres 
     expect(await caseRowOf(c.id)).toEqual({ version: winner.version, status: winner.status });
   });
 
-  it("decide(approved) song song withdraw cùng expectedVersion: KHÔNG lost update — bên thua nhận 409, DB khớp bên thắng", async () => {
+  it("decide(approved) in parallel with withdraw, same expectedVersion: NO lost update — the loser gets 409, DB matches the winner", async () => {
     const c = await seedDraftWithSteps();
     const submitted = await withTenant(r.db, ctx(), (tx) =>
       submitForReview(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version }),
@@ -196,8 +196,8 @@ describeRealPg("máy trạng thái review dưới tranh chấp THẬT (Postgres 
 
     const { won, lost } = splitResults(await Promise.allSettled([decide, withdraw]));
 
-    // Hỏng hóc phải chết ở đây: KHÔNG khoá thì cả hai đều "thành công" và DB chỉ giữ
-    // được một quyết định — bên thua nhận về một trạng thái không có thật.
+    // The bug must die right here: WITHOUT the lock, both would "succeed" and the DB can only
+    // hold one decision — the loser gets back a state that doesn't actually exist.
     expect(won.length).toBe(1);
     expect(lost.length).toBe(1);
     const winner = onlyWinner(won);
@@ -210,7 +210,7 @@ describeRealPg("máy trạng thái review dưới tranh chấp THẬT (Postgres 
       expect(conflict.diff.currentVersion).toBe(submitted.version + 1);
     }
 
-    // DB khớp ĐÚNG response bên thắng: approve giữ in_review, withdraw đưa về draft.
+    // DB matches EXACTLY the winner's response: approve keeps in_review, withdraw returns to draft.
     const reviews = await r.db.execute(
       sql`SELECT state FROM aut_case_reviews WHERE case_id = ${c.id}`,
     );

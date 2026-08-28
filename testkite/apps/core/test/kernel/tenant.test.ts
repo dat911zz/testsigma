@@ -34,7 +34,7 @@ beforeEach(async () => {
 });
 
 describe("withTenant", () => {
-  it("đổi sang role app và set app.team_id bên trong transaction", async () => {
+  it("switches to the app role and sets app.team_id inside the transaction", async () => {
     const out = await withTenant(t.db, { teamId: teamA }, async (tx) => {
       const r = await tx.execute(
         sql`SELECT current_user AS u, current_setting('app.team_id', true) AS tid`,
@@ -45,7 +45,7 @@ describe("withTenant", () => {
     expect(out?.["tid"]).toBe(teamA);
   });
 
-  it("chỉ thấy dữ liệu của team mình", async () => {
+  it("only sees its own team's data", async () => {
     const a = await withTenant(t.db, { teamId: teamA }, async (tx) =>
       (await tx.execute(sql`SELECT name FROM projects`)).rows.map((x) => x["name"]),
     );
@@ -56,7 +56,7 @@ describe("withTenant", () => {
     expect(b).toEqual(["PB"]);
   });
 
-  it("role và app.team_id revert sau khi tx kết thúc (SET LOCAL)", async () => {
+  it("role and app.team_id revert once the tx ends (SET LOCAL)", async () => {
     await withTenant(t.db, { teamId: teamA }, async () => undefined);
     const r = await t.db.execute(
       sql`SELECT current_user AS u, current_setting('app.team_id', true) AS tid`,
@@ -65,7 +65,7 @@ describe("withTenant", () => {
     expect(r.rows[0]?.["tid"] ?? "").toBe("");
   });
 
-  it("ném lỗi khi throw bên trong, và rollback", async () => {
+  it("propagates a throw from inside, and rolls back", async () => {
     await expect(
       withTenant(t.db, { teamId: teamA }, async (tx) => {
         await tx.execute(
@@ -78,7 +78,7 @@ describe("withTenant", () => {
     expect(r.rows[0]?.["n"]).toBe(2);
   });
 
-  it("từ chối teamId rỗng/không phải uuid TRƯỚC khi mở transaction", async () => {
+  it("rejects an empty/non-uuid teamId BEFORE opening the transaction", async () => {
     await expect(withTenant(t.db, { teamId: "" }, async () => 1)).rejects.toThrow(
       MissingTenantContextError,
     );
@@ -87,7 +87,7 @@ describe("withTenant", () => {
     );
   });
 
-  it("teamId được bind tham số, không nội suy chuỗi (chống injection)", async () => {
+  it("teamId is bound as a parameter, never interpolated into the string (anti-injection)", async () => {
     await expect(
       withTenant(t.db, { teamId: `' ; DROP TABLE projects; --` }, async () => 1),
     ).rejects.toThrow(MissingTenantContextError);
@@ -104,14 +104,14 @@ describe("TenantRepo (L1 fail-closed)", () => {
     }
   }
 
-  it("repo dùng được trong withTenant", async () => {
+  it("the repo can be used inside withTenant", async () => {
     const names = await withTenant(t.db, { teamId: teamA }, async (tx) =>
       new ProjectRepo(tx, { teamId: teamA }).names(),
     );
     expect(names).toEqual(["PA"]);
   });
 
-  it("khởi tạo repo không có TenantContext ⇒ ném ngay tại constructor", async () => {
+  it("constructing a repo without a TenantContext ⇒ throws immediately in the constructor", async () => {
     await withTenant(t.db, { teamId: teamA }, async (tx) => {
       expect(() => new ProjectRepo(tx, { teamId: "" })).toThrow(MissingTenantContextError);
       return undefined;

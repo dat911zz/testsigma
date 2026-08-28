@@ -1,9 +1,9 @@
 /**
- * Module kernel — bảng krn_ (ownership.json).
+ * Kernel module — krn_ tables (ownership.json).
  *
- * krn_outbox là transactional outbox: mọi gọi NGƯỢC/NGANG trên DAG module đi qua đây.
- * KHÔNG bật RLS: relay phải đọc được event của MỌI team. Thay vào đó phân quyền theo
- * role — testkite_app chỉ INSERT (không SELECT), testkite_relay đọc/ghi (Task 8).
+ * krn_outbox is the transactional outbox: every BACKWARD/SIDEWAYS call across the module DAG goes through here.
+ * RLS is NOT enabled: the relay must read events for EVERY team. Isolation is enforced by
+ * role instead — testkite_app is INSERT-only (no SELECT), testkite_relay reads/writes (Task 8).
  */
 import {
   bigint,
@@ -19,13 +19,13 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * Role mà request-path dùng. PHẢI non-superuser và NOBYPASSRLS:
- * spike 2026-08-27 chứng minh superuser bỏ qua RLS kể cả khi đã FORCE.
+ * Role used by the request path. MUST be non-superuser and NOBYPASSRLS:
+ * spike 2026-08-27 proved a superuser bypasses RLS even with FORCE.
  *
- * Sống ở kernel chứ không identity: đây là hạ tầng DB (song sinh với RELAY_ROLE
- * ngay dưới), và `kernel/db/tenant.ts` phải `SET LOCAL ROLE` bằng nó. Kernel là
- * GỐC của DAG (module-dag.json) nên không được import identity — để hằng này ở
- * identity là buộc kernel import ngược, đúng thứ eslint-boundaries chặn.
+ * Lives in kernel, not identity: this is DB infrastructure (a twin of RELAY_ROLE
+ * right below), and `kernel/db/tenant.ts` must `SET LOCAL ROLE` to it. Kernel is the
+ * ROOT of the DAG (module-dag.json), so it may not import identity — putting this constant in
+ * identity would force kernel to import backward, exactly what eslint-boundaries blocks.
  */
 export const APP_ROLE = "testkite_app" as const;
 export const appRole = pgRole(APP_ROLE);
@@ -34,12 +34,12 @@ export const RELAY_ROLE = "testkite_relay" as const;
 export const relayRole = pgRole(RELAY_ROLE);
 
 /**
- * Role của ĐƯỜNG XÁC THỰC. Tồn tại vì một bế tắc có thật (spike 2026-08-28):
- * RLS fail-closed đúng như thiết kế ⇒ `testkite_app` khi chưa có `app.team_id`
- * đọc `api_tokens` ra 0 row, mà muốn có `app.team_id` thì phải tra được token
- * trước. Role này gỡ vòng lặp đó với quyền hẹp nhất có thể: CHỈ SELECT, CHỈ trên
- * api_tokens/memberships/users, policy riêng `auth_lookup`. Nó KHÔNG BYPASSRLS —
- * nó có policy của chính nó, khác hẳn về mức độ nguy hiểm.
+ * Role for the AUTHENTICATION PATH. Exists because of a real deadlock (spike 2026-08-28):
+ * RLS fail-closed works exactly as designed ⇒ `testkite_app`, before `app.team_id` is set,
+ * reads `api_tokens` as 0 rows, but getting `app.team_id` requires looking up the token
+ * first. This role breaks that loop with the narrowest privilege possible: SELECT ONLY, ONLY on
+ * api_tokens/memberships/users, via its own `auth_lookup` policy. It does NOT BYPASSRLS —
+ * it has its own policy, which is a very different risk level.
  */
 export const AUTH_ROLE = "testkite_auth" as const;
 export const authRole = pgRole(AUTH_ROLE);
@@ -69,7 +69,7 @@ export const krnOutboxConsumed = pgTable(
     consumedAt: timestamp("consumed_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    // PK ghép: nhiều consumer độc lập cùng tiêu thụ một event, mỗi cặp đúng một lần.
+    // Composite PK: several independent consumers consume the same event, each pair exactly once.
     primaryKey({ name: "krn_outbox_consumed_pk", columns: [t.outboxId, t.consumer] }),
   ],
 );

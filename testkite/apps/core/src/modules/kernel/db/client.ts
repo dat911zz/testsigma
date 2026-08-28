@@ -12,8 +12,8 @@ export function createDb(env: KernelEnv): DbHandle {
   const pool = new pg.Pool({
     connectionString: env.DATABASE_URL,
     max: env.DATABASE_POOL_MAX,
-    // Blueprint §1: Hikari mặc định là một trong các nguyên nhân phụ của OOM cũ —
-    // ở đây mọi giới hạn pool đều tường minh.
+    // Blueprint §1: Hikari's defaults were one of the contributing causes of the old OOM —
+    // every pool limit here is explicit.
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
   });

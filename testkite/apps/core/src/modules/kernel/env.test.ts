@@ -10,7 +10,7 @@ const VALID = {
 } satisfies NodeJS.ProcessEnv;
 
 describe("parseEnv", () => {
-  it("chấp nhận env hợp lệ và ép PORT thành number", () => {
+  it("accepts a valid env and coerces PORT to a number", () => {
     const r = parseEnv(VALID);
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("unreachable");
@@ -19,7 +19,7 @@ describe("parseEnv", () => {
     expect(r.env.DATABASE_APP_ROLE).toBe("testkite_app");
   });
 
-  it("mặc định PORT=8080, LOG_LEVEL=info, DATABASE_APP_ROLE=testkite_app", () => {
+  it("defaults PORT=8080, LOG_LEVEL=info, DATABASE_APP_ROLE=testkite_app", () => {
     const r = parseEnv({ NODE_ENV: "test", DATABASE_URL: VALID.DATABASE_URL });
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("unreachable");
@@ -28,23 +28,23 @@ describe("parseEnv", () => {
     expect(r.env.DATABASE_APP_ROLE).toBe("testkite_app");
   });
 
-  it("GOM mọi lỗi, không first-fail", () => {
+  it("COLLECTS all errors, not first-fail", () => {
     const r = parseEnv({ NODE_ENV: "banana", PORT: "not-a-port" });
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error("unreachable");
-    // thiếu DATABASE_URL + NODE_ENV sai + PORT sai = 3 issue
+    // missing DATABASE_URL + bad NODE_ENV + bad PORT = 3 issues
     expect(r.issues.length).toBe(3);
     expect(r.issues.join("\n")).toContain("DATABASE_URL");
     expect(r.issues.join("\n")).toContain("NODE_ENV");
     expect(r.issues.join("\n")).toContain("PORT");
   });
 
-  it("từ chối DATABASE_URL không phải postgres", () => {
+  it("rejects a DATABASE_URL that isn't postgres", () => {
     const r = parseEnv({ ...VALID, DATABASE_URL: "mysql://x/y" });
     expect(r.ok).toBe(false);
   });
 
-  it("từ chối PORT ngoài 1..65535", () => {
+  it("rejects PORT outside 1..65535", () => {
     expect(parseEnv({ ...VALID, PORT: "0" }).ok).toBe(false);
     expect(parseEnv({ ...VALID, PORT: "70000" }).ok).toBe(false);
   });
