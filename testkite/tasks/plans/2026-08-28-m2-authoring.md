@@ -2283,7 +2283,7 @@ git commit -m "M2-AUT T6: diff 3 chieu thuan (chuan hoa after thay ordinal)"
 >
 > **Vì sao 403 cho four-eyes mà không 404:** luật "cross-tenant ⇒ 404, không bao giờ 403" (§3 L3) là để **không rò rỉ sự tồn tại của id tenant khác**. Four-eyes xảy ra trong CÙNG tenant, với một actor đã được uỷ quyền và đã nhìn thấy case — không có gì để rò rỉ, và 404 ở đây sẽ nói dối người dùng rằng case biến mất.
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/src/modules/authoring/concurrency.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/src/modules/authoring/concurrency.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -2350,12 +2350,12 @@ describe("VersionConflictError", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test src/modules/authoring/concurrency.test.ts`
 Expected: FAIL — không resolve `./concurrency.js`.
 
-- [ ] **Step 3: Implement `apps/core/src/modules/authoring/errors.ts`**
+- [x] **Step 3: Implement `apps/core/src/modules/authoring/errors.ts`**
 
 ```ts
 /**
@@ -2427,7 +2427,7 @@ export class FourEyesViolationError extends Error {
 }
 ```
 
-- [ ] **Step 4: Implement `apps/core/src/modules/authoring/concurrency.ts`**
+- [x] **Step 4: Implement `apps/core/src/modules/authoring/concurrency.ts`**
 
 ```ts
 /**
@@ -2465,12 +2465,12 @@ export function parseIfMatch(header: string | undefined): number {
 }
 ```
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test src/modules/authoring/concurrency.test.ts`
 Expected: PASS 9 test.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add testkite/apps/core/src/modules/authoring/concurrency.ts \
