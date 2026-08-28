@@ -13,6 +13,7 @@
 import { createDb, type KernelEnv } from "./modules/kernel/index.js";
 import { createAuthenticator, createAuthzCache } from "./modules/identity/index.js";
 import { identityRouteRegistrations } from "./modules/identity/routes.js";
+import { writeAuditEvent } from "./modules/governance/index.js";
 import { governanceRouteRegistrations } from "./modules/governance/routes.js";
 import { buildHttpApp, type TkApp } from "./http/app.js";
 
@@ -26,7 +27,9 @@ export async function buildApp(env: KernelEnv): Promise<TkApp> {
     db,
     authenticator,
     registrations: [
-      ...identityRouteRegistrations({ db, cache }),
+      // `audit`: identity KHÔNG được import governance (cùng tầng DAG) — tầng shell
+      // là nơi duy nhất biết cả hai, nên phép nối hai module xảy ra ở ĐÂY.
+      ...identityRouteRegistrations({ db, cache, audit: writeAuditEvent }),
       ...governanceRouteRegistrations({ db }),
       // authoring nối registration của nó vào đây (một dòng, sau identity).
     ],

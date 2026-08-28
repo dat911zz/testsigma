@@ -36,3 +36,18 @@ export {
   type AuthenticatorDeps,
 } from "./auth/authenticator.js";
 export { createAuthzCache, AUTHZ_CACHE_TTL_MS, type AuthzCache, type CachedGrant } from "./rbac/cache.js";
+export {
+  issueApiToken,
+  revokeApiToken,
+  type IssueTokenInput,
+  type MintedApiToken,
+} from "./auth/issue.js";
+export {
+  loginWithPassword,
+  SESSION_TTL_DAYS,
+  LOGIN_FAILED_MESSAGE,
+  type LoginDeps,
+  type LoginResult,
+} from "./auth/login.js";
+// Cổng audit: tầng shell tiêm `writeAuditEvent` của governance vào đây (audit-port.ts).
+export type { AuditEvent, AuditEventActorKind, AuditEventSeverity, AuditPort } from "./audit-port.js";

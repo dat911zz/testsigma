@@ -28,10 +28,26 @@ export type RouteInput<D extends RouteDescriptor> = {
   readonly body: InferOr<D["body"], undefined>;
 };
 
-export type RouteRegistration = {
-  readonly descriptor: RouteDescriptor;
-  readonly handler: (input: RouteInput<RouteDescriptor>) => Promise<unknown>;
-};
+/**
+ * Route `auth: "public"` (đăng nhập, OIDC callback) chạy KHI CHƯA có credential —
+ * ở đó `RequestContext` chưa tồn tại. Thay vì nới `ctx` thành `RequestContext | null`
+ * cho mọi handler (bắt ~50 handler sau này phải tự kiểm null, và chỉ cần quên MỘT
+ * lần là tenant đến từ chỗ khác credential), input của route public đơn giản KHÔNG
+ * có `ctx`. Kiểu ép đúng chuyện đó: handler public không thể đọc bối cảnh không có.
+ */
+export type PublicRouteInput<D extends RouteDescriptor> = Omit<RouteInput<D>, "ctx">;
+
+export type RouteRegistration =
+  | {
+      readonly auth: "required";
+      readonly descriptor: RouteDescriptor;
+      readonly handler: (input: RouteInput<RouteDescriptor>) => Promise<unknown>;
+    }
+  | {
+      readonly auth: "public";
+      readonly descriptor: RouteDescriptor;
+      readonly handler: (input: PublicRouteInput<RouteDescriptor>) => Promise<unknown>;
+    };
 
 /**
  * Ghép descriptor (hợp đồng, ở @testkite/contract) với handler (nghiệp vụ, ở module).
@@ -41,7 +57,23 @@ export function route<D extends RouteDescriptor>(
   descriptor: D,
   handler: (input: RouteInput<D>) => Promise<unknown>,
 ): RouteRegistration {
-  return { descriptor, handler } as RouteRegistration;
+  // Descriptor public + handler đòi ctx = 401 vĩnh viễn trên một route đáng lẽ mở.
+  // Bắt ngay lúc dựng app, không để phát hiện bằng một bug production.
+  if (descriptor.auth === "public") {
+    throw new Error(`route(): ${descriptor.operationId} là route public — dùng publicRoute()`);
+  }
+  return { auth: "required", descriptor, handler } as RouteRegistration;
+}
+
+/** Đối ngẫu của `route()` cho descriptor `auth: "public"`. */
+export function publicRoute<D extends RouteDescriptor>(
+  descriptor: D,
+  handler: (input: PublicRouteInput<D>) => Promise<unknown>,
+): RouteRegistration {
+  if (descriptor.auth !== "public") {
+    throw new Error(`publicRoute(): ${descriptor.operationId} đòi xác thực — dùng route()`);
+  }
+  return { auth: "public", descriptor, handler } as RouteRegistration;
 }
 
 declare module "fastify" {

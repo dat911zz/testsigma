@@ -75,18 +75,23 @@ export async function buildHttpApp(deps: HttpDeps): Promise<TkApp> {
         response: d.responses,
       },
       handler: async (req, reply) => {
-        const ctx = req.tk;
-        // Hook onRequest đã chặn mọi route auth:"required" không có credential; tới
-        // đây mà ctx vẫn null nghĩa là hook không chạy ⇒ đóng cửa, không đoán.
-        // CHÚ Ý cho Task 8/9: route auth:"public" (login, oidc callback) cũng rơi vào
-        // nhánh này — khi đăng ký route public đầu tiên phải nới guard theo `d.auth`.
-        if (ctx === null) throw new UnauthorizedError("thiếu bối cảnh xác thực");
-        const result = await reg.handler({
-          ctx,
+        const input = {
           params: req.params as never,
           query: req.query as never,
           body: req.body as never,
-        });
+        };
+        // Route public (login, oidc callback) chạy KHI CHƯA có credential — nó không
+        // nhận `ctx` bao giờ, nên không có đường nào để tenant rò vào từ chỗ khác.
+        // Route required: hook onRequest đã chặn mọi request không có credential; tới
+        // đây mà ctx vẫn null nghĩa là hook không chạy ⇒ đóng cửa, không đoán.
+        let result: unknown;
+        if (reg.auth === "public") {
+          result = await reg.handler(input);
+        } else {
+          const ctx = req.tk;
+          if (ctx === null) throw new UnauthorizedError("thiếu bối cảnh xác thực");
+          result = await reg.handler({ ctx, ...input });
+        }
         const status = codes.includes(201) ? 201 : codes.includes(204) ? 204 : 200;
         return reply.code(status).send(result);
       },

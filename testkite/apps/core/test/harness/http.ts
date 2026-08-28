@@ -11,6 +11,7 @@ import {
   mintTokenSecret,
 } from "../../src/modules/identity/index.js";
 import { identityRouteRegistrations } from "../../src/modules/identity/routes.js";
+import { writeAuditEvent } from "../../src/modules/governance/index.js";
 import { governanceRouteRegistrations } from "../../src/modules/governance/routes.js";
 
 export type TestApp = {
@@ -74,7 +75,9 @@ export async function makeTestApp(): Promise<TestApp> {
     db: db.db,
     authenticator,
     registrations: [
-      ...identityRouteRegistrations({ db: db.db, cache }),
+      // Cổng audit tiêm từ tầng shell — y hệt composition-root thật, để test đi qua
+      // đúng đường dây sản xuất chứ không phải một biến thể riêng của harness.
+      ...identityRouteRegistrations({ db: db.db, cache, audit: writeAuditEvent }),
       ...governanceRouteRegistrations({ db: db.db }),
     ],
   });
