@@ -1139,7 +1139,7 @@ git commit -m "M2-AUT T3: aut_steps 6 kind + aut_step_loops + aut_rest_steps"
 
 > **`case_version` là cột quyết định** của optimistic concurrency: khi client gửi `If-Match: "7"`, server tìm revision có `case_version = 7` để lấy **base** của diff 3 chiều (Task 6/7). Không có cột này thì 409 chỉ nói được "lệch" mà không nói được "lệch ở đâu".
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/test/authoring/revision-schema.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/test/authoring/revision-schema.test.ts`**
 
 ```ts
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
@@ -1295,12 +1295,12 @@ describe("APPEND-ONLY — cưỡng chế bằng quyền Postgres, không bằng 
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/revision-schema.test.ts`
 Expected: FAIL — `relation "aut_case_revisions" does not exist`.
 
-- [ ] **Step 3: Khai `bytea` + bảng revision trong `apps/core/src/modules/authoring/db/schema.ts`**
+- [x] **Step 3: Khai `bytea` + bảng revision trong `apps/core/src/modules/authoring/db/schema.ts`**
 
 Thêm `customType` vào import từ `drizzle-orm/pg-core`, rồi thêm ngay dưới `tenantPredicate`:
 
@@ -1394,7 +1394,7 @@ Thêm hai FK composite từ `aut_cases` vào cuối mảng cấu hình của `au
 
 > Vòng FK hai chiều `aut_cases ⇄ aut_case_revisions` là hợp lệ: drizzle-kit sinh composite FK bằng `ALTER TABLE ... ADD CONSTRAINT` sau khi cả hai bảng đã tồn tại, và thứ tự ghi lúc chạy là *case trước (revision id NULL) → revision → UPDATE case*.
 
-- [ ] **Step 4: Sinh migration + viết tay grants append-only**
+- [x] **Step 4: Sinh migration + viết tay grants append-only**
 
 Run: `cd testkite/apps/core && pnpm db:generate --name=aut_case_revisions`
 
@@ -1411,12 +1411,12 @@ GRANT SELECT, INSERT ON aut_case_revisions TO "testkite_app";
 
 Thêm entry `_journal.json` như Task 3 Step 4 (`"tag": "0011_aut_case_revisions_grants"`).
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/revision-schema.test.ts`
 Expected: PASS 9 test.
 
-- [ ] **Step 6: Verify + commit**
+- [x] **Step 6: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm --filter @testkite/core test`
 

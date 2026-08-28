@@ -10,6 +10,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   foreignKey,
   index,
   integer,
@@ -21,6 +22,7 @@ import {
   timestamp,
   unique,
   uuid,
+  type PgTableExtraConfigValue,
 } from "drizzle-orm/pg-core";
 // Xuôi DAG: authoring đọc dữ liệu identity qua FACADE, không chạm file nội bộ của module đó.
 import { projects } from "../../identity/index.js";
@@ -28,6 +30,23 @@ import { projects } from "../../identity/index.js";
 import { appRole } from "../../kernel/index.js";
 
 const tenantPredicate = sql`team_id = NULLIF(current_setting('app.team_id', true), '')::uuid`;
+
+/**
+ * drizzle-orm 0.45.2 KHÔNG có kiểu `bytea` (kiểm chứng 2026-08-28) — tự khai.
+ * fromDriver phải chịu được CẢ HAI driver: node-postgres trả Buffer, PGlite trả
+ * Uint8Array. `Buffer.from` xử lý cả hai và luôn trả Buffer.
+ */
+export const bytea = customType<{ data: Buffer; driverData: Uint8Array }>({
+  dataType() {
+    return "bytea";
+  },
+  toDriver(value: Buffer): Uint8Array {
+    return value;
+  },
+  fromDriver(value: Uint8Array): Buffer {
+    return Buffer.from(value);
+  },
+});
 
 /** Máy trạng thái review: draft -> in_review -> ready. Không có đường tắt. */
 export const autCaseStatus = pgEnum("aut_case_status", ["draft", "in_review", "ready"]);
@@ -62,7 +81,13 @@ export const autCases = pgTable(
     promotedAt: timestamp("promoted_at", { withTimezone: true }),
     promotedBy: uuid("promoted_by"),
   },
-  (t) => [
+  /**
+   * Kiểu trả về ghi TƯỜNG MINH: hai FK dưới đây trỏ tới `autCaseRevisions` — bảng
+   * khai SAU và tự nó lại trỏ ngược về `autCases`. Không có annotation này, suy
+   * luận kiểu của TS đi vòng và ném TS7022/TS7024 ("implicitly has type any ...
+   * referenced directly or indirectly in its own initializer").
+   */
+  (t): PgTableExtraConfigValue[] => [
     unique("aut_cases_team_id_unique").on(t.teamId, t.id),
     index("aut_cases_team_project_idx").on(t.teamId, t.projectId),
     foreignKey({
@@ -89,6 +114,21 @@ export const autCases = pgTable(
        OR (status = 'ready' AND submitted_at IS NOT NULL AND reviewed_at IS NOT NULL
            AND promoted_at IS NOT NULL AND ready_revision_id IS NOT NULL)`,
     ),
+    /**
+     * Vòng FK hai chiều aut_cases ⇄ aut_case_revisions là hợp lệ: composite FK
+     * sinh ra dạng ALTER TABLE ... ADD CONSTRAINT sau khi cả hai bảng đã tồn tại,
+     * và thứ tự ghi lúc chạy là case trước (revision id NULL) → revision → UPDATE case.
+     */
+    foreignKey({
+      name: "aut_cases_latest_revision_fk",
+      columns: [t.teamId, t.latestRevisionId],
+      foreignColumns: [autCaseRevisions.teamId, autCaseRevisions.id],
+    }),
+    foreignKey({
+      name: "aut_cases_ready_revision_fk",
+      columns: [t.teamId, t.readyRevisionId],
+      foreignColumns: [autCaseRevisions.teamId, autCaseRevisions.id],
+    }),
     pgPolicy("tenant_isolation", {
       as: "permissive",
       for: "all",
@@ -250,6 +290,56 @@ export const autRestSteps = pgTable(
       "aut_rest_steps_method_known",
       sql`method IN ('GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS')`,
     ),
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: tenantPredicate,
+      withCheck: tenantPredicate,
+    }),
+  ],
+).enableRLS();
+
+/**
+ * Ảnh chụp BẤT BIẾN của case. APPEND-ONLY: role app chỉ có GRANT SELECT + INSERT
+ * (migration *_aut_case_revisions_grants.sql) — Postgres từ chối UPDATE/DELETE,
+ * nên "lịch sử không sửa được" là một quyền, không phải một lời hứa.
+ */
+export const autCaseRevisions = pgTable(
+  "aut_case_revisions",
+  {
+    teamId: uuid("team_id").notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    /** Đếm từ 1 trong phạm vi từng case. */
+    revisionNo: integer("revision_no").notNull(),
+    /**
+     * Giá trị aut_cases.version TẠI thời điểm chụp. Đây là móc để dựng BASE của
+     * diff 3 chiều: `If-Match: "7"` ⇒ tìm revision có case_version = 7.
+     */
+    caseVersion: integer("case_version").notNull(),
+    codec: text("codec").notNull(),
+    payload: bytea("payload").notNull(),
+    /** Độ dài JSON canonical TRƯỚC nén. */
+    payloadSize: integer("payload_size").notNull(),
+    /** sha256 hex của JSON canonical (không phải của blob) — dedup + toàn vẹn. */
+    payloadSha256: text("payload_sha256").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdBy: uuid("created_by"),
+    note: text("note"),
+  },
+  (t) => [
+    unique("aut_case_revisions_team_id_unique").on(t.teamId, t.id),
+    unique("aut_case_revisions_no_unique").on(t.teamId, t.caseId, t.revisionNo),
+    index("aut_case_revisions_case_version_idx").on(t.teamId, t.caseId, t.caseVersion),
+    foreignKey({
+      name: "aut_case_revisions_case_fk",
+      columns: [t.teamId, t.caseId],
+      foreignColumns: [autCases.teamId, autCases.id],
+    }).onDelete("cascade"),
+    check("aut_case_revisions_codec_known", sql`codec IN ('zstd','raw')`),
+    check("aut_case_revisions_no_positive", sql`revision_no > 0 AND case_version > 0`),
+    check("aut_case_revisions_sha256_hex", sql`payload_sha256 ~ '^[0-9a-f]{64}$'`),
     pgPolicy("tenant_isolation", {
       as: "permissive",
       for: "all",
