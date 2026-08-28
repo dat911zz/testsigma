@@ -2500,7 +2500,7 @@ git commit -m "M2-AUT T7: ETag/If-Match (428) + taxonomy loi authoring"
 >
 > `newId` được **tiêm vào** chứ không gọi `crypto.randomUUID()` bên trong: hàm này phải thuần để test so kết quả từng byte.
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/src/modules/authoring/steps-flatten.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/src/modules/authoring/steps-flatten.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -2641,12 +2641,12 @@ describe("buildRevisionPayload", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test src/modules/authoring/steps-flatten.test.ts`
 Expected: FAIL — không resolve `./steps-flatten.js`.
 
-- [ ] **Step 3: Implement `apps/core/src/modules/authoring/steps-flatten.ts`**
+- [x] **Step 3: Implement `apps/core/src/modules/authoring/steps-flatten.ts`**
 
 ```ts
 /**
@@ -2848,12 +2848,12 @@ export function buildRevisionPayload(input: BuildPayloadInput): RevisionPayload 
 
 > Vòng `for (const row of [...input.steps].sort(...)) { void row; }` ở trên là **thừa** — xoá nó khi implement. Nó bị để lại làm bẫy: `input.steps` đã đúng thứ tự duyệt trước từ `flattenStepInputs`, sắp lại theo `ordinal` toàn cục sẽ làm hỏng `after` của step con. Nếu bạn đang đọc và định "dọn dẹp" bằng cách sắp xếp — đừng.
 
-- [ ] **Step 4: Chạy test, xác nhận XANH**
+- [x] **Step 4: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test src/modules/authoring/steps-flatten.test.ts`
 Expected: PASS 8 test.
 
-- [ ] **Step 5: Verify + commit**
+- [x] **Step 5: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm --filter @testkite/core test`
 
