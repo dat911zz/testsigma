@@ -4689,7 +4689,7 @@ git commit -m "M2-AUT T12: test tranh chap that - advisory lock serialize promot
 > - `pln_environments` thuộc **planning**, nằm **SAU** authoring trên DAG ⇒ authoring **KHÔNG BAO GIỜ** được import planning. Vì thế `env` là **tham số truyền vào**, do orchestration (phase 0) nạp và đưa xuống. Không có đường nào khác mà không phá DAG.
 > - `MAX_SNAPSHOT_CASES = 200` là trần cứng cho việc đóng bao (prereq + step group đệ quy). Compiler đã tự chẩn đoán cycle và depth ≤ 5; trần ở đây chỉ để một case dựng sai không kéo cả bảng vào RAM.
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/test/authoring/snapshot.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/test/authoring/snapshot.test.ts`**
 
 ```ts
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
@@ -4893,12 +4893,12 @@ describe("buildCompileSnapshot", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/snapshot.test.ts`
 Expected: FAIL — không resolve `snapshot.js`.
 
-- [ ] **Step 3: Implement `apps/core/src/modules/authoring/snapshot.ts`**
+- [x] **Step 3: Implement `apps/core/src/modules/authoring/snapshot.ts`**
 
 ```ts
 /**
@@ -5104,7 +5104,7 @@ export async function buildCompileSnapshot(
 }
 ```
 
-- [ ] **Step 4: Mở facade authoring `apps/core/src/modules/authoring/index.ts`**
+- [x] **Step 4: Mở facade authoring `apps/core/src/modules/authoring/index.ts`**
 
 Thêm vào cuối file (module khác chỉ được import từ đây):
 
@@ -5138,12 +5138,12 @@ export {
 } from "./errors.js";
 ```
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/snapshot.test.ts`
 Expected: PASS 7 test.
 
-- [ ] **Step 6: Verify + commit**
+- [x] **Step 6: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm lint && pnpm lint:cycles && pnpm test`
 Expected: xanh — đặc biệt `lint` (eslint-boundaries) phải xác nhận authoring **không** import planning.
