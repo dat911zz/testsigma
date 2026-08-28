@@ -13,6 +13,7 @@
  * authoritative check-then-act; this pre-read only decides 404-vs-428.
  */
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import { hasZodFastifySchemaValidationErrors, validatorCompiler } from "fastify-type-provider-zod";
 import { ZodError } from "zod";
 import { and, eq } from "drizzle-orm";
 import {
@@ -56,7 +57,24 @@ type MethodUpper = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export function authoringRoutes(db: TkDb): FastifyPluginAsync {
   return async (app: FastifyInstance): Promise<void> => {
+    // Enforce the descriptors' zod schemas inside this plugin's own encapsulated
+    // context, rather than relying on the shell having installed the compiler. That
+    // reliance was exactly the silent coupling behind the path-param bug: schemas were
+    // declared but never enforced. In the real app the shell also sets this at the root
+    // (idempotent here); in a bare test app this is what makes `schema.params` validate.
+    app.setValidatorCompiler(validatorCompiler);
+
     app.setErrorHandler((error, request, reply) => {
+      // A schema (params/query/body) mismatch caught by the zod validator compiler:
+      // treat it exactly like the shared shell handler does — 400, not the 500 fall-through.
+      if (hasZodFastifySchemaValidationErrors(error)) {
+        return reply.code(400).send({
+          code: "VALIDATION_FAILED",
+          message: "The submitted data is invalid.",
+          requestId: request.id,
+          issues: error.validation.map((i) => i.message ?? String(i)),
+        });
+      }
       if (error instanceof VersionConflictError) {
         return reply.code(error.httpStatus).send({
           code: error.code,
@@ -115,6 +133,15 @@ export function authoringRoutes(db: TkDb): FastifyPluginAsync {
         method: descriptor.method.toUpperCase() as MethodUpper,
         url: toFastifyPath(descriptor.path),
         config: { tk: descriptor },
+        // Wire the descriptor's zod schemas the same way http/app.ts does for the main
+        // registration loop. Without this, `caseId`/`projectId` path params declared as
+        // `z.string().uuid()` were used for OpenAPI only, never validated at runtime — a
+        // malformed id reached Postgres and surfaced as a raw 500 instead of a 400.
+        schema: {
+          ...(descriptor.params !== undefined ? { params: descriptor.params } : {}),
+          ...(descriptor.query !== undefined ? { querystring: descriptor.query } : {}),
+          ...(descriptor.body !== undefined ? { body: descriptor.body } : {}),
+        },
         handler,
       });
     };

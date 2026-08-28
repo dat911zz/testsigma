@@ -233,3 +233,37 @@ describe("tenant isolation + scope", () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe("malformed path-param uuid -> 400, not 500", () => {
+  // The descriptors declare `z.string().uuid()` for caseId/projectId; the route helper
+  // must enforce it via `schema.params`, so a non-uuid id is rejected at the edge (400)
+  // instead of reaching Postgres, which throws `invalid input syntax for type uuid` and
+  // surfaces as a raw 500 that leaks the SQL in the log.
+  it("GET /v1/cases/{caseId} with a non-uuid id -> 400", async () => {
+    const res = await app.inject({ method: "GET", url: "/v1/cases/not-a-uuid" });
+    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).not.toBe(500);
+    expect(res.json<{ code: string }>().code).toBe("VALIDATION_FAILED");
+  });
+
+  it("PUT /v1/cases/{caseId}/steps with a non-uuid id -> 400 (before the If-Match/DB path)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/cases/12345/steps",
+      headers: { "if-match": '"1"' },
+      payload: { steps: [] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).not.toBe(500);
+  });
+
+  it("POST /v1/projects/{projectId}/cases with a non-uuid projectId -> 400", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/projects/not-a-uuid/cases",
+      payload: { name: "C", isStepGroup: false },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).not.toBe(500);
+  });
+});
