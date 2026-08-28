@@ -2888,7 +2888,7 @@ git commit -m "M2-AUT T8: phang hoa cay step -> row + RevisionPayload"
 > 2. **Sửa được khi `draft` hoặc `ready`; KHÔNG sửa được khi `in_review`.** Sửa một case `ready` đưa nó về `draft` nhưng **giữ nguyên `ready_revision_id`** — đúng ngữ nghĩa ghim của blueprint §4 phase 1: lịch đêm vẫn compile bản `ready` cũ trong lúc tác giả sửa bản nháp. Muốn sửa case đang review thì rút review trước (Task 10).
 > 3. **Id step lạ không bao giờ được tái dùng** — `existingIds` lấy từ chính case đó (Task 8).
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/test/authoring/case-service.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/test/authoring/case-service.test.ts`**
 
 ```ts
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
@@ -3075,12 +3075,12 @@ describe("replaceSteps", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/case-service.test.ts`
 Expected: FAIL — không resolve `case-service.js`.
 
-- [ ] **Step 3: Implement `apps/core/src/modules/authoring/db/case-repo.ts`**
+- [x] **Step 3: Implement `apps/core/src/modules/authoring/db/case-repo.ts`**
 
 ```ts
 import { and, asc, eq } from "drizzle-orm";
@@ -3230,7 +3230,7 @@ export class CaseRepo extends TenantRepo {
 }
 ```
 
-- [ ] **Step 4: Implement `apps/core/src/modules/authoring/db/revision-repo.ts`**
+- [x] **Step 4: Implement `apps/core/src/modules/authoring/db/revision-repo.ts`**
 
 ```ts
 import { and, eq } from "drizzle-orm";
@@ -3311,7 +3311,7 @@ export class RevisionRepo extends TenantRepo {
 }
 ```
 
-- [ ] **Step 5: Implement `apps/core/src/modules/authoring/case-service.ts`**
+- [x] **Step 5: Implement `apps/core/src/modules/authoring/case-service.ts`**
 
 ```ts
 /**
@@ -3482,12 +3482,12 @@ export async function replaceSteps(
 
 > `row.submittedAt!` trong `toCaseSummary` là chỗ `!` **có lý**: nhánh chỉ chạy khi `iso(...)` đã khác `undefined`, tức `row.submittedAt !== null`. Nếu muốn tránh hẳn `!`, viết `...(row.submittedAt === null ? {} : { submittedAt: row.submittedAt.toISOString() })` cho cả ba mốc — **ưu tiên cách này**, và bỏ hàm `iso` đi.
 
-- [ ] **Step 6: Chạy test, xác nhận XANH**
+- [x] **Step 6: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/case-service.test.ts`
 Expected: PASS 8 test.
 
-- [ ] **Step 7: Verify + commit**
+- [x] **Step 7: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm lint && pnpm --filter @testkite/core test`
 Expected: xanh cả ba. (`pnpm lint` quan trọng: eslint-boundaries kiểm tra authoring chỉ import kernel/identity qua facade.)
