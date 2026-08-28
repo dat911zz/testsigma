@@ -30,9 +30,9 @@ Plan identity (agent khác, cùng nhánh) **sở hữu bootstrap Fastify + auth 
 
 | Nhóm task | Phụ thuộc identity | Thực thi được ngay? |
 |---|---|---|
-| Task 1–11 (codec, schema, migration, service, diff, review, promote, snapshot) | Không | **CÓ** — chạy trước, không chờ ai |
-| Task 12 (route HTTP) | **CÓ** — cần Fastify skeleton + middleware gắn `request.auth` | **KHÔNG** — chờ identity xong |
-| Task 13 (tick backlog) | Sau Task 12 | Không |
+| Task 1–13 (codec, schema, migration, DTO, diff, service, review, promote, race, snapshot) | Không | **CÓ** — chạy trước, không chờ ai |
+| Task 14 (route HTTP) | **CÓ** — cần Fastify skeleton + middleware auth của identity | **KHÔNG** — chờ identity xong |
+| Task 15 (tick backlog) | Sau Task 14 | Không |
 
 **Interface giả định của identity** (Task 12 code theo đúng hình dạng này; nếu identity đặt tên khác thì CHỈ sửa hàm adapter `getAuth()` trong `routes/context.ts`, không sửa service):
 
@@ -48,6 +48,17 @@ export interface RequestAuth {
 ```
 
 **Đăng ký route theo pattern plugin**: mỗi module export một `FastifyPluginAsync` từ facade của mình; composition-root gọi `await app.register(authoringRoutes, { prefix: "/v1" })` theo thứ tự DAG.
+
+### Đối chiếu 28-08 — plan identity ĐÃ nộp (996ecf0 + 0d844d7), Task 14 chịu 4 nghĩa vụ sau
+
+Plan identity chấp nhận kiểu đăng ký plugin, đổi lại (xem mục "Đối chiếu" đầu plan identity):
+
+1. **Ruột `getAuth()` đọc `req.tk`** (identity Task 6 decorate `request.tk`), KHÔNG phải `request.auth` như giả định gốc — đúng kịch bản "chỉ sửa một hàm adapter" đã lường.
+2. **`InsufficientScopeError` phải kế thừa `ForbiddenError` của `@testkite/contract`** — nếu không, error handler chung của identity map nó thành 500.
+3. **Mỗi route `/v1` của authoring phải có descriptor trong `ROUTES`** (`packages/contract/src/routes/index.ts`): khai descriptor trong file riêng rồi nối `...authoringRoutes` vào `ROUTES`, và đặt `config: { tk: descriptor }` khi đăng ký route — OpenAPI và bộ L3 đọc từ đó; identity Task 11 có gate biến việc quên descriptor thành CI đỏ.
+4. **Thêm fixture id + body mẫu vào `test/isolation/fixtures.ts`** cho bộ L3 cross-tenant (authoring không tự viết bộ test cách ly riêng).
+
+Đăng ký plugin qua tham số `plugins: readonly FastifyPluginAsync[]` của `buildHttpApp` (identity Task 6) — được register SAU hook auth.
 
 **Xung đột file phải lường trước** (hai agent, một nhánh):
 
