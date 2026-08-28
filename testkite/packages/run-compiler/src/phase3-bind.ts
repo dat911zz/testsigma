@@ -1,17 +1,19 @@
 /**
- * Phase 3 — bind verb (blueprint §4): ExpandedStep (IR cấu trúc) → BoundStep (IR đã có op).
+ * Phase 3 — bind verb (blueprint §4): ExpandedStep (structural IR) → BoundStep (IR with an op).
  *
- * Đây là chỗ thay thế `Class.forName(...)` của hệ cũ: verb không còn được resolve lúc
- * runtime bằng phản chiếu tên class (lỗi lộ ra khi browser đã chạy nửa suite), mà tra
- * registry của @testkite/verb-kit ngay lúc compile — sai op key hoặc thiếu param là
- * `compile_error`, chưa tốn một giây browser nào.
+ * This is where the old system's `Class.forName(...)` gets replaced: a verb is no longer
+ * resolved at runtime by reflecting on a class name (errors surfaced after the browser had
+ * already run through half the suite) — instead it looks up the @testkite/verb-kit registry
+ * right at compile time — a wrong op key or a missing param is a `compile_error`, before a
+ * single second of browser time is spent.
  *
- * Hai luật:
- *  - GOM MỌI LỖI: một step hỏng không dừng phase; step hỏng bị LOẠI khỏi IR để type
- *    `BoundActionStep` giữ được bất biến "opKey đã tồn tại + args đã hợp lệ" (plan chỉ
- *    được sinh khi diagnostics rỗng, nên loại step không bao giờ làm mất dữ liệu plan).
- *  - Node cấu trúc (if/for/while/rest) KHÔNG bind verb — chỉ duyệt đệ quy children,
- *    giữ nguyên dữ liệu tĩnh phase 2 đã resolve (loopRows, maxIterations, điều kiện).
+ * Two rules:
+ *  - COLLECT EVERY ERROR: a broken step does not stop the phase; a broken step is DROPPED
+ *    from the IR so the `BoundActionStep` type keeps the invariant "opKey exists + args are
+ *    valid" (a plan is only produced when diagnostics are empty, so dropping a step never
+ *    loses plan data).
+ *  - Structural nodes (if/for/while/rest) do NOT bind a verb — they only recurse into
+ *    children, keeping the static data phase 2 already resolved (loopRows, maxIterations, condition).
  */
 import { getVerb, validateArgs } from "@testkite/verb-kit";
 import type { CompileDiagnostic } from "./index.js";
@@ -21,16 +23,16 @@ import type { DataRow } from "./snapshot.js";
 interface BoundStepCommon {
   readonly ordinal: number;
   readonly renderedSentence: string;
-  /** Provenance step-group từ phase 2 — giữ nguyên để QA truy ngược nguồn step. */
+  /** Step-group provenance from phase 2 — kept as-is so QA can trace the step back to its source. */
   readonly groupPath: readonly string[];
   readonly args: Readonly<Record<string, string>>;
 }
 
-/** Step đã bind: opKey CHẮC CHẮN có trong registry và args CHẮC CHẮN hợp lệ với verb đó. */
+/** A bound step: opKey is GUARANTEED to exist in the registry and args are GUARANTEED valid for that verb. */
 export interface BoundActionStep extends BoundStepCommon {
   readonly kind: "action";
   readonly opKey: string;
-  /** Tham chiếu element — phase 4 mới đổi thành LocatorSet. */
+  /** Element reference — phase 4 is where this turns into a LocatorSet. */
   readonly elementId?: string;
 }
 
@@ -58,13 +60,13 @@ export interface Binding {
   readonly diagnostics: readonly CompileDiagnostic[];
 }
 
-/** Bind toàn bộ case của MỘT chain (thứ tự đầu vào = thứ tự thực thi, giữ nguyên). */
+/** Binds every case of ONE chain (input order = execution order, preserved). */
 export function bindCases(cases: readonly ExpandedCase[]): Binding {
   const out: BoundCase[] = [];
   const diagnostics: CompileDiagnostic[] = [];
   /**
-   * Fan-out data-driven cho N iteration DÙNG CHUNG một cây step: bind một lần rồi tái
-   * dùng — nếu không, verb lạ trong case 500 hàng sẽ đẻ ra 500 diagnostic giống hệt.
+   * A data-driven fan-out with N iterations SHARES one step tree: bind it once and reuse —
+   * otherwise an unknown verb in a 500-row case would spawn 500 identical diagnostics.
    */
   const boundByCase = new Map<string, readonly BoundStep[]>();
 
@@ -118,7 +120,7 @@ function bindSteps(
         code: "unknown_verb",
         caseId,
         stepOrdinal: step.ordinal,
-        message: `Verb "${opKey ?? "(không khai báo)"}" không có trong registry @testkite/verb-kit — chưa port hoặc sai op key`,
+        message: `Verb "${opKey ?? "(not declared)"}" is not in the @testkite/verb-kit registry — not yet ported or a wrong op key`,
       });
       continue;
     }
@@ -130,7 +132,7 @@ function bindSteps(
         code: "verb_args_invalid",
         caseId,
         stepOrdinal: step.ordinal,
-        message: `Args của verb "${opKey}" không hợp lệ: ${check.issues.join("; ")}`,
+        message: `Args for verb "${opKey}" are invalid: ${check.issues.join("; ")}`,
       });
       continue;
     }
@@ -150,9 +152,9 @@ function bindSteps(
 }
 
 /**
- * Element của step nằm ở cột riêng (`elementId`), không ở args — nhưng verb khai báo nó
- * như một param. Nối lại chỉ để KIỂM: args gốc của tác giả giữ nguyên trong IR, phase 4
- * mới là nơi biến elementId thành LocatorSet.
+ * A step's element lives in its own column (`elementId`), not in args — but the verb
+ * declares it as a param. Merged back in only for CHECKING: the author's original args
+ * stay unchanged in the IR; phase 4 is where elementId actually turns into a LocatorSet.
  */
 function argsForCheck(step: ExpandedStep): Record<string, string> {
   const { elementId } = step;

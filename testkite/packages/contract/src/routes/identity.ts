@@ -1,6 +1,6 @@
 /**
- * Route của module identity. Handler nằm ở apps/core/src/modules/identity/routes.ts.
- * Bảng /v1 đầy đủ (~58 endpoint) sẽ lớn dần qua M3–M6; đây là lát đầu tiên.
+ * Routes for the identity module. Handlers live in apps/core/src/modules/identity/routes.ts.
+ * The full /v1 surface (~58 endpoints) grows across M3–M6; this is the first slice.
  */
 import { z } from "zod";
 import { defineRoute, type RouteDescriptor } from "./types.js";
@@ -35,7 +35,7 @@ export const apiTokenSchema = z.object({
   lastUsedAt: z.string().datetime().nullable(),
 });
 
-/** Secret CHỈ trả về đúng một lần, lúc tạo. Không endpoint nào đọc lại được. */
+/** Secret is returned EXACTLY once, at creation. No endpoint can read it back. */
 export const apiTokenCreatedSchema = apiTokenSchema.extend({ secret: z.string() });
 
 export const meSchema = z.object({
@@ -114,7 +114,7 @@ export const identityRoutes: readonly RouteDescriptor[] = [
     body: z.object({
       name: z.string().min(1).max(120),
       scopes: z.array(z.string()).min(1),
-      // Hạn dùng BẮT BUỘC (blueprint §3) — không có nhánh nào cho token vô hạn.
+      // Expiry is MANDATORY (blueprint §3) — there's no branch for an unlimited token.
       expiresInDays: z.number().int().min(1).max(365),
     }),
     responses: { 201: apiTokenCreatedSchema, 403: errorResponseSchema },
@@ -162,8 +162,9 @@ export const identityRoutes: readonly RouteDescriptor[] = [
     path: "/v1/teams",
     summary: "Onboarding một team trong MỘT transaction idempotent",
     auth: "required",
-    // DỰNG team mới là quyền cấp org, KHÔNG phải `team:manage` (thứ mọi team_admin đều
-    // có): gộp hai thứ ấy là để bất kỳ team_admin nào cũng tự dựng team tuỳ ý.
+    // CREATING a new team is an org-level permission, NOT `team:manage` (which every
+    // team_admin already has): conflating the two would let any team_admin spin up
+    // arbitrary new teams.
     permission: "team:create",
     body: z.object({
       orgId: uuid,
@@ -171,11 +172,11 @@ export const identityRoutes: readonly RouteDescriptor[] = [
       slug: z.string().regex(/^[a-z0-9-]{2,40}$/),
       adminEmail: z.string().email(),
       /**
-       * `.url()` một mình nhận CẢ ftp:/mailto:/file: — trong khi CHECK của
-       * `pln_environments` chỉ cho http(s). Không chặn scheme ở đây thì một input sai
-       * của client đi tới tận DB rồi bật lên thành 500 INTERNAL.
+       * `.url()` alone accepts ftp:/mailto:/file: too — while `pln_environments`'s
+       * CHECK constraint only allows http(s). Not blocking the scheme here means a bad
+       * client input reaches all the way to the DB and surfaces as a 500 INTERNAL.
        */
-      baseUrl: z.string().url().regex(/^https?:\/\//, "baseUrl phải dùng http hoặc https"),
+      baseUrl: z.string().url().regex(/^https?:\/\//, "baseUrl must use http or https"),
       idempotencyKey: z.string().min(8).max(120),
     }),
     responses: {
@@ -188,7 +189,7 @@ export const identityRoutes: readonly RouteDescriptor[] = [
       }),
       400: errorResponseSchema,
       403: errorResponseSchema,
-      /** slug đã có trong org, hoặc adminEmail trỏ vào một tài khoản đã tồn tại. */
+      /** slug already exists in the org, or adminEmail points to an existing account. */
       409: errorResponseSchema,
     },
   }),

@@ -3,14 +3,14 @@
     {
       "caseId": "legacy-verbs",
       "code": "unknown_verb",
-      "message": "Verb \"web.selectDropdown\" không có trong registry @testkite/verb-kit — chưa port hoặc sai op key",
+      "message": "Verb \"web.selectDropdown\" is not in the @testkite/verb-kit registry — not yet ported or a wrong op key",
       "severity": "error",
       "stepOrdinal": 1
     },
     {
       "caseId": "legacy-verbs",
       "code": "unknown_verb",
-      "message": "Verb \"mobile.swipeUp\" không có trong registry @testkite/verb-kit — chưa port hoặc sai op key",
+      "message": "Verb \"mobile.swipeUp\" is not in the @testkite/verb-kit registry — not yet ported or a wrong op key",
       "severity": "error",
       "stepOrdinal": 3
     }

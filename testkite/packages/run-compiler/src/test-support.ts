@@ -1,8 +1,8 @@
 /**
- * Builder CHỈ DÙNG CHO TEST — không production module nào được import file này.
- * Mục đích: dựng snapshot authoring bằng vài dòng, giữ test đọc như đặc tả
- * (và tôn trọng `exactOptionalPropertyTypes`: field optional được spread có điều kiện,
- * không bao giờ gán `undefined` tường minh).
+ * Builders for TEST USE ONLY — no production module may import this file.
+ * Purpose: build an authoring snapshot in a few lines, keeping tests readable like a
+ * spec (and respecting `exactOptionalPropertyTypes`: an optional field is spread
+ * conditionally, never explicitly assigned `undefined`).
  */
 import type {
   AuthoredCase,

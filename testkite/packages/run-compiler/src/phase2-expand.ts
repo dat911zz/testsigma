@@ -1,37 +1,39 @@
 /**
- * Phase 2 — nở cấu trúc (blueprint §4): AuthoredStep (cây tác giả) → ExpandedStep (IR cấu trúc).
+ * Phase 2 — structural expansion (blueprint §4): AuthoredStep (author's tree) → ExpandedStep (structural IR).
  *
- * Ba phép nở, đúng ngữ nghĩa đã xác minh của hệ cũ:
- *  - step_group: INLINE tại chỗ (group = case có isStepGroup) — step con giữ nguyên
- *    renderedSentence gốc, mang thêm provenance `groupPath` để QA truy ngược nguồn step.
- *    Trần lồng 5 tầng; group tự gọi mình rơi vào chính trần đó (cycle bắt qua depth).
- *  - if/for/while: GIỮ là node có children (worker mới là nơi quyết định nhánh/lặp thật) —
- *    compiler chỉ resolve dữ liệu tĩnh: `for` gắn sẵn các DataRow, `while` bắt buộc có trần lặp.
- *  - data-driven ở cấp case: fan-out mỗi DataRow thành MỘT iteration (label + expected_to_fail).
+ * Three expansions, matching the old system's verified semantics:
+ *  - step_group: INLINED in place (a group = a case with isStepGroup) — the child step keeps
+ *    its original renderedSentence, plus a `groupPath` provenance so QA can trace the step
+ *    back to its source. 5-level nesting cap; a group calling itself falls into that same
+ *    cap (the cycle is caught via depth).
+ *  - if/for/while: KEPT as a node with children (the worker is the one that decides the real
+ *    branch/loop) — the compiler only resolves static data: `for` gets its DataRows attached,
+ *    `while` must declare an iteration cap.
+ *  - data-driven at the case level: fans out each DataRow into ONE iteration (label + expected_to_fail).
  *
- * GOM lỗi: một step hỏng không dừng phase — mọi diagnostic của mọi case được thu đủ.
+ * COLLECTS errors: a broken step does not stop the phase — every diagnostic from every case is gathered.
  */
 import type { CompileDiagnostic } from "./index.js";
 import type { AuthoredStep, CompileSnapshot, DataRow } from "./snapshot.js";
 
-/** Trần lồng step group — kế thừa luật "allowed limit of 5" của hệ cũ. */
+/** Step group nesting cap — inherits the old system's "allowed limit of 5" rule. */
 export const MAX_STEP_GROUP_DEPTH = 5;
 
-/** step_group biến mất sau phase 2 (đã inline); các kind còn lại đi tiếp xuống plan. */
+/** step_group disappears after phase 2 (already inlined); the remaining kinds carry on to the plan. */
 export type ExpandedStepKind = "action" | "if" | "for" | "while" | "rest";
 
 export interface ExpandedStep {
-  /** Ordinal trong case/group CHỨA step — dùng để chỉ mặt lỗi cho tác giả. */
+  /** Ordinal within the case/group CONTAINING the step — used to point authors at the error. */
   readonly ordinal: number;
   readonly kind: ExpandedStepKind;
   readonly renderedSentence: string;
-  /** Chuỗi id step-group đã inline để tới step này; rỗng = step viết thẳng trong case. */
+  /** The chain of step-group ids inlined to reach this step; empty = the step is written directly in the case. */
   readonly groupPath: readonly string[];
   readonly args: Readonly<Record<string, string>>;
   readonly verbOpKey?: string;
   readonly elementId?: string;
   readonly conditionExpected?: readonly string[];
-  /** kind=for: dữ liệu lặp đã resolve từ profile (bất biến trong plan). */
+  /** kind=for: loop data already resolved from the profile (immutable within the plan). */
   readonly loopRows?: readonly DataRow[];
   readonly maxIterations?: number;
   readonly children?: readonly ExpandedStep[];
@@ -42,9 +44,9 @@ export interface ExpandedCase {
   readonly revisionId: string;
   readonly expectedToFail: boolean;
   readonly steps: readonly ExpandedStep[];
-  /** data-driven: nhãn hàng dữ liệu của iteration này. */
+  /** data-driven: this iteration's data-row label. */
   readonly iterationLabel?: string;
-  /** data-driven: giá trị hàng — phase 5 merge vào args. */
+  /** data-driven: the row's values — phase 5 merges these into args. */
   readonly dataRow?: Readonly<Record<string, string>>;
 }
 
@@ -55,19 +57,19 @@ export interface Expansion {
 
 interface ExpandCtx {
   readonly snapshot: CompileSnapshot;
-  /** Case gốc đang nở — diagnostic luôn quy về case QA thấy, không phải group nội bộ. */
+  /** The root case being expanded — diagnostics always attribute to the case QA sees, not an internal group. */
   readonly caseId: string;
   readonly diagnostics: CompileDiagnostic[];
 }
 
-/** Nở một danh sách case (thường là các case của MỘT chain, theo thứ tự thực thi). */
+/** Expands a list of cases (usually the cases of ONE chain, in execution order). */
 export function expandCases(snapshot: CompileSnapshot, caseIds: readonly string[]): Expansion {
   const cases: ExpandedCase[] = [];
   const diagnostics: CompileDiagnostic[] = [];
 
   for (const caseId of caseIds) {
     const authored = snapshot.cases[caseId];
-    if (authored === undefined) continue; // phase 1 đã báo prereq_missing
+    if (authored === undefined) continue; // phase 1 already reported prereq_missing
 
     const ctx: ExpandCtx = { snapshot, caseId, diagnostics };
     const steps = expandSteps(authored.steps, ctx, []);
@@ -84,7 +86,7 @@ export function expandCases(snapshot: CompileSnapshot, caseIds: readonly string[
         severity: "error",
         code: "data_profile_empty",
         caseId,
-        message: `Case "${caseId}" chạy theo data profile "${profileId}" nhưng profile rỗng hoặc không có trong snapshot`,
+        message: `Case "${caseId}" runs off data profile "${profileId}" but the profile is empty or missing from the snapshot`,
       });
       continue;
     }
@@ -152,7 +154,7 @@ function inlineGroup(
       code: "step_group_missing",
       caseId: ctx.caseId,
       stepOrdinal: step.ordinal,
-      message: `Step group "${targetId ?? "(không khai báo)"}" không tồn tại trong snapshot`,
+      message: `Step group "${targetId ?? "(not declared)"}" does not exist in the snapshot`,
     });
     return [];
   }
@@ -163,7 +165,7 @@ function inlineGroup(
       code: "step_group_depth_exceeded",
       caseId: ctx.caseId,
       stepOrdinal: step.ordinal,
-      message: `Nở step group "${targetId}" vượt trần ${MAX_STEP_GROUP_DEPTH} tầng (đường nở: ${[...groupPath, targetId].join(" → ")})`,
+      message: `Expanding step group "${targetId}" exceeds the ${MAX_STEP_GROUP_DEPTH}-level cap (expansion path: ${[...groupPath, targetId].join(" → ")})`,
     });
     return [];
   }
@@ -180,7 +182,7 @@ function loopRowsOf(step: AuthoredStep, ctx: ExpandCtx): { loopRows?: readonly D
       code: "data_profile_empty",
       caseId: ctx.caseId,
       stepOrdinal: step.ordinal,
-      message: `Vòng lặp "for" cần data profile có ít nhất 1 hàng (profile: ${profileId ?? "không khai báo"})`,
+      message: `A "for" loop needs a data profile with at least 1 row (profile: ${profileId ?? "not declared"})`,
     });
     return {};
   }
@@ -194,7 +196,7 @@ function maxIterationsOf(step: AuthoredStep, ctx: ExpandCtx): { maxIterations?: 
       code: "while_without_max_iterations",
       caseId: ctx.caseId,
       stepOrdinal: step.ordinal,
-      message: `Vòng lặp "while" phải khai báo maxIterations — không có trần lặp là vé vào treo vô hạn`,
+      message: `A "while" loop must declare maxIterations — no iteration cap is a ticket to an infinite hang`,
     });
     return {};
   }

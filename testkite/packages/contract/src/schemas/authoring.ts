@@ -1,10 +1,11 @@
 /**
- * DTO authoring-facing cho VÒNG ĐỜI case (khác `./case.js` — cái đó là DTO cho
- * COMPILER đọc). Hai chiều, hai hình dạng:
- *   - AuthoredStep  (./step.js) : compiler đọc — có `ordinal`, không có `id`.
- *   - StepInput     (file này)  : tác giả gửi — có `id` optional, KHÔNG có `ordinal`.
- * `id` optional là thứ giữ danh tính step qua các lần sửa; thiếu nó thì diff 3 chiều
- * báo "thay toàn bộ case" mỗi lần lưu (đã đo trong spike 2026-08-28).
+ * Authoring-facing DTO for the case LIFECYCLE (different from `./case.js` — that
+ * one is the DTO the COMPILER reads). Two directions, two shapes:
+ *   - AuthoredStep  (./step.js) : compiler reads it — has `ordinal`, no `id`.
+ *   - StepInput     (this file) : the author submits it — has an optional `id`, NO `ordinal`.
+ * The optional `id` is what keeps a step's identity across edits; without it the
+ * three-way diff reports "whole case replaced" on every save (measured in the
+ * 2026-08-28 spike).
  */
 import { z } from "zod";
 
@@ -54,7 +55,7 @@ export interface WhileStepInputDto {
   id?: string | undefined;
   kind: "while";
   renderedSentence: string;
-  /** Không bắt buộc ở biên API — COMPILER phán (diagnostic while_without_max_iterations). */
+  /** Not required at the API boundary — the COMPILER decides (diagnostic while_without_max_iterations). */
   maxIterations?: number | undefined;
   children: StepInputDto[];
 }
@@ -122,7 +123,7 @@ export const stepInputSchema: z.ZodType<StepInputDto> = z.lazy(() =>
   ]),
 );
 
-/** Thân phản hồi của GET/POST case. `version` là nguồn của ETag. */
+/** Response body for GET/POST case. `version` is the source of the ETag. */
 export const caseSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
@@ -162,10 +163,11 @@ export interface CaseSummaryDto {
 }
 
 /**
- * Một thay đổi = một ĐƯỜNG DẪN. `/name`, `/steps/<stepId>` (thêm/xoá cả step),
- * `/steps/<stepId>/<field>` (sửa một trường). `after` là một field hợp lệ: nó mang
- * vị trí (id step liền trước) thay cho ordinal số — nhờ vậy chèn 1 step chỉ sinh
- * 2 mục thay vì 4 (đo thật trong spike 2026-08-28).
+ * One change = one PATH. `/name`, `/steps/<stepId>` (add/remove a whole step),
+ * `/steps/<stepId>/<field>` (edit one field). `after` is a valid field: it carries
+ * position (the preceding step's id) instead of a numeric ordinal — which is why
+ * inserting one step produces only 2 entries instead of 4 (measured for real in
+ * the 2026-08-28 spike).
  */
 export const caseChangeSchema = z.object({
   path: z.string().min(1),
@@ -181,17 +183,17 @@ export interface CaseChangeDto {
   value?: unknown;
 }
 
-/** Thân phản hồi 409: ba mốc + hai nhánh thay đổi + giao của chúng. */
+/** 409 response body: three markers + two change branches + their intersection. */
 export const threeWayDiffSchema = z.object({
   baseVersion: z.number().int().positive(),
   baseRevisionId: z.string().min(1),
   currentVersion: z.number().int().positive(),
   currentRevisionId: z.string().min(1),
-  /** base → bản client gửi lên. */
+  /** base → the version the client submitted. */
   mine: z.array(caseChangeSchema),
-  /** base → bản đang nằm trên server. */
+  /** base → the version currently on the server. */
   theirs: z.array(caseChangeSchema),
-  /** Đường dẫn xuất hiện ở CẢ HAI nhánh — chỗ người dùng phải tự quyết. */
+  /** A path that appears in BOTH branches — where the user must decide themselves. */
   conflicts: z.array(z.string().min(1)),
 });
 

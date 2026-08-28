@@ -3,7 +3,7 @@
     {
       "caseId": "loop-over-ghost-profile",
       "code": "data_profile_empty",
-      "message": "Vòng lặp \"for\" cần data profile có ít nhất 1 hàng (profile: p-deleted-profile)",
+      "message": "A \"for\" loop needs a data profile with at least 1 row (profile: p-deleted-profile)",
       "severity": "error",
       "stepOrdinal": 1
     }

@@ -3,7 +3,7 @@
     {
       "caseId": "click-pending-element",
       "code": "element_pending_locator",
-      "message": "Element \"el-not-captured\" chưa có locator dùng được (status=pending_locator, 0 locator) — chụp locator trước khi chạy",
+      "message": "Element \"el-not-captured\" has no usable locator yet (status=pending_locator, 0 locators) — capture a locator before running",
       "severity": "error",
       "stepOrdinal": 1
     }

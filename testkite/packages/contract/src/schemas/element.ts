@@ -1,15 +1,16 @@
 /**
- * DTO authoring-facing cho element. Soi gương `ElementSnapshot`
- * (packages/run-compiler/src/snapshot.ts) — compiler nhận đúng hình dạng này.
+ * Authoring-facing DTO for an element. Mirrors `ElementSnapshot`
+ * (packages/run-compiler/src/snapshot.ts) — the compiler expects exactly this shape.
  *
- * `exactOptionalPropertyTypes: true`: mọi prop optional phải khai `?: T | undefined`,
- * nếu không phép gán từ `z.infer` sẽ hỏng lúc typecheck.
+ * `exactOptionalPropertyTypes: true`: every optional prop must declare `?: T | undefined`,
+ * otherwise an assignment from `z.infer` breaks at typecheck.
  */
 import { z } from "zod";
 
 /**
- * `kind` là chuỗi tự do có chủ đích: catalog locator còn mở tới M4
- * (fixture hiện dùng css | xpath | text | test-id). Đóng enum sớm = phá fixture.
+ * `kind` is deliberately a free-form string: the locator catalog stays open until M4
+ * (fixtures currently use css | xpath | text | test-id). Closing the enum early would
+ * break fixtures.
  */
 export const locatorSchema = z.object({
   kind: z.string().min(1),
@@ -25,9 +26,10 @@ export const elementSchema = z
     name: z.string().min(1),
     status: elementStatusSchema,
     /**
-     * Rỗng CHỈ hợp lệ khi `status = pending_locator` — đúng nghĩa "chưa chụp được"
-     * (fixture err-element-pending-locator.json của compiler mang y hình dạng này).
-     * `ready` mà không locator là lời hứa suông: phase 4 không bind nổi ⇒ chặn ở biên.
+     * Empty is valid ONLY when `status = pending_locator` — the exact meaning of
+     * "not captured yet" (the compiler's err-element-pending-locator.json fixture
+     * carries this exact shape). `ready` with no locator is an empty promise: phase 4
+     * can't bind it ⇒ blocked at the boundary.
      */
     locators: z.array(locatorSchema),
   })
@@ -39,7 +41,7 @@ export const elementSchema = z
         type: "array",
         inclusive: true,
         path: ["locators"],
-        message: "element status=ready phải có ít nhất 1 locator",
+        message: "element status=ready must have at least 1 locator",
       });
     }
   });

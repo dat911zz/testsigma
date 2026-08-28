@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { expandCases, MAX_STEP_GROUP_DEPTH } from "./phase2-expand.js";
 import { action, forStep, groupCall, ifStep, kase, profile, snap, whileStep } from "./test-support.js";
 
-describe("phase 2 — nở cấu trúc: step group", () => {
-  it("group 3 step ⇒ case thấy 3 step phẳng, giữ renderedSentence gốc", () => {
+describe("phase 2 — structural expansion: step group", () => {
+  it("a 3-step group ⇒ the case sees 3 flat steps, original renderedSentence kept", () => {
     const grp = kase(
       "grp",
       [action(1, "web.click", {}, "Click on login"), action(2, "web.enter", {}, "Enter user"), action(3, "web.click", {}, "Click on submit")],
@@ -22,7 +22,7 @@ describe("phase 2 — nở cấu trúc: step group", () => {
     ]);
   });
 
-  it("step inline mang provenance groupPath = id các group đã nở", () => {
+  it("an inlined step carries groupPath provenance = ids of the expanded groups", () => {
     const inner = kase("inner", [action(1, "web.click")], { isStepGroup: true });
     const outer = kase("outer", [groupCall(1, "inner")], { isStepGroup: true });
     const main = kase("main", [action(1, "web.click"), groupCall(2, "outer")]);
@@ -33,12 +33,12 @@ describe("phase 2 — nở cấu trúc: step group", () => {
     expect(r.cases[0]?.steps.map((s) => s.groupPath)).toEqual([[], ["outer", "inner"]]);
   });
 
-  it(`group lồng ${MAX_STEP_GROUP_DEPTH} tầng OK, tầng ${MAX_STEP_GROUP_DEPTH + 1} ⇒ step_group_depth_exceeded`, () => {
+  it(`${MAX_STEP_GROUP_DEPTH} levels of group nesting is OK, ${MAX_STEP_GROUP_DEPTH + 1} levels ⇒ step_group_depth_exceeded`, () => {
     const groups = [1, 2, 3, 4, 5, 6].map((n) =>
       kase(`g${n}`, n === 6 ? [action(1, "web.click")] : [groupCall(1, `g${n + 1}`)], { isStepGroup: true }),
     );
-    const okCase = kase("ok", [groupCall(1, "g2")]); // g2..g6 = 5 tầng
-    const deepCase = kase("deep", [groupCall(1, "g1")]); // g1..g6 = 6 tầng
+    const okCase = kase("ok", [groupCall(1, "g2")]); // g2..g6 = 5 levels
+    const deepCase = kase("deep", [groupCall(1, "g1")]); // g1..g6 = 6 levels
 
     const ok = expandCases(snap([...groups, okCase], ["ok"]), ["ok"]);
     expect(ok.diagnostics).toEqual([]);
@@ -49,7 +49,7 @@ describe("phase 2 — nở cấu trúc: step group", () => {
     ]);
   });
 
-  it("group tự gọi chính mình ⇒ step_group_depth_exceeded (cycle bắt qua trần depth)", () => {
+  it("a group calling itself ⇒ step_group_depth_exceeded (the cycle is caught via the depth cap)", () => {
     const loop = kase("loop", [groupCall(1, "loop")], { isStepGroup: true });
     const main = kase("main", [groupCall(1, "loop")]);
 
@@ -61,7 +61,7 @@ describe("phase 2 — nở cấu trúc: step group", () => {
     expect(r.cases[0]?.steps).toEqual([]);
   });
 
-  it("step_group trỏ case không tồn tại ⇒ step_group_missing", () => {
+  it("step_group points to a case that doesn't exist ⇒ step_group_missing", () => {
     const main = kase("main", [groupCall(2, "ghost")]);
 
     const r = expandCases(snap([main], ["main"]), ["main"]);
@@ -72,8 +72,8 @@ describe("phase 2 — nở cấu trúc: step group", () => {
   });
 });
 
-describe("phase 2 — nở cấu trúc: block if/for/while", () => {
-  it("if giữ nguyên là node điều kiện có children", () => {
+describe("phase 2 — structural expansion: if/for/while block", () => {
+  it("if stays a conditional node with children", () => {
     const main = kase("main", [ifStep(1, [action(1, "web.click"), action(2, "web.enter")], ["SUCCESS"])]);
 
     const r = expandCases(snap([main], ["main"]), ["main"]);
@@ -84,7 +84,7 @@ describe("phase 2 — nở cấu trúc: block if/for/while", () => {
     expect(node?.children?.map((c) => c.kind)).toEqual(["action", "action"]);
   });
 
-  it("for gắn các DataRow của profile vào node lặp", () => {
+  it("for attaches the profile's DataRows to the loop node", () => {
     const rows = [
       { label: "r1", expectedToFail: false, values: { user: "a" } },
       { label: "r2", expectedToFail: false, values: { user: "b" } },
@@ -97,7 +97,7 @@ describe("phase 2 — nở cấu trúc: block if/for/while", () => {
     expect(r.cases[0]?.steps[0]?.loopRows).toEqual(rows);
   });
 
-  it("for trỏ profile rỗng ⇒ data_profile_empty kèm stepOrdinal", () => {
+  it("for points to an empty profile ⇒ data_profile_empty with stepOrdinal", () => {
     const main = kase("main", [forStep(3, [action(1, "web.click")], "p-empty")]);
 
     const r = expandCases(snap([main], ["main"], { dataProfiles: [profile("p-empty", [])] }), ["main"]);
@@ -107,7 +107,7 @@ describe("phase 2 — nở cấu trúc: block if/for/while", () => {
     ]);
   });
 
-  it("for trỏ profile không có trong snapshot ⇒ data_profile_empty", () => {
+  it("for points to a profile missing from the snapshot ⇒ data_profile_empty", () => {
     const main = kase("main", [forStep(1, [action(1, "web.click")], "p-ghost")]);
 
     const r = expandCases(snap([main], ["main"]), ["main"]);
@@ -117,7 +117,7 @@ describe("phase 2 — nở cấu trúc: block if/for/while", () => {
     ]);
   });
 
-  it("while thiếu maxIterations ⇒ while_without_max_iterations", () => {
+  it("while missing maxIterations ⇒ while_without_max_iterations", () => {
     const main = kase("main", [whileStep(4, [action(1, "web.click")])]);
 
     const r = expandCases(snap([main], ["main"]), ["main"]);
@@ -127,7 +127,7 @@ describe("phase 2 — nở cấu trúc: block if/for/while", () => {
     ]);
   });
 
-  it("while có maxIterations ⇒ giữ trần lặp trên node", () => {
+  it("while with maxIterations ⇒ keeps the iteration cap on the node", () => {
     const main = kase("main", [whileStep(1, [action(1, "web.click")], 7)]);
 
     const r = expandCases(snap([main], ["main"]), ["main"]);
@@ -136,7 +136,7 @@ describe("phase 2 — nở cấu trúc: block if/for/while", () => {
     expect(r.cases[0]?.steps[0]?.maxIterations).toBe(7);
   });
 
-  it("GOM lỗi: while hỏng và for hỏng trong cùng case ⇒ 2 diagnostics", () => {
+  it("COLLECTS errors: a broken while and a broken for in the same case ⇒ 2 diagnostics", () => {
     const main = kase("main", [whileStep(1, []), forStep(2, [], "p-ghost")]);
 
     const r = expandCases(snap([main], ["main"]), ["main"]);
@@ -148,8 +148,8 @@ describe("phase 2 — nở cấu trúc: block if/for/while", () => {
   });
 });
 
-describe("phase 2 — fan-out data-driven", () => {
-  it("case 3 hàng ⇒ 3 iteration, label lấy từ row, cờ expected_to_fail giữ nguyên", () => {
+describe("phase 2 — data-driven fan-out", () => {
+  it("a case with 3 rows ⇒ 3 iterations, label taken from the row, expected_to_fail flag preserved", () => {
     const rows = [
       { label: "admin", expectedToFail: false, values: { user: "admin" } },
       { label: "khoá", expectedToFail: true, values: { user: "locked" } },
@@ -165,7 +165,7 @@ describe("phase 2 — fan-out data-driven", () => {
     expect(r.cases.map((c) => c.dataRow)).toEqual(rows.map((row) => row.values));
   });
 
-  it("case KHÔNG data-driven ⇒ đúng 1 iteration, không iterationLabel", () => {
+  it("a case that is NOT data-driven ⇒ exactly 1 iteration, no iterationLabel", () => {
     const main = kase("main", [action(1, "web.click")]);
 
     const r = expandCases(snap([main], ["main"]), ["main"]);
@@ -176,7 +176,7 @@ describe("phase 2 — fan-out data-driven", () => {
     expect(r.cases[0]?.revisionId).toBe("rev-main");
   });
 
-  it("case data-driven trỏ profile rỗng ⇒ data_profile_empty ở cấp case", () => {
+  it("a data-driven case pointing to an empty profile ⇒ data_profile_empty at the case level", () => {
     const main = kase("main", [action(1, "web.click")], { dataProfileId: "p-empty" });
 
     const r = expandCases(snap([main], ["main"], { dataProfiles: [profile("p-empty", [])] }), ["main"]);
@@ -187,7 +187,7 @@ describe("phase 2 — fan-out data-driven", () => {
     expect(r.cases).toEqual([]);
   });
 
-  it("nở cả chain: giữ thứ tự [prereq, target]", () => {
+  it("expands the whole chain: keeps [prereq, target] order", () => {
     const login = kase("login", [action(1, "web.enter")]);
     const main = kase("main", [action(1, "web.click")], { prereqCaseId: "login" });
 

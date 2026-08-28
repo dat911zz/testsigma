@@ -1,38 +1,41 @@
 /**
- * Phase 4+5 — element → LocatorSet, rồi merge data/env (blueprint §4):
- * BoundStep (đã có op) → ResolvedStep (đã có locator + args cuối cùng).
+ * Phase 4+5 — element → LocatorSet, then merge data/env (blueprint §4):
+ * BoundStep (has an op) → ResolvedStep (has a locator + final args).
  *
  * Phase 4 — element:
- *  Hệ cũ nối step với element bằng TÊN CHUỖI, sai tên chỉ lộ ra khi browser đã mở. Ở đây
- *  `elementId` được tra thẳng snapshot lúc compile: không có ⇒ `element_not_found`; có mà
- *  chưa chụp được locator ⇒ `element_pending_locator`. Step tốt mang theo `LocatorSet` bất
- *  biến — worker KHÔNG BAO GIỜ đọc bảng element lúc chạy (QA sửa element giữa đêm không
- *  làm đổi thứ đang bay).
+ *  The old system linked a step to an element by STRING NAME, a wrong name only surfaced
+ *  once the browser had opened. Here `elementId` is looked up directly in the snapshot at
+ *  compile time: missing ⇒ `element_not_found`; present but no locator captured yet ⇒
+ *  `element_pending_locator`. A good step carries its immutable `LocatorSet` — the worker
+ *  NEVER reads the element table at run time (a QA editing an element at midnight doesn't
+ *  change what's in flight).
  *
  * Phase 5 — data/env:
- *  Arg do tác giả viết có thể là REF nguyên chuỗi, ba họ:
- *   - `$data:<cột>` → giá trị từ hàng dữ liệu của CHÍNH iteration này (fan-out ở phase 2).
- *   - `$env:<biến>`  → giá trị từ `env.vars`.
- *   - `$secret:<tên>` → GIỮ NGUYÊN DẠNG REF. Compiler chỉ kiểm tên có trong `env.secretNames`
- *     (`secret_ref_unknown`) — giá trị secret KHÔNG BAO GIỜ được inline vào plan, vì plan là
- *     payload bất biến bị hash, lưu trữ và gửi cho worker.
+ *  An arg the author wrote can be a whole-string REF, three families:
+ *   - `$data:<column>` → the value from THIS iteration's data row (fanned out in phase 2).
+ *   - `$env:<var>`      → the value from `env.vars`.
+ *   - `$secret:<name>`  → STAYS IN REF FORM. The compiler only checks the name exists in
+ *     `env.secretNames` (`secret_ref_unknown`) — the secret value is NEVER inlined into the
+ *     plan, because the plan is an immutable payload that gets hashed, stored, and sent to the worker.
  *
- *  Hai luật thay thế, cố ý hẹp:
- *   - Chỉ thay khi TOÀN BỘ arg là ref (không nội suy giữa chuỗi) — không có cú pháp thoát
- *     nào phải phát minh, và chuỗi chứa `$` của tác giả không bao giờ bị hiểu nhầm.
- *   - ĐÚNG MỘT PASS: giá trị vừa thay không được diễn giải lại. Dữ liệu test do đó không
- *     thể tự viết mình thành một secret ref để moi giá trị.
- *  Ref trỏ tên không biết được GIỮ NGUYÊN (không phải lỗi): trong thân vòng `for`, cột dữ
- *  liệu thuộc về hàng lặp mà chỉ worker mới biết — compiler chưa có gì để thay.
+ *  Two deliberately narrow substitution rules:
+ *   - Substitute ONLY when the WHOLE arg is a ref (no interpolation mid-string) — no escape
+ *     syntax needs inventing, and an author's string containing `$` is never misread.
+ *   - EXACTLY ONE PASS: a substituted value is never re-interpreted. So test data can't
+ *     write itself into a secret ref to exfiltrate a value.
+ *  A ref pointing to an unknown name is KEPT AS-IS (not an error): inside a `for` loop body,
+ *  the data column belongs to the loop row, which only the worker knows — the compiler has
+ *  nothing to substitute yet.
  *
- * GOM lỗi như các phase trước: step action hỏng bị LOẠI khỏi IR (mọi lỗi của nó được báo
- * đủ trước khi loại), node cấu trúc thì GIỮ để lỗi của children vẫn được thu.
+ * COLLECTS errors like previous phases: a broken action step is DROPPED from the IR (all its
+ * errors are reported in full before dropping), a structural node is KEPT so its children's
+ * errors still get collected.
  */
 import type { CompileDiagnostic } from "./index.js";
 import type { BoundActionStep, BoundCase, BoundStep } from "./phase3-bind.js";
 import type { CompileSnapshot, DataRow, ElementSnapshot, EnvSnapshot } from "./snapshot.js";
 
-/** Bộ locator đã ghim vào plan — worker chạy bằng đúng cái này, không tra lại DB. */
+/** The locator set pinned into the plan — the worker runs off exactly this, no DB lookup. */
 export interface LocatorSet {
   readonly elementId: string;
   readonly elementName: string;
@@ -43,14 +46,14 @@ interface ResolvedStepCommon {
   readonly ordinal: number;
   readonly renderedSentence: string;
   readonly groupPath: readonly string[];
-  /** Args cuối cùng: data/env đã thay, secret vẫn là `$secret:<tên>`. */
+  /** Final args: data/env already substituted, secret still `$secret:<name>`. */
   readonly args: Readonly<Record<string, string>>;
 }
 
 export interface ResolvedActionStep extends ResolvedStepCommon {
   readonly kind: "action";
   readonly opKey: string;
-  /** Vắng mặt khi verb không thao tác trên element nào. */
+  /** Absent when the verb doesn't operate on any element. */
   readonly locators?: LocatorSet;
 }
 
@@ -77,7 +80,7 @@ export interface Resolution {
   readonly diagnostics: readonly CompileDiagnostic[];
 }
 
-/** Ref chiếm TRỌN arg; tên cột/biến giữ nguyên khoảng trắng ("Họ Tên" là tên cột hợp lệ). */
+/** A ref occupies the WHOLE arg; column/var names keep whitespace ("Full Name" is a valid column name). */
 const ARG_REF = /^\$(secret|data|env):(.+)$/;
 
 type ArgRefKind = "secret" | "data" | "env";
@@ -87,17 +90,18 @@ interface ResolveCtx {
   readonly elements: CompileSnapshot["elements"];
   readonly caseId: string;
   readonly dataRow: Readonly<Record<string, string>>;
-  /** Nơi đổ diagnostic; iteration thứ 2 trở đi của cùng case đổ vào thùng rác (xem dưới). */
+  /** Where diagnostics land; the 2nd+ iteration of the same case dumps into a throwaway sink (see below). */
   readonly diagnostics: CompileDiagnostic[];
 }
 
 /**
- * Resolve toàn bộ case đã bind của MỘT chain.
+ * Resolves every bound case of ONE chain.
  *
- * Fan-out data-driven: mỗi iteration phải có args RIÊNG (đó là toàn bộ ý nghĩa của
- * data-driven), nên không tái dùng cây step như phase 3 được. Nhưng lỗi element/secret thì
- * độc lập với hàng dữ liệu — chỉ thu diagnostic ở iteration ĐẦU của mỗi case, nếu không một
- * element hỏng trong case 500 hàng sẽ đẻ ra 500 diagnostic giống hệt.
+ * Data-driven fan-out: each iteration must have ITS OWN args (that's the whole point of
+ * data-driven), so the step tree can't be reused the way phase 3 does. But element/secret
+ * errors are independent of the data row — diagnostics are only collected on the FIRST
+ * iteration of each case, otherwise a broken element in a 500-row case would spawn 500
+ * identical diagnostics.
  */
 export function resolveCases(cases: readonly BoundCase[], snapshot: CompileSnapshot): Resolution {
   const out: ResolvedCase[] = [];
@@ -132,8 +136,9 @@ function resolveSteps(steps: readonly BoundStep[], ctx: ResolveCtx): readonly Re
   const out: ResolvedStep[] = [];
 
   for (const step of steps) {
-    // Lỗi của MỘT step gom riêng rồi mới đổ ra, để step hỏng vẫn báo đủ mọi lỗi của nó —
-    // theo đúng thứ tự phase (element trước, args sau) để diagnostic đọc như dòng chảy compiler.
+    // A step's errors are collected separately before flushing, so a broken step still
+    // reports all of its errors — in phase order (element first, args second) so the
+    // diagnostics read like a compiler's own flow.
     const stepDiagnostics: CompileDiagnostic[] = [];
     const locators = step.kind === "action" ? resolveElement(step, ctx, stepDiagnostics) : undefined;
     const args = mergeArgs(step.args, ctx, step.ordinal, stepDiagnostics);
@@ -186,19 +191,19 @@ function resolveElement(
       code: "element_not_found",
       caseId: ctx.caseId,
       stepOrdinal: step.ordinal,
-      message: `Element "${elementId}" không có trong snapshot — step tham chiếu element đã xoá hoặc thuộc project khác`,
+      message: `Element "${elementId}" is not in the snapshot — the step references an element that was deleted or belongs to another project`,
     });
     return undefined;
   }
 
-  // status=ready mà rỗng locator là snapshot mâu thuẫn: về mặt chạy được thì y hệt pending.
+  // status=ready with an empty locator is a contradictory snapshot: functionally identical to pending.
   if (element.status === "pending_locator" || element.locators.length === 0) {
     sink.push({
       severity: "error",
       code: "element_pending_locator",
       caseId: ctx.caseId,
       stepOrdinal: step.ordinal,
-      message: `Element "${elementId}" chưa có locator dùng được (status=${element.status}, ${element.locators.length} locator) — chụp locator trước khi chạy`,
+      message: `Element "${elementId}" has no usable locator yet (status=${element.status}, ${element.locators.length} locators) — capture a locator before running`,
     });
     return undefined;
   }
@@ -229,10 +234,10 @@ function mergeArgs(
             code: "secret_ref_unknown",
             caseId: ctx.caseId,
             stepOrdinal: ordinal,
-            message: `Secret "${ref.name}" (arg "${key}") không có trong environment — khai báo secret trước khi tham chiếu`,
+            message: `Secret "${ref.name}" (arg "${key}") is not in the environment — declare the secret before referencing it`,
           });
         }
-        out[key] = value; // ref đi thẳng vào plan, giá trị ở lại vault
+        out[key] = value; // the ref goes straight into the plan, the value stays in the vault
         break;
       case "data":
         out[key] = ctx.dataRow[ref.name] ?? value;

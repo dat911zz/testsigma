@@ -1,11 +1,11 @@
 /**
- * DTO authoring-facing cho step. Soi gương `AuthoredStep`
+ * Authoring-facing DTO for a step. Mirrors `AuthoredStep`
  * (packages/run-compiler/src/snapshot.ts).
  *
- * HAI RÀNG BUỘC KHÔNG ĐƯỢC BỎ:
- *  1. Đệ quy (`children`) ⇒ phải khai type thủ công rồi chú thích
+ * TWO CONSTRAINTS THAT MUST NOT BE DROPPED:
+ *  1. Recursive (`children`) ⇒ must hand-declare the type and annotate with
  *     `z.ZodType<AuthoredStepDto>` + `z.lazy(...)`.
- *  2. `exactOptionalPropertyTypes: true` ⇒ prop optional viết `?: T | undefined`.
+ *  2. `exactOptionalPropertyTypes: true` ⇒ optional props are written `?: T | undefined`.
  */
 import { z } from "zod";
 
@@ -50,10 +50,11 @@ export interface WhileStepDto {
   ordinal: number;
   renderedSentence: string;
   /**
-   * KHÔNG bắt buộc ở biên API: while không trần lặp là dữ liệu authoring có thật,
-   * và người phán nó là COMPILER (diagnostic `while_without_max_iterations`,
-   * fixture err-while-without-max-iterations.json). Trả 400 ở đây sẽ cắt mất lô
-   * diagnostic gom-một-lượt mà tác giả cần để sửa mọi lỗi trong một vòng.
+   * NOT required at the API boundary: a while with no iteration cap is valid
+   * authoring data, and the COMPILER is the one that judges it (diagnostic
+   * `while_without_max_iterations`, fixture err-while-without-max-iterations.json).
+   * Returning 400 here would cut out the batched-in-one-pass diagnostics the author
+   * needs to fix every error in one round.
    */
   maxIterations?: number | undefined;
   children: AuthoredStepDto[];
@@ -74,13 +75,13 @@ export type AuthoredStepDto =
   | WhileStepDto
   | RestStepDto;
 
-/** Trường chung mọi kind — ordinal đếm từ 1 (khớp fixture run-compiler). */
+/** Fields common to every kind — ordinal counts from 1 (matches run-compiler fixtures). */
 const stepCommon = {
   ordinal: z.number().int().positive(),
   renderedSentence: z.string().min(1),
 };
 
-/** args luôn là bản đồ chuỗi→chuỗi: secret đi qua compiler ở dạng `$secret:<name>`. */
+/** args is always a string→string map: secrets pass through the compiler as `$secret:<name>`. */
 const argsSchema = z.record(z.string());
 
 export const authoredStepSchema: z.ZodType<AuthoredStepDto> = z.lazy(() =>

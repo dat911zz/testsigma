@@ -3,56 +3,56 @@
     {
       "caseId": "everything-broken",
       "code": "step_group_missing",
-      "message": "Step group \"grp-ghost\" không tồn tại trong snapshot",
+      "message": "Step group \"grp-ghost\" does not exist in the snapshot",
       "severity": "error",
       "stepOrdinal": 1
     },
     {
       "caseId": "everything-broken",
       "code": "data_profile_empty",
-      "message": "Vòng lặp \"for\" cần data profile có ít nhất 1 hàng (profile: p-ghost)",
+      "message": "A \"for\" loop needs a data profile with at least 1 row (profile: p-ghost)",
       "severity": "error",
       "stepOrdinal": 2
     },
     {
       "caseId": "everything-broken",
       "code": "while_without_max_iterations",
-      "message": "Vòng lặp \"while\" phải khai báo maxIterations — không có trần lặp là vé vào treo vô hạn",
+      "message": "A \"while\" loop must declare maxIterations — no iteration cap is a ticket to an infinite hang",
       "severity": "error",
       "stepOrdinal": 3
     },
     {
       "caseId": "everything-broken",
       "code": "unknown_verb",
-      "message": "Verb \"web.dragAndDrop\" không có trong registry @testkite/verb-kit — chưa port hoặc sai op key",
+      "message": "Verb \"web.dragAndDrop\" is not in the @testkite/verb-kit registry — not yet ported or a wrong op key",
       "severity": "error",
       "stepOrdinal": 4
     },
     {
       "caseId": "everything-broken",
       "code": "verb_args_invalid",
-      "message": "Args của verb \"web.enter\" không hợp lệ: value: Required",
+      "message": "Args for verb \"web.enter\" are invalid: value: Required",
       "severity": "error",
       "stepOrdinal": 5
     },
     {
       "caseId": "everything-broken",
       "code": "element_not_found",
-      "message": "Element \"el-deleted\" không có trong snapshot — step tham chiếu element đã xoá hoặc thuộc project khác",
+      "message": "Element \"el-deleted\" is not in the snapshot — the step references an element that was deleted or belongs to another project",
       "severity": "error",
       "stepOrdinal": 6
     },
     {
       "caseId": "everything-broken",
       "code": "element_pending_locator",
-      "message": "Element \"el-not-captured\" chưa có locator dùng được (status=pending_locator, 0 locator) — chụp locator trước khi chạy",
+      "message": "Element \"el-not-captured\" has no usable locator yet (status=pending_locator, 0 locators) — capture a locator before running",
       "severity": "error",
       "stepOrdinal": 7
     },
     {
       "caseId": "everything-broken",
       "code": "secret_ref_unknown",
-      "message": "Secret \"PROD_ROOT_PASSWORD\" (arg \"value\") không có trong environment — khai báo secret trước khi tham chiếu",
+      "message": "Secret \"PROD_ROOT_PASSWORD\" (arg \"value\") is not in the environment — declare the secret before referencing it",
       "severity": "error",
       "stepOrdinal": 8
     }

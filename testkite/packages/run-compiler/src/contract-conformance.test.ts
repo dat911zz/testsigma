@@ -1,9 +1,10 @@
 /**
- * Chứng minh schema của `@testkite/contract` và type snapshot của compiler
- * chưa lệch nhau — bằng DỮ LIỆU THẬT: toàn bộ fixture của golden suite.
+ * Proves `@testkite/contract`'s schema and the compiler's snapshot types haven't
+ * drifted apart — using REAL DATA: every fixture in the golden suite.
  *
- * Đây là test một chiều có chủ đích: mọi thứ compiler ăn được thì biên API
- * phải nhận. Chiều ngược (API nhận gì compiler cũng ăn) là việc của compiler.
+ * This is deliberately a one-directional test: anything the compiler can consume, the
+ * API boundary must accept. The reverse direction (whatever the API accepts, the compiler
+ * can also consume) is the compiler's own job.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -18,21 +19,21 @@ const fixtureFiles = readdirSync(fixturesDir)
   .sort();
 
 describe("contract ⇄ compiler conformance", () => {
-  it("corpus fixture không rỗng (nếu rỗng thì test này vô nghĩa)", () => {
+  it("the fixture corpus is not empty (if empty, this test is meaningless)", () => {
     expect(fixtureFiles.length).toBeGreaterThanOrEqual(20);
   });
 
-  it.each(fixtureFiles)("fixture %s: snapshot lọt compileSnapshotSchema", (file) => {
+  it.each(fixtureFiles)("fixture %s: its snapshot passes compileSnapshotSchema", (file) => {
     const raw: unknown = JSON.parse(readFileSync(join(fixturesDir, file), "utf8"));
     const snapshot = (raw as { snapshot: unknown }).snapshot;
     const result = compileSnapshotSchema.safeParse(snapshot);
     if (!result.success) {
-      throw new Error(`${file} không qua schema contract:\n${JSON.stringify(result.error.issues, null, 2)}`);
+      throw new Error(`${file} failed the contract schema:\n${JSON.stringify(result.error.issues, null, 2)}`);
     }
     expect(result.success).toBe(true);
   });
 
-  it("COMPILE_ERROR_CODES re-export từ contract, không phải bản sao cục bộ", async () => {
+  it("COMPILE_ERROR_CODES is re-exported from contract, not a local copy", async () => {
     const contract = await import("@testkite/contract");
     expect(COMPILE_ERROR_CODES).toBe(contract.COMPILE_ERROR_CODES);
   });

@@ -1,10 +1,10 @@
 /**
- * DTO run + danh mục lỗi compile.
+ * Run DTO + the compile-error code catalog.
  *
- * `COMPILE_ERROR_CODES` SỐNG Ở ĐÂY chứ không ở run-compiler: contract không được
- * import run-compiler (ngược DAG), mà `runSchema` cần danh mục này. run-compiler
- * re-export lại — nó vốn phụ thuộc contract, nên chiều này là chiều xuôi duy nhất
- * giữ được MỘT danh sách.
+ * `COMPILE_ERROR_CODES` LIVES HERE rather than in run-compiler: contract must not
+ * import run-compiler (that would reverse the DAG), yet `runSchema` needs this
+ * catalog. run-compiler re-exports it — it already depends on contract, so this
+ * direction is the only forward direction that keeps a SINGLE list.
  */
 import { z } from "zod";
 import { JOB_KINDS, JOB_STATUSES, LANES, RUN_VERDICTS } from "../enums.js";
@@ -15,8 +15,8 @@ export const jobKindSchema = z.enum(JOB_KINDS);
 export const laneSchema = z.enum(LANES);
 
 /**
- * DỮ LIỆU, không chỉ là type: golden suite của compiler duyệt mảng này lúc CHẠY
- * để chứng minh "mỗi code có ≥1 fixture âm". Thứ tự = dòng chảy phase 1→5.
+ * DATA, not just a type: the compiler's golden suite iterates this array AT RUNTIME
+ * to prove "every code has ≥1 negative fixture". Order = the phase 1→5 flow.
  */
 export const COMPILE_ERROR_CODES = [
   "prereq_cycle",
@@ -41,12 +41,12 @@ export const compileDiagnosticSchema = z.object({
   severity: z.enum(["error", "warning"]),
   code: compileErrorCodeSchema,
   caseId: z.string().min(1),
-  /** Vắng mặt = lỗi cấp case (prereq cycle...), không phải cấp step. */
+  /** Absent = case-level error (prereq cycle...), not step-level. */
   stepOrdinal: z.number().int().positive().optional(),
   message: z.string().min(1),
 });
 
-/** SHA-256 hex thường — khớp `contentHashOf` của phase 7. */
+/** Lowercase SHA-256 hex — matches phase 7's `contentHashOf`. */
 const contentHashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 
 export const runSchema = z.object({
@@ -56,7 +56,7 @@ export const runSchema = z.object({
   lane: laneSchema,
   status: jobStatusSchema,
   verdict: runVerdictSchema,
-  /** Vắng mặt khi verdict=compile_error: không có plan thì không có hash. */
+  /** Absent when verdict=compile_error: no plan means no hash. */
   planContentHash: contentHashSchema.optional(),
   diagnostics: z.array(compileDiagnosticSchema),
 });

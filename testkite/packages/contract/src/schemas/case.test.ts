@@ -12,31 +12,31 @@ const baseCase = {
 };
 
 describe("authoredCaseSchema", () => {
-  it("nhận case tối thiểu", () => {
+  it("accepts a minimal case", () => {
     expect(authoredCaseSchema.parse(baseCase).id).toBe("checkout");
   });
 
-  it("nhận case có prereqCaseId và dataProfileId", () => {
+  it("accepts a case with prereqCaseId and dataProfileId", () => {
     const r = authoredCaseSchema.safeParse({ ...baseCase, prereqCaseId: "login", dataProfileId: "p-logins" });
     expect(r.success).toBe(true);
   });
 
-  it("nhận step group (isStepGroup=true)", () => {
+  it("accepts a step group (isStepGroup=true)", () => {
     expect(authoredCaseSchema.parse({ ...baseCase, isStepGroup: true }).isStepGroup).toBe(true);
   });
 
-  it("từ chối case thiếu revisionId — không ghim revision là không tái lập được run", () => {
+  it("rejects a case missing revisionId — no pinned revision means the run can't be reproduced", () => {
     const { revisionId: _drop, ...noRev } = baseCase;
     expect(authoredCaseSchema.safeParse(noRev).success).toBe(false);
   });
 
-  it("nhận case steps rỗng (case mới tạo, compiler sẽ xử)", () => {
+  it("accepts a case with empty steps (newly created case, the compiler will handle it)", () => {
     expect(authoredCaseSchema.safeParse({ ...baseCase, steps: [] }).success).toBe(true);
   });
 });
 
 describe("dataProfileSchema", () => {
-  it("nhận profile có cờ expectedToFail", () => {
+  it("accepts a profile with the expectedToFail flag", () => {
     const parsed = dataProfileSchema.parse({
       id: "p-logins",
       rows: [{ label: "locked-user", expectedToFail: true, values: { username: "locked@shop.example.com" } }],
@@ -44,25 +44,25 @@ describe("dataProfileSchema", () => {
     expect(parsed.rows[0]?.expectedToFail).toBe(true);
   });
 
-  it("từ chối row thiếu expectedToFail — mặc định im lặng ở đây là bẫy ngữ nghĩa", () => {
+  it("rejects a row missing expectedToFail — a silent default here is a semantic trap", () => {
     expect(dataProfileSchema.safeParse({ id: "p", rows: [{ label: "x", values: {} }] }).success).toBe(false);
   });
 });
 
 describe("envSchema", () => {
-  it("nhận env đủ trường", () => {
+  it("accepts an env with all fields", () => {
     expect(envSchema.parse({ baseUrl: "https://shop.example.com", vars: {}, secretNames: [] }).baseUrl).toBe(
       "https://shop.example.com",
     );
   });
 
-  it("từ chối baseUrl không phải URL", () => {
+  it("rejects a baseUrl that isn't a URL", () => {
     expect(envSchema.safeParse({ baseUrl: "shop.example.com", vars: {}, secretNames: [] }).success).toBe(false);
   });
 });
 
 describe("compileSnapshotSchema", () => {
-  it("nhận snapshot đầy đủ", () => {
+  it("accepts a complete snapshot", () => {
     const r = compileSnapshotSchema.safeParse({
       teamId: "team-acme",
       projectId: "proj-web-checkout",
@@ -75,7 +75,7 @@ describe("compileSnapshotSchema", () => {
     expect(r.success).toBe(true);
   });
 
-  it("từ chối targetCaseIds rỗng — run không target là run rỗng", () => {
+  it("rejects empty targetCaseIds — a run with no target is an empty run", () => {
     const r = compileSnapshotSchema.safeParse({
       teamId: "t",
       projectId: "p",

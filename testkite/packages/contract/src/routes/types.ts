@@ -1,9 +1,9 @@
 /**
- * Hợp đồng route — MỘT nguồn cho ba nơi tiêu thụ:
- *   1. `packages/contract/src/openapi.ts`   -> sinh `paths`
- *   2. `apps/core/src/http/app.ts`          -> đăng ký router Fastify
- *   3. `apps/core/test/isolation/*`         -> sinh bộ test cross-tenant L3
- * Thêm route mà quên một trong ba? Không xảy ra: cả ba đọc chính mảng này.
+ * Route contract — ONE source for three consumers:
+ *   1. `packages/contract/src/openapi.ts`   -> generates `paths`
+ *   2. `apps/core/src/http/app.ts`          -> registers the Fastify router
+ *   3. `apps/core/test/isolation/*`         -> generates the L3 cross-tenant test suite
+ * Add a route and forget one of the three? Can't happen: all three read this same array.
  */
 import type { z } from "zod";
 
@@ -12,11 +12,11 @@ export type HttpMethod = "get" | "post" | "patch" | "put" | "delete";
 export type RouteDescriptor = {
   readonly operationId: string;
   readonly method: HttpMethod;
-  /** Dạng OpenAPI: `/v1/cases/{caseId}`. Fastify nhận dạng `:caseId` qua toFastifyPath(). */
+  /** OpenAPI form: `/v1/cases/{caseId}`. Fastify recognizes `:caseId` via toFastifyPath(). */
   readonly path: string;
   readonly summary: string;
   readonly auth: "required" | "public";
-  /** Permission cần có (kiểm tên hợp lệ ở identity/rbac). `null` = chỉ cần đăng nhập. */
+  /** Required permission (name validated in identity/rbac). `null` = login only required. */
   readonly permission: string | null;
   readonly params?: z.AnyZodObject;
   readonly query?: z.AnyZodObject;
@@ -24,7 +24,7 @@ export type RouteDescriptor = {
   readonly responses: Readonly<Record<number, z.ZodTypeAny>>;
 };
 
-/** Chỉ để TypeScript giữ kiểu literal — không biến đổi gì. */
+/** Only exists so TypeScript keeps the literal type — no transformation. */
 export function defineRoute<T extends RouteDescriptor>(r: T): T {
   return r;
 }

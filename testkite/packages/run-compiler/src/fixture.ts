@@ -1,19 +1,20 @@
 /**
- * Đọc fixture golden từ JSON THÔ thành `CompileInput` đã kiểm — hàm PURE (không fs:
- * `golden.test.ts` lo phần đĩa, ở đây chỉ có dữ liệu vào, dữ liệu ra).
+ * Reads a golden fixture from RAW JSON into a checked `CompileInput` — a PURE function
+ * (no fs: `golden.test.ts` handles the disk side, here it's just data in, data out).
  *
- * Vì sao cần parser thay vì `JSON.parse` rồi ép kiểu:
- *  - Fixture là DỮ LIỆU trên đĩa, TypeScript không kiểm được nó. Ép kiểu (`as CompileSnapshot`)
- *    chỉ là lời hứa suông — khoá gõ sai (`verbOpkey`) sẽ IM LẶNG biến fixture "verb hợp lệ"
- *    thành fixture "unknown_verb", rồi golden đóng dấu cái sai đó thành hợp đồng của cả hệ.
- *  - Nên: khoá lạ bị TỪ CHỐI (không bỏ qua), sai kiểu bị từ chối kèm đường dẫn chính xác,
- *    và record theo id phải có khoá TRÙNG id bên trong.
- *  - Fixture cũng phải tự khai nó dương hay âm (`expect` + `expectCodes`): golden runner
- *    so khớp lời khai đó với diagnostics thật, nên một lần `UPDATE_GOLDEN` vô ý không thể
- *    lặng lẽ đổi một fixture âm thành dương.
+ * Why a parser is needed instead of `JSON.parse` plus a type cast:
+ *  - A fixture is DATA on disk; TypeScript cannot check it. A cast (`as CompileSnapshot`)
+ *    is just an empty promise — a mistyped key (`verbOpkey`) would SILENTLY turn a
+ *    "verb is valid" fixture into an "unknown_verb" fixture, and golden would then stamp
+ *    that mistake as the whole system's contract.
+ *  - So: an unknown key is REJECTED (never skipped), a wrong type is rejected with the
+ *    exact path, and a record keyed by id must have a key that MATCHES its internal id.
+ *  - A fixture must also declare whether it's positive or negative (`expect` + `expectCodes`):
+ *    the golden runner checks that declaration against the real diagnostics, so an
+ *    accidental `UPDATE_GOLDEN` can't silently turn a negative fixture into a positive one.
  *
- * Lỗi ở đây NÉM, không gom: fixture hỏng là lỗi của người viết test, không phải đầu vào của
- * người dùng — nó phải chặn suite lại ngay tại file hỏng, càng ồn càng tốt.
+ * Errors here THROW, they don't collect: a broken fixture is the test author's bug, not
+ * user input — it must stop the suite right at the broken file, as loudly as possible.
  */
 import { COMPILE_ERROR_CODES } from "./index.js";
 import type { CompileErrorCode, CompileInput, RunLane, ScreenshotPolicy } from "./index.js";
@@ -29,13 +30,13 @@ import type {
 } from "./snapshot.js";
 
 export interface CompileFixture {
-  /** Trùng tên file (không đuôi) — golden runner cưỡng chế. */
+  /** Must match the file name (no extension) — enforced by the golden runner. */
   readonly name: string;
-  /** Câu mô tả cho người đọc: fixture này giữ hợp đồng NÀO. */
+  /** A description for readers: WHICH contract this fixture holds. */
   readonly description: string;
-  /** `plan` = compile phải ra plan; `diagnostics` = phải hỏng đúng các code đã khai. */
+  /** `plan` = compiling must produce a plan; `diagnostics` = must fail with exactly the declared codes. */
   readonly expect: "plan" | "diagnostics";
-  /** Rỗng khi `expect === "plan"`. */
+  /** Empty when `expect === "plan"`. */
   readonly expectCodes: readonly CompileErrorCode[];
   readonly input: CompileInput;
 }
@@ -46,12 +47,12 @@ const LANES = ["interactive", "batch"] as const satisfies readonly RunLane[];
 const SCREENSHOT_POLICIES = ["all", "failure", "none"] as const satisfies readonly ScreenshotPolicy[];
 const EXPECTATIONS = ["plan", "diagnostics"] as const;
 
-/** Bảo hiểm chiều ngược: thêm `StepKind` mới mà quên khai ở trên ⇒ gãy typecheck, không im lặng. */
+/** Insurance in the reverse direction: adding a new `StepKind` and forgetting to list it here ⇒ breaks typecheck, not silent. */
 type MissingStepKind = Exclude<StepKind, (typeof STEP_KINDS)[number]>;
 const _allStepKindsListed: [MissingStepKind] extends [never] ? true : false = true;
 void _allStepKindsListed;
 
-/** Vị trí trong file fixture — mọi lỗi đều chỉ được đúng chỗ tác giả phải sửa. */
+/** A location within the fixture file — every error points to exactly where the author must fix it. */
 interface At {
   readonly source: string;
   readonly path: string;
@@ -76,10 +77,10 @@ export function parseFixture(raw: unknown, source: string): CompileFixture {
         );
 
   if (expectation === "plan" && expectCodes.length > 0) {
-    fail(codesLoc, `fixture expect="plan" thì không được khai expectCodes (đang khai ${expectCodes.length})`);
+    fail(codesLoc, `a fixture with expect="plan" must not declare expectCodes (found ${expectCodes.length})`);
   }
   if (expectation === "diagnostics" && expectCodes.length === 0) {
-    fail(codesLoc, `fixture expect="diagnostics" phải liệt kê ít nhất 1 CompileErrorCode nó chứng minh`);
+    fail(codesLoc, `a fixture with expect="diagnostics" must list at least 1 CompileErrorCode it proves`);
   }
 
   const lane = rec["lane"] === undefined ? undefined : asEnum(rec["lane"], at(loc, "lane"), LANES);
@@ -246,9 +247,10 @@ function parseEnv(value: unknown, loc: At): EnvSnapshot {
 }
 
 /**
- * Record đánh index theo id. Khoá PHẢI trùng `id` bên trong: lệch nhau là bom hẹn giờ —
- * phase 1 tra `cases[id]` theo khoá, còn diagnostic in ra `id`, nên một fixture lệch khoá
- * sẽ mô tả một tình huống khác hẳn tình huống tác giả tưởng mình đang viết.
+ * A record indexed by id. The key MUST match the internal `id`: a mismatch is a time
+ * bomb — phase 1 looks up `cases[id]` by key, while diagnostics print out `id`, so a
+ * fixture with a mismatched key would describe a completely different situation than
+ * the one the author thinks they're writing.
  */
 function parseRecordById<T extends { readonly id: string }>(
   value: unknown,
@@ -261,7 +263,7 @@ function parseRecordById<T extends { readonly id: string }>(
   for (const key of Object.keys(rec)) {
     const itemLoc = at(loc, key);
     const item = parse(rec[key], itemLoc);
-    if (item.id !== key) fail(itemLoc, `khoá record "${key}" khác id bên trong "${item.id}"`);
+    if (item.id !== key) fail(itemLoc, `record key "${key}" differs from its internal id "${item.id}"`);
     out[key] = item;
   }
 
@@ -269,7 +271,7 @@ function parseRecordById<T extends { readonly id: string }>(
 }
 
 // ---------------------------------------------------------------------------
-// Nguyên thuỷ
+// Primitives
 // ---------------------------------------------------------------------------
 
 function at(parent: At, key: string | number): At {
@@ -289,15 +291,16 @@ function kindOf(value: unknown): string {
 
 function asRecord(value: unknown, loc: At): Readonly<Record<string, unknown>> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    fail(loc, `cần object, gặp ${kindOf(value)}`);
+    fail(loc, `expected an object, got ${kindOf(value)}`);
   }
   return value as Readonly<Record<string, unknown>>;
 }
 
 /**
- * Cưỡng chế BỘ KHOÁ đúng: thiếu khoá bắt buộc là lỗi, mà khoá LẠ cũng là lỗi. Khoan dung với
- * khoá lạ nghĩa là chấp nhận `verbOpkey` trôi qua thành fixture nói dối — dạng sai tệ nhất,
- * vì golden sẽ đóng dấu nó thành hợp đồng.
+ * Enforces the correct KEY SET: a missing required key is an error, and so is an
+ * unknown key. Being lenient about unknown keys would mean letting `verbOpkey` slip
+ * through as a lying fixture — the worst kind of wrong, since golden would then stamp
+ * it as the contract.
  */
 function checkKeys(
   rec: Readonly<Record<string, unknown>>,
@@ -306,36 +309,36 @@ function checkKeys(
   optional: readonly string[],
 ): void {
   for (const key of required) {
-    if (rec[key] === undefined) fail(at(loc, key), "thiếu field bắt buộc");
+    if (rec[key] === undefined) fail(at(loc, key), "missing required field");
   }
 
   const known = new Set([...required, ...optional]);
   for (const key of Object.keys(rec)) {
     if (!known.has(key)) {
-      fail(loc, `khoá lạ "${key}" — hợp lệ: [${[...known].join(" | ")}]`);
+      fail(loc, `unknown key "${key}" — valid: [${[...known].join(" | ")}]`);
     }
   }
 }
 
 function asString(value: unknown, loc: At): string {
-  if (typeof value !== "string") fail(loc, `cần string, gặp ${kindOf(value)}`);
+  if (typeof value !== "string") fail(loc, `expected a string, got ${kindOf(value)}`);
   return value;
 }
 
 function asNumber(value: unknown, loc: At): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    fail(loc, `cần number hữu hạn, gặp ${kindOf(value)}`);
+    fail(loc, `expected a finite number, got ${kindOf(value)}`);
   }
   return value;
 }
 
 function asBoolean(value: unknown, loc: At): boolean {
-  if (typeof value !== "boolean") fail(loc, `cần boolean, gặp ${kindOf(value)}`);
+  if (typeof value !== "boolean") fail(loc, `expected a boolean, got ${kindOf(value)}`);
   return value;
 }
 
 function asArray(value: unknown, loc: At): readonly unknown[] {
-  if (!Array.isArray(value)) fail(loc, `cần array, gặp ${kindOf(value)}`);
+  if (!Array.isArray(value)) fail(loc, `expected an array, got ${kindOf(value)}`);
   return value;
 }
 
@@ -353,6 +356,6 @@ function asStringRecord(value: unknown, loc: At): Readonly<Record<string, string
 function asEnum<T extends string>(value: unknown, loc: At, allowed: readonly T[]): T {
   const text = asString(value, loc);
   const found = allowed.find((candidate) => candidate === text);
-  if (found === undefined) fail(loc, `cần một trong [${allowed.join(" | ")}], gặp "${text}"`);
+  if (found === undefined) fail(loc, `expected one of [${allowed.join(" | ")}], got "${text}"`);
   return found;
 }

@@ -3,7 +3,7 @@
     {
       "caseId": "deep-groups",
       "code": "step_group_depth_exceeded",
-      "message": "Nở step group \"g6\" vượt trần 5 tầng (đường nở: g1 → g2 → g3 → g4 → g5 → g6)",
+      "message": "Expanding step group \"g6\" exceeds the 5-level cap (expansion path: g1 → g2 → g3 → g4 → g5 → g6)",
       "severity": "error",
       "stepOrdinal": 1
     }

@@ -1,19 +1,19 @@
 /**
- * Taxonomy lỗi — MỘT vị từ (`retryable === true`) gate mọi retry ở mọi nơi.
+ * Error taxonomy — ONE predicate (`retryable === true`) gates every retry everywhere.
  *
- * Sống ở module LÁ chứ không `index.ts`: `routes/*.ts` cần ném NotFoundError,
- * mà `index.ts` lại re-export `routes/index.js` ⇒ để ở barrel là vòng import
- * (đúng lý do `enums.ts` đã tách ra trước đó ở M1).
+ * Lives in a LEAF module rather than `index.ts`: `routes/*.ts` needs to throw NotFoundError,
+ * and `index.ts` re-exports `routes/index.js` ⇒ putting it in the barrel would be an import
+ * cycle (the same reason `enums.ts` was split out earlier in M1).
  */
 export abstract class AppError extends Error {
   abstract readonly code: string;
   abstract readonly httpStatus: number;
   abstract readonly retryable: boolean;
-  /** true = message được phép trả nguyên văn cho tenant; false = che bằng câu chung. */
+  /** true = message may be returned verbatim to the tenant; false = mask with a generic sentence. */
   abstract readonly tenantVisible: boolean;
 }
 
-/** Lỗi hạ tầng CÓ THỂ retry: browser_oom, context_crash, host_death, lease_expired, network. */
+/** Infra error that CAN be retried: browser_oom, context_crash, host_death, lease_expired, network. */
 export class RetryableInfraError extends AppError {
   readonly code: string;
   readonly httpStatus = 503;
@@ -25,7 +25,7 @@ export class RetryableInfraError extends AppError {
   }
 }
 
-/** Lỗi hạ tầng KHÔNG retry (cấu hình hỏng, plan version lạ...). */
+/** Infra error that is NOT retried (broken config, unknown plan version...). */
 export class FatalInfraError extends AppError {
   readonly code = "fatal_infra";
   readonly httpStatus = 500;
@@ -34,18 +34,18 @@ export class FatalInfraError extends AppError {
 }
 
 /**
- * Assertion fail LÀ MỘT VERDICT, không phải một lỗi hệ thống.
- * KHÔNG BAO GIỜ retry — retry một verdict là đầu độc dữ liệu kết quả.
- * App treo = failed(timeout): đó là tín hiệu sản phẩm.
+ * An assertion failure IS A VERDICT, not a system error.
+ * NEVER retry it — retrying a verdict poisons the result data.
+ * The app hanging = failed(timeout): that's a product signal.
  */
 export class AssertionFailure extends AppError {
   readonly code = "assertion_failure";
-  readonly httpStatus = 200; // job HOÀN THÀNH với verdict=failed
+  readonly httpStatus = 200; // job COMPLETED with verdict=failed
   readonly retryable = false;
   readonly tenantVisible = true;
 }
 
-/** 400 — body/params/query không qua zod. `issues` là danh sách người dùng đọc được. */
+/** 400 — body/params/query failed zod validation. `issues` is a human-readable list. */
 export class ValidationFailedError extends AppError {
   readonly code = "VALIDATION_FAILED";
   readonly httpStatus = 400;
@@ -58,7 +58,7 @@ export class ValidationFailedError extends AppError {
   }
 }
 
-/** 401 — không có credential hợp lệ. KHÔNG BAO GIỜ nói credential sai ở chỗ nào. */
+/** 401 — no valid credential. NEVER say which part of the credential is wrong. */
 export class UnauthorizedError extends AppError {
   readonly code = "UNAUTHORIZED";
   readonly httpStatus = 401;
@@ -67,11 +67,12 @@ export class UnauthorizedError extends AppError {
 }
 
 /**
- * 403 — đã xác thực, thiếu quyền TRONG CHÍNH tenant của mình.
- * Tài nguyên của tenant KHÁC không bao giờ ra 403: nó ra 404 (blueprint §3 L3).
+ * 403 — authenticated, but missing permission WITHIN one's own tenant.
+ * A resource belonging to a DIFFERENT tenant never yields 403: it yields 404 (blueprint §3 L3).
  *
- * Lớp này là ĐIỂM NEO cho plan authoring: `InsufficientScopeError` của module
- * authoring PHẢI kế thừa từ đây, nếu không error handler chung map nó thành 500.
+ * This class is the ANCHOR POINT for plan authoring: the authoring module's
+ * `InsufficientScopeError` MUST extend from here, otherwise the generic error handler
+ * maps it to 500.
  */
 export class ForbiddenError extends AppError {
   readonly code = "FORBIDDEN";
@@ -94,7 +95,7 @@ export class ConflictError extends AppError {
   readonly tenantVisible = true;
 }
 
-/** 428 — mutation thiếu `If-Match` (optimistic concurrency, blueprint §4). */
+/** 428 — mutation missing `If-Match` (optimistic concurrency, blueprint §4). */
 export class PreconditionRequiredError extends AppError {
   readonly code = "PRECONDITION_REQUIRED";
   readonly httpStatus = 428;

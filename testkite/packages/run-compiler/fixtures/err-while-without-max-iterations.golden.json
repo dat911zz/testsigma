@@ -3,7 +3,7 @@
     {
       "caseId": "unbounded-while",
       "code": "while_without_max_iterations",
-      "message": "Vòng lặp \"while\" phải khai báo maxIterations — không có trần lặp là vé vào treo vô hạn",
+      "message": "A \"while\" loop must declare maxIterations — no iteration cap is a ticket to an infinite hang",
       "severity": "error",
       "stepOrdinal": 1
     }

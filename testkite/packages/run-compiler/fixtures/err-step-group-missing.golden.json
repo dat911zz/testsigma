@@ -3,7 +3,7 @@
     {
       "caseId": "calls-ghost-group",
       "code": "step_group_missing",
-      "message": "Step group \"grp-ghost\" không tồn tại trong snapshot",
+      "message": "Step group \"grp-ghost\" does not exist in the snapshot",
       "severity": "error",
       "stepOrdinal": 2
     }

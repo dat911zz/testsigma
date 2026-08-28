@@ -1,12 +1,12 @@
 /**
- * Phase 1 — resolve chuỗi prereq thành CHAIN (đơn vị job của fleet).
+ * Phase 1 — resolves the prereq chain into a CHAIN (the fleet's unit of job).
  *
- * Ngữ nghĩa (blueprint §2, kế thừa có chủ đích từ hệ cũ đã xác minh):
- *  - prereq là chuỗi case-gọi-case; thứ tự chạy: tổ tiên xa nhất trước.
- *  - cycle bị từ chối; số TỔ TIÊN tối đa 5 (luật "allowed limit of 5" cũ).
- *  - Mỗi target là MỘT chain độc lập — prereq chung không chạy chung
- *    (mỗi chain một BrowserContext mới; cô lập là tính năng, không phải phí).
- *  - GOM lỗi: target hỏng sinh diagnostic, target lành vẫn ra chain.
+ * Semantics (blueprint §2, deliberately inherited from the verified old system):
+ *  - a prereq is a case-calls-case chain; execution order: farthest ancestor first.
+ *  - a cycle is rejected; max ANCESTOR count is 5 (the old "allowed limit of 5" rule).
+ *  - each target is ONE independent chain — a shared prereq does not run shared
+ *    (each chain gets a new BrowserContext; isolation is a feature, not overhead).
+ *  - COLLECT errors: a broken target produces a diagnostic, a healthy target still yields a chain.
  */
 import type { CompileDiagnostic } from "./index.js";
 import type { AuthoredCase, CompileSnapshot } from "./snapshot.js";
@@ -15,7 +15,7 @@ export const MAX_PREREQ_ANCESTORS = 5;
 
 export interface ResolvedChain {
   readonly chainKey: string;
-  /** Thứ tự thực thi: [tổ tiên xa nhất, ..., target]. */
+  /** Execution order: [farthest ancestor, ..., target]. */
   readonly caseIds: readonly string[];
 }
 
@@ -40,7 +40,7 @@ export function resolveChains(snapshot: CompileSnapshot): ChainResolution {
           severity: "error",
           code: "prereq_cycle",
           caseId: targetId,
-          message: `Chuỗi prereq của "${targetId}" chứa vòng lặp tại "${currentId}"`,
+          message: `Prereq chain of "${targetId}" contains a cycle at "${currentId}"`,
         });
         failed = true;
         break;
@@ -53,7 +53,7 @@ export function resolveChains(snapshot: CompileSnapshot): ChainResolution {
           severity: "error",
           code: "prereq_missing",
           caseId: targetId,
-          message: `Prereq "${currentId}" của "${targetId}" không tồn tại trong snapshot`,
+          message: `Prereq "${currentId}" of "${targetId}" does not exist in the snapshot`,
         });
         failed = true;
         break;
@@ -71,7 +71,7 @@ export function resolveChains(snapshot: CompileSnapshot): ChainResolution {
         severity: "error",
         code: "prereq_depth_exceeded",
         caseId: targetId,
-        message: `Chuỗi prereq của "${targetId}" có ${ancestorCount} tổ tiên — vượt trần ${MAX_PREREQ_ANCESTORS}`,
+        message: `Prereq chain of "${targetId}" has ${ancestorCount} ancestors — exceeds the cap of ${MAX_PREREQ_ANCESTORS}`,
       });
       continue;
     }

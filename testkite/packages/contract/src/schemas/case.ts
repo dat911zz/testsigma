@@ -1,6 +1,6 @@
 /**
- * DTO authoring-facing cho case / data profile / env / snapshot compile.
- * Soi gương `AuthoredCase`, `DataProfileSnapshot`, `EnvSnapshot`, `CompileSnapshot`
+ * Authoring-facing DTO for case / data profile / env / compile snapshot.
+ * Mirrors `AuthoredCase`, `DataProfileSnapshot`, `EnvSnapshot`, `CompileSnapshot`
  * (packages/run-compiler/src/snapshot.ts).
  */
 import { z } from "zod";
@@ -11,19 +11,19 @@ import type { AuthoredStepDto } from "./step.js";
 
 export const authoredCaseSchema = z.object({
   id: z.string().min(1),
-  /** Ghim revision: schedule/CI chạy bản 'ready', sửa giữa đêm không đổi thứ đang bay. */
+  /** Pins a revision: schedule/CI runs the 'ready' version, a midnight edit doesn't change what's in flight. */
   revisionId: z.string().min(1),
   name: z.string().min(1),
   isStepGroup: z.boolean(),
   prereqCaseId: z.string().min(1).optional(),
   dataProfileId: z.string().min(1).optional(),
-  /** Rỗng là hợp lệ: case mới tạo chưa có step; compiler quyết ngữ nghĩa, không phải biên API. */
+  /** Empty is valid: a newly created case has no steps yet; the compiler decides the semantics, not the API boundary. */
   steps: z.array(authoredStepSchema),
 });
 
 export const dataRowSchema = z.object({
   label: z.string().min(1),
-  /** BẮT BUỘC tường minh: mặc định im lặng ở đây làm lệch verdict của cả hàng dữ liệu. */
+  /** MUST be explicit: a silent default here would skew the verdict of the whole data row. */
   expectedToFail: z.boolean(),
   values: z.record(z.string()),
 });
@@ -36,7 +36,7 @@ export const dataProfileSchema = z.object({
 export const envSchema = z.object({
   baseUrl: z.string().url(),
   vars: z.record(z.string()),
-  /** Chỉ TÊN secret — plan không bao giờ chứa giá trị, chỉ `$secret:<name>`. */
+  /** Only the secret NAME — the plan never contains the value, only `$secret:<name>`. */
   secretNames: z.array(z.string().min(1)),
 });
 

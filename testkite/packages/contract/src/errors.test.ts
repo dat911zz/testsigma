@@ -12,16 +12,16 @@ import {
   ValidationFailedError,
 } from "./errors.js";
 
-describe("họ lỗi HTTP", () => {
-  it("mọi lỗi HTTP đều là AppError và mang status đúng", () => {
+describe("HTTP error family", () => {
+  it("every HTTP error is an AppError and carries the right status", () => {
     const cases: readonly [AppError, number, string][] = [
-      [new ValidationFailedError("sai body", ["name: quá ngắn"]), 400, "VALIDATION_FAILED"],
-      [new UnauthorizedError("thiếu credential"), 401, "UNAUTHORIZED"],
-      [new ForbiddenError("thiếu quyền"), 403, "FORBIDDEN"],
-      [new NotFoundError("không có"), 404, "NOT_FOUND"],
-      [new ConflictError("đụng version"), 409, "CONFLICT"],
-      [new PreconditionRequiredError("thiếu If-Match"), 428, "PRECONDITION_REQUIRED"],
-      [new TooManyRequestsError("chạm quota"), 429, "RATE_LIMITED"],
+      [new ValidationFailedError("bad body", ["name: too short"]), 400, "VALIDATION_FAILED"],
+      [new UnauthorizedError("missing credential"), 401, "UNAUTHORIZED"],
+      [new ForbiddenError("missing permission"), 403, "FORBIDDEN"],
+      [new NotFoundError("not found"), 404, "NOT_FOUND"],
+      [new ConflictError("version conflict"), 409, "CONFLICT"],
+      [new PreconditionRequiredError("missing If-Match"), 428, "PRECONDITION_REQUIRED"],
+      [new TooManyRequestsError("quota exceeded"), 429, "RATE_LIMITED"],
     ];
     for (const [err, status, code] of cases) {
       expect(err).toBeInstanceOf(AppError);
@@ -31,16 +31,16 @@ describe("họ lỗi HTTP", () => {
     }
   });
 
-  it("ValidationFailedError giữ danh sách issue", () => {
+  it("ValidationFailedError keeps the issue list", () => {
     expect(new ValidationFailedError("x", ["a", "b"]).issues).toEqual(["a", "b"]);
   });
 
-  it("lỗi hạ tầng KHÔNG lộ ra tenant, lỗi API thì có", () => {
+  it("infra errors are NOT tenant-visible, API errors are", () => {
     expect(new RetryableInfraError("browser_oom", "x").tenantVisible).toBe(false);
     expect(new NotFoundError("x").tenantVisible).toBe(true);
   });
 
-  it("AssertionFailure vẫn là verdict 200 và không bao giờ retry", () => {
+  it("AssertionFailure is still a 200 verdict and never retries", () => {
     const a = new AssertionFailure("expected true");
     expect(a.httpStatus).toBe(200);
     expect(a.retryable).toBe(false);

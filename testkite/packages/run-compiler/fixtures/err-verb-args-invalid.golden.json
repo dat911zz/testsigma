@@ -3,7 +3,7 @@
     {
       "caseId": "enter-without-value",
       "code": "verb_args_invalid",
-      "message": "Args của verb \"web.enter\" không hợp lệ: value: Required",
+      "message": "Args for verb \"web.enter\" are invalid: value: Required",
       "severity": "error",
       "stepOrdinal": 2
     }

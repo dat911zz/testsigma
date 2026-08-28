@@ -9,25 +9,27 @@ import type { CompileErrorCode, CompileOutput } from "./index.js";
 import type { AuthoredStep, CompileSnapshot, StepKind } from "./snapshot.js";
 
 /**
- * T1 — GOLDEN SUITE: hợp đồng của toàn hệ (blueprint §4, "Testing 8 tầng").
+ * T1 — GOLDEN SUITE: the whole system's contract (blueprint §4, "8-layer Testing").
  *
- * Compiler là điểm mà mọi thứ khác tin tưởng: worker chạy đúng cái plan này, dispatcher tính
- * cost từ `stepCount` của plan này, kết quả được quy chiếu về `contentHash` của plan này. Một
- * thay đổi vô ý trong compiler vì thế không hỏng "một test" — nó đổi NGHĨA của dữ liệu đã lưu.
- * Golden file là ảnh chụp có kiểm duyệt của nghĩa đó: đổi được, nhưng phải đổi CÓ CHỦ Ý và
- * diff phải nằm trong PR để người khác đọc.
+ * The compiler is the point everything else trusts: the worker runs exactly this plan, the
+ * dispatcher computes cost from this plan's `stepCount`, results are attributed to this
+ * plan's `contentHash`. An accidental change in the compiler therefore doesn't break "a
+ * test" — it changes the MEANING of already-stored data. A golden file is an audited
+ * snapshot of that meaning: it can change, but only DELIBERATELY, and the diff must sit in
+ * a PR for someone else to read.
  *
- * Cách chạy:
- *   pnpm -F @testkite/run-compiler test:golden                  # so khớp (CI, mặc định)
- *   UPDATE_GOLDEN=1 pnpm -F @testkite/run-compiler test:golden  # ghi lại golden, rồi ĐỌC DIFF
+ * How to run:
+ *   pnpm -F @testkite/run-compiler test:golden                  # compare (CI, default)
+ *   UPDATE_GOLDEN=1 pnpm -F @testkite/run-compiler test:golden  # rewrite golden, then READ THE DIFF
  *
- * `node:fs` ở đây KHÔNG phá luật "compiler PURE": file này là test, đọc fixture từ đĩa; không
- * một module production nào của package import nó (đường sinh plan vẫn thuần tính toán).
+ * `node:fs` here does NOT break the "compiler is PURE" rule: this file is a test, reading
+ * fixtures from disk; no production module in the package imports it (the plan-generation
+ * path is still pure computation).
  */
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
 const UPDATE_GOLDEN = process.env["UPDATE_GOLDEN"] === "1";
-const UPDATE_HINT = "chạy: UPDATE_GOLDEN=1 pnpm -F @testkite/run-compiler test:golden";
+const UPDATE_HINT = "run: UPDATE_GOLDEN=1 pnpm -F @testkite/run-compiler test:golden";
 
 interface LoadedFixture {
   readonly fixture: CompileFixture;
@@ -39,7 +41,7 @@ const FIXTURES = loadFixtures();
 
 function loadFixtures(): readonly LoadedFixture[] {
   if (!existsSync(FIXTURES_DIR)) {
-    throw new Error(`Không thấy thư mục fixtures: ${FIXTURES_DIR}`);
+    throw new Error(`Fixtures directory not found: ${FIXTURES_DIR}`);
   }
 
   const files = readdirSync(FIXTURES_DIR)
@@ -57,22 +59,22 @@ function goldenNameOf(file: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Hợp đồng của BỘ fixture (không phải của từng fixture)
+// The fixture SET's contract (not each individual fixture's)
 // ---------------------------------------------------------------------------
 
-describe("bộ golden fixtures", () => {
-  it("có ít nhất 20 fixture", () => {
+describe("golden fixture set", () => {
+  it("has at least 20 fixtures", () => {
     expect(FIXTURES.length).toBeGreaterThanOrEqual(20);
   });
 
-  it("tên trong fixture trùng tên file, và không trùng nhau", () => {
+  it("a fixture's name matches its file name, and no two are the same", () => {
     for (const { fixture, file } of FIXTURES) {
       expect(`${fixture.name}.json`).toBe(file);
     }
     expect(new Set(FIXTURES.map((f) => f.fixture.name)).size).toBe(FIXTURES.length);
   });
 
-  it("MỖI CompileErrorCode có ít nhất 1 fixture âm (luật §4: không code nào không có bằng chứng)", () => {
+  it("EVERY CompileErrorCode has at least 1 negative fixture (rule §4: no code goes unproven)", () => {
     const covered = new Set<CompileErrorCode>();
     for (const { fixture } of FIXTURES) for (const code of fixture.expectCodes) covered.add(code);
 
@@ -80,7 +82,7 @@ describe("bộ golden fixtures", () => {
     expect(missing).toEqual([]);
   });
 
-  it("MỖI construct có ít nhất 1 fixture dương", () => {
+  it("EVERY construct has at least 1 positive fixture", () => {
     const positives = FIXTURES.filter((f) => f.fixture.expect === "plan").map(
       (f) => f.fixture.input.snapshot,
     );
@@ -115,7 +117,7 @@ describe("bộ golden fixtures", () => {
     });
   });
 
-  it("không có golden mồ côi (fixture bị xoá phải kéo golden đi theo)", () => {
+  it("has no orphaned golden (deleting a fixture must delete its golden with it)", () => {
     const expected = new Set(FIXTURES.map((f) => f.goldenFile));
     const orphans = readdirSync(FIXTURES_DIR)
       .filter((file) => file.endsWith(".golden.json"))
@@ -124,13 +126,13 @@ describe("bộ golden fixtures", () => {
     expect(orphans).toEqual([]);
   });
 
-  it("UPDATE_GOLDEN không bao giờ được bật trong CI (nếu không golden tự viết lại chính nó)", () => {
+  it("UPDATE_GOLDEN must never be on in CI (otherwise golden rewrites itself)", () => {
     expect(UPDATE_GOLDEN && process.env["CI"] !== undefined).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Hợp đồng của TỪNG fixture
+// EACH fixture's own contract
 // ---------------------------------------------------------------------------
 
 describe("golden", () => {
@@ -148,7 +150,7 @@ describe("golden", () => {
   }
 });
 
-/** Fixture tự khai dương/âm; runner đối chiếu lời khai với thực tế TRƯỚC khi so golden. */
+/** A fixture declares itself positive/negative; the runner checks that claim against reality BEFORE comparing golden. */
 function assertExpectationHolds(fixture: CompileFixture, output: CompileOutput): void {
   const errorCodes = output.diagnostics
     .filter((d) => d.severity === "error")
@@ -165,8 +167,9 @@ function assertExpectationHolds(fixture: CompileFixture, output: CompileOutput):
 }
 
 /**
- * Luật nền của cả hệ: cùng input ⇒ cùng plan, cùng hash, mãi mãi. Compile lại NGAY trong test
- * là cách rẻ nhất để bắt một `Date.now()`/`Math.random()`/thứ tự Map lọt vào đường sinh plan.
+ * The whole system's foundational rule: same input ⇒ same plan, same hash, forever.
+ * Recompiling RIGHT HERE in the test is the cheapest way to catch a `Date.now()`/
+ * `Math.random()`/Map ordering bug that slipped into the plan-generation path.
  */
 function assertDeterministic(fixture: CompileFixture, output: CompileOutput): void {
   const again = compileRun(fixture.input);
@@ -175,9 +178,9 @@ function assertDeterministic(fixture: CompileFixture, output: CompileOutput): vo
 }
 
 /**
- * Secret KHÔNG BAO GIỜ được inline: plan là payload bất biến bị hash, lưu trữ và gửi tới
- * worker — giá trị secret lọt vào đó là lộ vĩnh viễn. Mọi `$secret:X` của snapshot phải còn
- * NGUYÊN VĂN trong plan.
+ * A secret is NEVER inlined: the plan is an immutable payload that gets hashed, stored,
+ * and sent to the worker — a secret value landing in there is exposed forever. Every
+ * `$secret:X` from the snapshot must still be VERBATIM in the plan.
  */
 function assertSecretsStayRefs(fixture: CompileFixture, output: CompileOutput): void {
   const { plan } = output;
@@ -199,16 +202,16 @@ function assertMatchesGolden(goldenFile: string, output: CompileOutput): void {
   }
 
   if (!existsSync(goldenPath)) {
-    throw new Error(`Thiếu golden "${goldenFile}" — ${UPDATE_HINT}`);
+    throw new Error(`Missing golden "${goldenFile}" — ${UPDATE_HINT}`);
   }
 
   expect(text).toBe(readFileSync(goldenPath, "utf8"));
 }
 
 /**
- * Golden = CompileOutput ở dạng CANONICAL (khoá sort đệ quy — đúng thứ tự đi vào SHA-256),
- * in thụt lề 2 để diff PR đọc được bằng mắt. `plan` vắng mặt ở fixture âm, đúng như hợp đồng
- * "có ≥1 error ⇒ không sinh plan".
+ * Golden = CompileOutput in its CANONICAL form (keys sorted recursively — the exact order
+ * fed into SHA-256), printed with 2-space indent so a PR diff is readable by eye. `plan` is
+ * absent for a negative fixture, exactly per the contract "≥1 error ⇒ no plan produced".
  */
 function goldenTextOf(output: CompileOutput): string {
   const canonical: unknown = JSON.parse(canonicalJson(output));
@@ -216,7 +219,7 @@ function goldenTextOf(output: CompileOutput): string {
 }
 
 // ---------------------------------------------------------------------------
-// Nguyên thuỷ
+// Primitives
 // ---------------------------------------------------------------------------
 
 function walkSteps(steps: readonly AuthoredStep[], visit: (step: AuthoredStep) => void): void {
@@ -226,7 +229,7 @@ function walkSteps(steps: readonly AuthoredStep[], visit: (step: AuthoredStep) =
   }
 }
 
-/** Số TỔ TIÊN của chuỗi prereq dài nhất trong snapshot (cắt ở 50 để fixture cycle không treo). */
+/** The ANCESTOR count of the longest prereq chain in the snapshot (capped at 50 so a cycle fixture doesn't hang). */
 function longestChain(snapshot: CompileSnapshot): number {
   let longest = 0;
 

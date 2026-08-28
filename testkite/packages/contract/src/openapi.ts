@@ -1,17 +1,19 @@
 /**
- * OpenAPI 3.1 SINH RA từ zod — zod là nguồn, file này chỉ là ống dẫn.
+ * OpenAPI 3.1 GENERATED from zod — zod is the source, this file is just the pipe.
  *
- * Thư viện: `zod-openapi` pin exact 4.2.4. Bản mới nhất (6.x) đòi peer zod ^4;
- * 4.2.4 là bản cuối phủ trọn dải `zod: ^3.24.1` của workspace. Chọn nó thay
- * `@asteasolutions/zod-to-openapi` vì nó KHÔNG cần `extendZodWithOpenApi(z)` —
- * không vá prototype module `zod` dùng chung, nên nạp `@testkite/contract`
- * không đổi hành vi zod của `@testkite/run-compiler` (package phải PURE).
+ * Library: `zod-openapi` pinned to exact 4.2.4. The latest release (6.x) requires
+ * peer zod ^4; 4.2.4 is the last one that fully covers the workspace's `zod: ^3.24.1`
+ * range. Chosen over `@asteasolutions/zod-to-openapi` because it does NOT need
+ * `extendZodWithOpenApi(z)` — it doesn't patch the shared `zod` module's prototype,
+ * so loading `@testkite/contract` doesn't change `@testkite/run-compiler`'s zod
+ * behavior (that package must stay PURE).
  *
- * M1 chỉ công bố CATALOG SCHEMA (`components.schemas`), chưa có `paths`:
- * chưa có route Fastify nào tồn tại, sinh path bây giờ là bịa tài liệu.
- * OpenAPI 3.1 cho phép thiếu `paths` (khác 3.0). M2 gắn route thật vào đây:
- * `paths` sinh TỪ `ROUTES` — cùng mảng mà router Fastify và bộ test cross-tenant
- * L3 đọc, nên tài liệu không thể lệch khỏi thứ chạy thật.
+ * M1 only publishes the CATALOG SCHEMA (`components.schemas`), no `paths` yet:
+ * no Fastify route exists yet, so generating paths now would be fabricating
+ * documentation. OpenAPI 3.1 allows omitting `paths` (unlike 3.0). M2 wires real
+ * routes in here: `paths` is generated FROM `ROUTES` — the same array the Fastify
+ * router and the L3 cross-tenant test suite read, so the docs can't drift from
+ * what actually runs.
  */
 import { createDocument } from "zod-openapi";
 import type {
@@ -41,8 +43,8 @@ import {
 } from "./schemas/index.js";
 
 /**
- * Thứ tự KHÔNG được đảo lung tung: nó là thứ tự key trong openapi.json commit,
- * mà gate drift so byte. Thêm schema mới thì THÊM VÀO CUỐI.
+ * Order MUST NOT be shuffled: it's the key order in the committed openapi.json,
+ * which the drift gate compares byte-for-byte. Add a new schema at the END.
  */
 export const OPENAPI_SCHEMA_NAMES = [
   "Locator",
@@ -80,7 +82,7 @@ const STATUS_TEXT: Readonly<Record<string, string>> = {
   429: "Chạm quota",
 };
 
-/** Key hợp lệ của `responses` theo OpenAPI: mã trạng thái bắt đầu bằng 1..5. */
+/** A valid OpenAPI `responses` key: a status code starting with 1..5. */
 type StatusKey = `${1 | 2 | 3 | 4 | 5}${string}`;
 
 function responsesOf(r: RouteDescriptor): ZodOpenApiResponsesObject {
@@ -90,8 +92,8 @@ function responsesOf(r: RouteDescriptor): ZodOpenApiResponsesObject {
       description: STATUS_TEXT[status] ?? status,
       content: { "application/json": { schema } },
     };
-    // `Object.entries` làm rụng kiểu key về `string`; nguồn là `Record<number,…>`
-    // của descriptor nên mọi key đều là mã trạng thái thật.
+    // `Object.entries` widens the key type to `string`; the source is the descriptor's
+    // `Record<number,…>` so every key is really a status code.
     responses[status as StatusKey] = response;
   }
   return responses;
@@ -155,7 +157,7 @@ export function buildOpenApiDocument(): oas31.OpenAPIObject {
   });
 }
 
-/** Dạng byte CHÍNH THỨC của spec: 2 space indent, newline cuối file. */
+/** The CANONICAL byte form of the spec: 2-space indent, trailing newline. */
 export function serializeOpenApiDocument(): string {
   return `${JSON.stringify(buildOpenApiDocument(), null, 2)}\n`;
 }

@@ -3,7 +3,7 @@
     {
       "caseId": "calls-recursive-group",
       "code": "step_group_depth_exceeded",
-      "message": "Nở step group \"grp-recursive\" vượt trần 5 tầng (đường nở: grp-recursive → grp-recursive → grp-recursive → grp-recursive → grp-recursive → grp-recursive)",
+      "message": "Expanding step group \"grp-recursive\" exceeds the 5-level cap (expansion path: grp-recursive → grp-recursive → grp-recursive → grp-recursive → grp-recursive → grp-recursive)",
       "severity": "error",
       "stepOrdinal": 2
     }

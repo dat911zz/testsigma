@@ -3,16 +3,16 @@ import { buildOpenApiDocument, OPENAPI_SCHEMA_NAMES, serializeOpenApiDocument } 
 import { ROUTES, pathParamNames } from "./routes/index.js";
 
 describe("buildOpenApiDocument", () => {
-  it("là OpenAPI 3.1.0", () => {
+  it("is OpenAPI 3.1.0", () => {
     expect(buildOpenApiDocument().openapi).toBe("3.1.0");
   });
 
-  it("đăng ký đủ mọi schema công bố", () => {
+  it("registers every published schema", () => {
     const schemas = buildOpenApiDocument().components?.schemas ?? {};
     for (const name of OPENAPI_SCHEMA_NAMES) expect(Object.keys(schemas)).toContain(name);
   });
 
-  it("literal dịch thành `const` — idiom 3.1, không phải enum 1 phần tử của 3.0", () => {
+  it("translates a literal to `const` — the 3.1 idiom, not 3.0's single-value enum", () => {
     const step = buildOpenApiDocument().components?.schemas?.["AuthoredStep"] as {
       oneOf: { properties: { kind: { const?: string; enum?: string[] } } }[];
     };
@@ -21,7 +21,7 @@ describe("buildOpenApiDocument", () => {
     expect(step.oneOf[0]?.properties.kind.enum).toBeUndefined();
   });
 
-  it("children của block trỏ ngược về chính AuthoredStep ($ref đệ quy)", () => {
+  it("a block's children point back to AuthoredStep itself (recursive $ref)", () => {
     const step = buildOpenApiDocument().components?.schemas?.["AuthoredStep"] as {
       oneOf: { properties: Record<string, { items?: { $ref?: string } }> }[];
     };
@@ -29,7 +29,7 @@ describe("buildOpenApiDocument", () => {
     expect(withChildren?.properties["children"]?.items?.$ref).toBe("#/components/schemas/AuthoredStep");
   });
 
-  it("mọi $ref trong tài liệu đều trỏ tới một schema có thật", () => {
+  it("every $ref in the document points to a real schema", () => {
     const doc = buildOpenApiDocument();
     const names = new Set(Object.keys(doc.components?.schemas ?? {}));
     const refs = [...JSON.stringify(doc).matchAll(/"\$ref":"#\/components\/schemas\/([^"]+)"/g)].map((m) => m[1]);
@@ -38,17 +38,17 @@ describe("buildOpenApiDocument", () => {
   });
 });
 
-describe("paths OpenAPI", () => {
-  it("mọi route trong ROUTES có mặt trong document", () => {
+describe("OpenAPI paths", () => {
+  it("every route in ROUTES is present in the document", () => {
     const doc = buildOpenApiDocument();
     for (const r of ROUTES) {
       const item = doc.paths?.[r.path] as Record<string, { operationId?: string }> | undefined;
-      expect(item, `thiếu path ${r.path}`).toBeDefined();
+      expect(item, `missing path ${r.path}`).toBeDefined();
       expect(item?.[r.method]?.operationId).toBe(r.operationId);
     }
   });
 
-  it("path param sinh ra parameter format uuid — đầu vào của bộ test L3", () => {
+  it("a path param generates a uuid-format parameter — input to the L3 test suite", () => {
     const doc = buildOpenApiDocument();
     const withParams = ROUTES.filter((r) => pathParamNames(r.path).length > 0);
     expect(withParams.length).toBeGreaterThan(0);
@@ -62,7 +62,7 @@ describe("paths OpenAPI", () => {
     }
   });
 
-  it("route auth=required khai securitySchemes bearer", () => {
+  it("an auth=required route declares the bearer securityScheme", () => {
     const doc = buildOpenApiDocument();
     expect(doc.components?.securitySchemes?.["bearerAuth"]).toBeDefined();
     const secured = ROUTES.find((r) => r.auth === "required");
@@ -72,11 +72,11 @@ describe("paths OpenAPI", () => {
 });
 
 describe("serializeOpenApiDocument", () => {
-  it("sinh 2 lần ra byte GIỐNG HỆT — điều kiện sống của gate drift", () => {
+  it("produces IDENTICAL bytes on two runs — the drift gate's life condition", () => {
     expect(serializeOpenApiDocument()).toBe(serializeOpenApiDocument());
   });
 
-  it("kết thúc bằng newline — POSIX, tránh diff giả ở dòng cuối", () => {
+  it("ends with a newline — POSIX, avoids a fake diff on the last line", () => {
     expect(serializeOpenApiDocument().endsWith("\n")).toBe(true);
   });
 });

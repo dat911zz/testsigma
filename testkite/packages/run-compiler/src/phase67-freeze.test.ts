@@ -13,18 +13,18 @@ import {
 import { actionOn, element, groupCall, kase, profile, snap } from "./test-support.js";
 import type { AuthoredCase, AuthoredStep, CompileSnapshot, DataRow } from "./snapshot.js";
 
-/** Không dùng `!`: hoặc có plan, hoặc test hỏng ngay tại đây với thông điệp rõ. */
+/** No `!` used: either there's a plan, or the test fails right here with a clear message. */
 function planOf(out: CompileOutput): RunPlan {
   expect(out.diagnostics).toEqual([]);
   const { plan } = out;
-  if (plan === undefined) throw new Error("compileRun không trả plan dù diagnostics rỗng");
+  if (plan === undefined) throw new Error("compileRun returned no plan despite empty diagnostics");
   return plan;
 }
 
 // ---------------------------------------------------------------------------
-// Snapshot "kitchen-sink nhỏ": prereq chain (login → checkout) + step group
-// (grp-header inline 2 step) + data-driven (2 hàng). Đủ để một plan thật đi qua
-// trọn phase 1→7 mà vẫn đọc được bằng mắt.
+// A "small kitchen-sink" snapshot: prereq chain (login → checkout) + a step group
+// (grp-header inlining 2 steps) + data-driven (2 rows). Enough for a real plan to go
+// through the full phase 1→7 pipeline while still being readable by eye.
 // ---------------------------------------------------------------------------
 
 const GROUP: AuthoredCase = kase(
@@ -43,7 +43,7 @@ const ROWS: readonly DataRow[] = [
   { label: "qty-999", expectedToFail: true, values: { qty: "999" } },
 ];
 
-/** `qtyArgs` để test đổi 1 arg / đổi THỨ TỰ key mà không đổi gì khác. */
+/** `qtyArgs` lets a test change 1 arg / change key ORDER without changing anything else. */
 function sinkSnapshot(qtyArgs: Readonly<Record<string, string>> = { value: "$data:qty" }): CompileSnapshot {
   const checkoutSteps: readonly AuthoredStep[] = [
     groupCall(1, "grp-header"),
@@ -62,8 +62,8 @@ function sinkSnapshot(qtyArgs: Readonly<Record<string, string>> = { value: "$dat
   });
 }
 
-describe("phase 7 — canonicalize: cùng NỘI DUNG ⇒ cùng chuỗi, bất kể thứ tự key", () => {
-  it("sort key ĐỆ QUY, không chỉ tầng ngoài", () => {
+describe("phase 7 — canonicalize: same CONTENT ⇒ same string, regardless of key order", () => {
+  it("sorts keys RECURSIVELY, not just the outer level", () => {
     const a = canonicalJson({ b: { z: 1, a: [{ y: 2, x: 3 }] }, a: "x" });
     const b = canonicalJson({ a: "x", b: { a: [{ x: 3, y: 2 }], z: 1 } });
 
@@ -71,27 +71,27 @@ describe("phase 7 — canonicalize: cùng NỘI DUNG ⇒ cùng chuỗi, bất k�
     expect(a).toBe('{"a":"x","b":{"a":[{"x":3,"y":2}],"z":1}}');
   });
 
-  it("thứ tự MẢNG là ngữ nghĩa (thứ tự chạy) ⇒ KHÔNG được sort", () => {
+  it("ARRAY order is semantic (execution order) ⇒ must NOT be sorted", () => {
     expect(canonicalJson(["b", "a"])).not.toBe(canonicalJson(["a", "b"]));
   });
 
-  it("field optional vắng mặt ≡ field mang undefined (exactOptionalPropertyTypes)", () => {
+  it("an absent optional field ≡ a field holding undefined (exactOptionalPropertyTypes)", () => {
     expect(canonicalJson({ a: 1, b: undefined })).toBe(canonicalJson({ a: 1 }));
   });
 
-  it("từ chối giá trị không phải JSON thay vì hash im lặng một payload sai", () => {
-    expect(() => canonicalJson({ a: Number.NaN })).toThrow(/NaN|hữu hạn/i);
+  it("rejects a non-JSON value instead of silently hashing a wrong payload", () => {
+    expect(() => canonicalJson({ a: Number.NaN })).toThrow(/NaN|finite/i);
     expect(() => canonicalJson({ a: () => 1 })).toThrow();
     expect(() => canonicalJson(undefined)).toThrow();
   });
 
-  it("chuỗi unicode/dấu tiếng Việt được escape ổn định", () => {
+  it("unicode/Vietnamese-diacritic strings are escaped stably", () => {
     expect(canonicalJson({ "Họ Tên": "Quản trị" })).toBe('{"Họ Tên":"Quản trị"}');
   });
 });
 
-describe("phase 7 — contentHash = SHA-256 của payload canonical", () => {
-  it("đúng là SHA-256 hex của canonicalJson, không phải digest tự chế", () => {
+describe("phase 7 — contentHash = SHA-256 of the canonical payload", () => {
+  it("is exactly SHA-256 hex of canonicalJson, not a homemade digest", () => {
     const value = { b: 1, a: [2, 3] };
     const expected = createHash("sha256").update(canonicalJson(value), "utf8").digest("hex");
 
@@ -100,29 +100,29 @@ describe("phase 7 — contentHash = SHA-256 của payload canonical", () => {
   });
 });
 
-describe("phase 6 — timeout chain = clamp(90 + 12×steps, 180..900)", () => {
-  it("sàn 180s cho chain ngắn", () => {
+describe("phase 6 — chain timeout = clamp(90 + 12×steps, 180..900)", () => {
+  it("180s floor for a short chain", () => {
     expect(chainTimeoutSeconds(0)).toBe(MIN_CHAIN_TIMEOUT_SECONDS);
-    expect(chainTimeoutSeconds(7)).toBe(180); // 90+84=174 → sàn
+    expect(chainTimeoutSeconds(7)).toBe(180); // 90+84=174 → floor
   });
 
-  it("vùng tuyến tính giữa hai trần", () => {
+  it("the linear region between the two caps", () => {
     expect(chainTimeoutSeconds(8)).toBe(186);
     expect(chainTimeoutSeconds(30)).toBe(450);
     expect(chainTimeoutSeconds(67)).toBe(894);
   });
 
-  it("trần 900s cho chain khổng lồ", () => {
-    expect(chainTimeoutSeconds(68)).toBe(MAX_CHAIN_TIMEOUT_SECONDS); // 90+816=906 → trần
+  it("900s cap for a huge chain", () => {
+    expect(chainTimeoutSeconds(68)).toBe(MAX_CHAIN_TIMEOUT_SECONDS); // 90+816=906 → cap
     expect(chainTimeoutSeconds(10_000)).toBe(900);
   });
 
-  it("countSteps đếm ĐỆ QUY qua children và cộng dồn mọi iteration của chain", () => {
+  it("countSteps counts RECURSIVELY through children and sums every iteration of the chain", () => {
     const plan = planOf(compileRun({ snapshot: sinkSnapshot() }));
     const chain = plan.chains[0];
-    if (chain === undefined) throw new Error("plan không có chain nào");
+    if (chain === undefined) throw new Error("plan has no chains");
 
-    // login 2 step + checkout ×2 hàng × (2 step group đã inline + 1 step) = 2 + 6 = 8
+    // login 2 steps + checkout ×2 rows × (2 inlined step-group steps + 1 step) = 2 + 6 = 8
     expect(countSteps(chain.cases)).toBe(8);
     expect(chain.stepCount).toBe(8);
     expect(chain.timeoutSeconds).toBe(chainTimeoutSeconds(8));
@@ -130,8 +130,8 @@ describe("phase 6 — timeout chain = clamp(90 + 12×steps, 180..900)", () => {
   });
 });
 
-describe("phase 7 — freeze: hash ổn định theo NỘI DUNG", () => {
-  it("cùng input ⇒ cùng contentHash qua 2 lần gọi (không timestamp, không random)", () => {
+describe("phase 7 — freeze: hash is stable by CONTENT", () => {
+  it("same input ⇒ same contentHash across 2 calls (no timestamp, no random)", () => {
     const first = planOf(compileRun({ snapshot: sinkSnapshot() }));
     const second = planOf(compileRun({ snapshot: sinkSnapshot() }));
 
@@ -139,21 +139,21 @@ describe("phase 7 — freeze: hash ổn định theo NỘI DUNG", () => {
     expect(first.contentHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it("đổi ĐÚNG 1 arg ⇒ hash đổi", () => {
+  it("changing EXACTLY 1 arg ⇒ the hash changes", () => {
     const base = planOf(compileRun({ snapshot: sinkSnapshot({ value: "$data:qty" }) }));
     const changed = planOf(compileRun({ snapshot: sinkSnapshot({ value: "sửa-tay" }) }));
 
     expect(changed.contentHash).not.toBe(base.contentHash);
   });
 
-  it("đổi THỨ TỰ key trong args ⇒ hash KHÔNG đổi", () => {
+  it("changing key ORDER within args ⇒ the hash does NOT change", () => {
     const abc = planOf(compileRun({ snapshot: sinkSnapshot({ element: "el-qty", value: "x" }) }));
     const cba = planOf(compileRun({ snapshot: sinkSnapshot({ value: "x", element: "el-qty" }) }));
 
     expect(cba.contentHash).toBe(abc.contentHash);
   });
 
-  it("đổi tenant (teamId) ⇒ hash đổi — plan bị đóng dấu tenant ở phase 6", () => {
+  it("changing the tenant (teamId) ⇒ the hash changes — the plan is stamped with tenant in phase 6", () => {
     const base = sinkSnapshot();
     const otherTeam: CompileSnapshot = { ...base, teamId: "t2" };
 
@@ -162,14 +162,14 @@ describe("phase 7 — freeze: hash ổn định theo NỘI DUNG", () => {
     );
   });
 
-  it("đổi lane ⇒ hash đổi (policy nằm TRONG payload bị hash)", () => {
+  it("changing the lane ⇒ the hash changes (policy is INSIDE the hashed payload)", () => {
     const batch = planOf(compileRun({ snapshot: sinkSnapshot(), lane: "batch" }));
     const interactive = planOf(compileRun({ snapshot: sinkSnapshot(), lane: "interactive" }));
 
     expect(interactive.contentHash).not.toBe(batch.contentHash);
   });
 
-  it("contentHash KHÔNG tự tham gia payload bị hash (hash của phần còn lại là ổn định)", () => {
+  it("contentHash does NOT itself join the hashed payload (the hash of the rest is stable)", () => {
     const plan = planOf(compileRun({ snapshot: sinkSnapshot() }));
     const { contentHash, ...payload } = plan;
 
@@ -178,7 +178,7 @@ describe("phase 7 — freeze: hash ổn định theo NỘI DUNG", () => {
 });
 
 describe("phase 6 — stamp policy/tenant", () => {
-  it("planFormatVersion=1 (payload THÔ, chưa nén zstd) + tenant/project từ snapshot", () => {
+  it("planFormatVersion=1 (RAW payload, not zstd-compressed) + tenant/project from the snapshot", () => {
     const plan = planOf(compileRun({ snapshot: sinkSnapshot() }));
 
     expect(plan.planFormatVersion).toBe(PLAN_FORMAT_VERSION);
@@ -187,7 +187,7 @@ describe("phase 6 — stamp policy/tenant", () => {
     expect(plan.projectId).toBe("p1");
   });
 
-  it("mặc định lane=batch ⇒ screenshots=failure; lane=interactive ⇒ all (§5.2)", () => {
+  it("default lane=batch ⇒ screenshots=failure; lane=interactive ⇒ all (§5.2)", () => {
     expect(planOf(compileRun({ snapshot: sinkSnapshot() })).policy).toEqual({
       lane: "batch",
       engine: "chromium-headless-shell",
@@ -199,13 +199,13 @@ describe("phase 6 — stamp policy/tenant", () => {
     expect(planOf(compileRun({ snapshot: sinkSnapshot(), lane: "interactive" })).policy.screenshots).toBe("all");
   });
 
-  it("override screenshots per-run thắng mặc định của lane", () => {
+  it("a per-run screenshots override beats the lane's default", () => {
     const plan = planOf(compileRun({ snapshot: sinkSnapshot(), screenshots: "none" }));
     expect(plan.policy.screenshots).toBe("none");
   });
 });
 
-describe("phase 7 — có ERROR ⇒ KHÔNG có plan, nhưng diagnostics đầy đủ", () => {
+describe("phase 7 — an ERROR ⇒ NO plan, but complete diagnostics", () => {
   function brokenSnapshot(): CompileSnapshot {
     const login = kase("login", [actionOn(1, "web.click", "el-chua-co-locator")]);
     const main = kase(
@@ -218,17 +218,17 @@ describe("phase 7 — có ERROR ⇒ KHÔNG có plan, nhưng diagnostics đầy �
     });
   }
 
-  it("plan === undefined khi có ≥1 diagnostic severity=error", () => {
+  it("plan === undefined when there's ≥1 diagnostic with severity=error", () => {
     const out = compileRun({ snapshot: brokenSnapshot() });
 
     expect(out.plan).toBeUndefined();
     expect(out.diagnostics.some((d) => d.severity === "error")).toBe(true);
   });
 
-  it("GOM đủ mọi lỗi của mọi phase, không first-fail (xếp theo dòng chảy phase)", () => {
+  it("COLLECTS every error from every phase, no first-fail (ordered by phase flow)", () => {
     const out = compileRun({ snapshot: brokenSnapshot() });
 
-    // phase 3 của cả chain trước, rồi phase 4+5 của cả chain — đọc như output compiler.
+    // Phase 3 for the whole chain first, then phase 4+5 for the whole chain — reads like a compiler's output.
     expect(out.diagnostics.map((d) => [d.caseId, d.code])).toEqual([
       ["main", "unknown_verb"],
       ["login", "element_pending_locator"],
@@ -236,7 +236,7 @@ describe("phase 7 — có ERROR ⇒ KHÔNG có plan, nhưng diagnostics đầy �
     ]);
   });
 
-  it("lỗi phase 1 (chain hỏng) vẫn ra diagnostics, không plan, không ném", () => {
+  it("a phase 1 error (broken chain) still produces diagnostics, no plan, no throw", () => {
     const a = kase("a", [], { prereqCaseId: "b" });
     const b = kase("b", [], { prereqCaseId: "a" });
     const out = compileRun({ snapshot: snap([a, b], ["a"]) });
@@ -245,7 +245,7 @@ describe("phase 7 — có ERROR ⇒ KHÔNG có plan, nhưng diagnostics đầy �
     expect(out.diagnostics.map((d) => d.code)).toEqual(["prereq_cycle"]);
   });
 
-  it("cùng một prereq hỏng dùng chung bởi 2 target ⇒ diagnostic KHÔNG nhân bản", () => {
+  it("the same broken prereq shared by 2 targets ⇒ the diagnostic is NOT duplicated", () => {
     const login = kase("login", [actionOn(1, "web.click", "el-mat")]);
     const one = kase("one", [], { prereqCaseId: "login" });
     const two = kase("two", [], { prereqCaseId: "login" });
@@ -255,33 +255,34 @@ describe("phase 7 — có ERROR ⇒ KHÔNG có plan, nhưng diagnostics đầy �
   });
 });
 
-describe("dedupeDiagnostics — khoá gộp phải là SONG ÁNH với bộ field", () => {
+describe("dedupeDiagnostics — the dedup key must be a BIJECTION over the field set", () => {
   /**
-   * Ký tự phân cách dựng bằng `fromCharCode`, KHÔNG bằng escape trong literal: một byte
-   * điều khiển thật lọt vào source làm git coi cả file là binary — diff/PR view/grep mù.
+   * The separator character is built with `fromCharCode`, NOT a literal escape: a real
+   * control byte landing in the source would make git treat the whole file as binary —
+   * blind diffs/PR view/grep.
    */
   const SEP = String.fromCharCode(0);
   const BASE = { severity: "error", code: "element_not_found" } as const;
 
-  it("hai diagnostic KHÁC nhau không bị gộp, dù caseId/message chứa ký tự phân cách", () => {
-    // Nối field bằng một dấu phân cách thì hai bộ dưới đây ra CÙNG một chuỗi:
+  it("two DIFFERENT diagnostics are not merged, even when caseId/message contain the separator char", () => {
+    // Joining fields with one separator makes the two sets below produce the SAME string:
     //   error SEP element_not_found SEP a SEP 1 SEP 2 SEP m
-    // caseId đến từ dump hệ cũ, message là free-text — không field nào được phép mang
-    // vai trò cú pháp trong khoá.
+    // caseId comes from the legacy dump, message is free text — no field is allowed to
+    // carry a syntactic role in the key.
     const a: CompileDiagnostic = { ...BASE, caseId: `a${SEP}1`, stepOrdinal: 2, message: "m" };
     const b: CompileDiagnostic = { ...BASE, caseId: "a", stepOrdinal: 1, message: `2${SEP}m` };
 
     expect(dedupeDiagnostics([a, b])).toEqual([a, b]);
   });
 
-  it("`stepOrdinal` vắng mặt khác `stepOrdinal` có mặt (không quy về cùng chuỗi thay thế)", () => {
+  it("`stepOrdinal` absent differs from `stepOrdinal` present (not collapsed to the same substitute string)", () => {
     const withOrdinal: CompileDiagnostic = { ...BASE, caseId: "c", stepOrdinal: 1, message: "m" };
     const noOrdinal: CompileDiagnostic = { ...BASE, caseId: "c", message: "m" };
 
     expect(dedupeDiagnostics([withOrdinal, noOrdinal])).toEqual([withOrdinal, noOrdinal]);
   });
 
-  it("bản sao y hệt VẪN bị gộp, giữ bản xuất hiện đầu và thứ tự gốc", () => {
+  it("an exact duplicate IS STILL merged, keeping the first occurrence and original order", () => {
     const x: CompileDiagnostic = { ...BASE, caseId: "c", stepOrdinal: 1, message: "m" };
     const y: CompileDiagnostic = { ...BASE, caseId: "d", stepOrdinal: 1, message: "m" };
 
@@ -289,13 +290,13 @@ describe("dedupeDiagnostics — khoá gộp phải là SONG ÁNH với bộ fiel
   });
 });
 
-describe("compileRun — pipeline phase 1→7 end-to-end", () => {
-  it("chain giữ đúng thứ tự thực thi: prereq trước, rồi từng iteration data-driven", () => {
+describe("compileRun — the phase 1→7 pipeline end-to-end", () => {
+  it("a chain keeps correct execution order: prereq first, then each data-driven iteration", () => {
     const plan = planOf(compileRun({ snapshot: sinkSnapshot() }));
 
     expect(plan.chains.map((c) => c.chainKey)).toEqual(["checkout"]);
     const chain = plan.chains[0];
-    if (chain === undefined) throw new Error("plan không có chain nào");
+    if (chain === undefined) throw new Error("plan has no chains");
 
     expect(chain.cases.map((c) => [c.caseId, c.iterationLabel])).toEqual([
       ["login", undefined],
@@ -306,7 +307,7 @@ describe("compileRun — pipeline phase 1→7 end-to-end", () => {
     expect(chain.cases.map((c) => c.expectedToFail)).toEqual([false, false, true]);
   });
 
-  it("step group đã inline phẳng + giữ provenance groupPath; data/env đã merge; secret VẪN là ref", () => {
+  it("the step group is inlined flat + keeps groupPath provenance; data/env are merged; secret is STILL a ref", () => {
     const plan = planOf(compileRun({ snapshot: sinkSnapshot() }));
     const [login, firstRow] = plan.chains[0]?.cases ?? [];
 
@@ -320,7 +321,7 @@ describe("compileRun — pipeline phase 1→7 end-to-end", () => {
     expect(firstRow?.steps.at(-1)?.args).toEqual({ value: "1" });
   });
 
-  it("step action mang LocatorSet đã ghim (worker không tra lại bảng element)", () => {
+  it("an action step carries a pinned LocatorSet (the worker never re-queries the element table)", () => {
     const plan = planOf(compileRun({ snapshot: sinkSnapshot() }));
     const step = plan.chains[0]?.cases[0]?.steps[0];
 
@@ -332,7 +333,7 @@ describe("compileRun — pipeline phase 1→7 end-to-end", () => {
     });
   });
 
-  it("mỗi target là MỘT chain riêng, giữ thứ tự targetCaseIds", () => {
+  it("each target is ITS OWN chain, targetCaseIds order preserved", () => {
     const login = kase("login", [actionOn(1, "web.click", "el-ok")]);
     const one = kase("one", [actionOn(1, "web.click", "el-ok")], { prereqCaseId: "login" });
     const two = kase("two", [actionOn(1, "web.click", "el-ok")], { prereqCaseId: "login" });
@@ -345,10 +346,10 @@ describe("compileRun — pipeline phase 1→7 end-to-end", () => {
       ["login", "two"],
       ["login", "one"],
     ]);
-    expect(plan.chains.map((c) => c.timeoutSeconds)).toEqual([180, 180]); // 90+24 → sàn
+    expect(plan.chains.map((c) => c.timeoutSeconds)).toEqual([180, 180]); // 90+24 → floor
   });
 
-  it("snapshot rỗng ⇒ plan rỗng hợp lệ (vẫn có hash), không ném", () => {
+  it("an empty snapshot ⇒ a valid empty plan (still has a hash), no throw", () => {
     const plan = planOf(compileRun({ snapshot: snap([], []) }));
 
     expect(plan.chains).toEqual([]);

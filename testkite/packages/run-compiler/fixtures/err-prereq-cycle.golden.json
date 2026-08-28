@@ -3,7 +3,7 @@
     {
       "caseId": "case-a",
       "code": "prereq_cycle",
-      "message": "Chuỗi prereq của \"case-a\" chứa vòng lặp tại \"case-a\"",
+      "message": "Prereq chain of \"case-a\" contains a cycle at \"case-a\"",
       "severity": "error"
     }
   ]

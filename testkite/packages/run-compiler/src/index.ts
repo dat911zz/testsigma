@@ -1,22 +1,23 @@
 /**
- * @testkite/run-compiler — TRÁI TIM của TestKite (docs/SYSTEM_DESIGN.md §4).
+ * @testkite/run-compiler — the HEART of TestKite (docs/SYSTEM_DESIGN.md §4).
  *
- * Pure function: (scope, snapshot dữ liệu authoring) → RunPlan BẤT BIẾN, content-hashed.
- * - Worker KHÔNG BAO GIỜ đọc bảng authoring — chỉ nhận plan đã freeze.
- * - Mọi lỗi (verb chưa port, element pending_locator, chu trình prereq) bắt TRƯỚC
- *   khi bất kỳ browser nào khởi động → verdict=compile_error, hoàn quota.
- * - Golden test (T1): cùng input ⇒ cùng content_hash, mọi CompileErrorCode có fixture âm.
+ * Pure function: (scope, an authoring data snapshot) → an IMMUTABLE, content-hashed RunPlan.
+ * - The worker NEVER reads authoring tables — it only receives a frozen plan.
+ * - Every error (a verb not yet ported, element pending_locator, a prereq cycle) is caught
+ *   BEFORE any browser starts → verdict=compile_error, quota refunded.
+ * - Golden test (T1): same input ⇒ same content_hash, every CompileErrorCode has a negative fixture.
  *
- * 9 phase (0 và 7.5–9 nằm ở orchestration; package này thuần 1→7):
- *  1. resolve chuỗi prereq (cycle check, depth ≤ 5, GHIM REVISION —
- *     schedule/CI chạy bản 'ready': QA sửa giữa đêm không đổi gì đang bay)  → phase1-chains.ts
- *  2. nở cấu trúc: step group inline ≤ 5 (local | subscribed frozen snapshot),
- *     if/loop → cây block, data-driven fan-out + expected_to_fail            → phase2-expand.ts
- *  3. bind verb → op registry (GOM MỌI LỖI, không first-fail)                → phase3-bind.ts
- *  4. element → LocatorSet (pending_locator ⇒ diagnostic riêng)              → phase45-resolve.ts
- *  5. merge data/env; secret CHỈ là $secretRef — không bao giờ giá trị       → phase45-resolve.ts
- *  6. stamp policy/tenant (timeout, retry=infra-only, screenshots theo lane) → phase67-freeze.ts
- *  7. freeze: canonicalize → SHA-256 → planFormatVersion (zstd: TODO M2)     → phase67-freeze.ts
+ * 9 phases (0 and 7.5–9 live in orchestration; this package is purely 1→7):
+ *  1. resolve the prereq chain (cycle check, depth ≤ 5, PIN THE REVISION —
+ *     schedule/CI runs the 'ready' version: a QA's midnight edit doesn't change what's
+ *     in flight)                                                          → phase1-chains.ts
+ *  2. expand structure: inline step groups ≤ 5 deep (local | subscribed frozen snapshot),
+ *     if/loop → block tree, data-driven fan-out + expected_to_fail          → phase2-expand.ts
+ *  3. bind verb → op registry (COLLECT EVERY ERROR, no first-fail)          → phase3-bind.ts
+ *  4. element → LocatorSet (pending_locator ⇒ its own diagnostic)           → phase45-resolve.ts
+ *  5. merge data/env; a secret is ONLY a $secretRef — never the value       → phase45-resolve.ts
+ *  6. stamp policy/tenant (timeout, retry=infra-only, screenshots per lane) → phase67-freeze.ts
+ *  7. freeze: canonicalize → SHA-256 → planFormatVersion (zstd: TODO M2)    → phase67-freeze.ts
  */
 import type { CompileErrorCode } from "@testkite/contract";
 import { resolveChains } from "./phase1-chains.js";
@@ -28,9 +29,10 @@ import type { FrozenChain, RunLane, ScreenshotPolicy } from "./phase67-freeze.js
 import type { CompileSnapshot } from "./snapshot.js";
 
 /**
- * Danh mục lỗi compile SỐNG Ở `@testkite/contract` (biên API và compiler phải cùng
- * một danh sách; contract không import ngược được nên contract là bên sở hữu).
- * Re-export ở đây để mọi call-site cũ — kể cả golden suite — không phải đổi import.
+ * The compile error catalog LIVES IN `@testkite/contract` (the API boundary and the
+ * compiler must share one list; contract can't import back, so contract owns it).
+ * Re-exported here so every existing call site — including the golden suite — doesn't
+ * have to change its import.
  */
 export { COMPILE_ERROR_CODES } from "@testkite/contract";
 export type { CompileErrorCode } from "@testkite/contract";
@@ -43,7 +45,7 @@ export interface CompileDiagnostic {
   readonly message: string;
 }
 
-// Bề mặt công khai của plan — kiểu do phase sinh ra nó sở hữu, index chỉ tái xuất.
+// Public surface of the plan — owned by the type from the phase that generates it, index only re-exports.
 export { PLAN_FORMAT_VERSION, canonicalJson, chainTimeoutSeconds, contentHashOf, countSteps, freezePlan } from "./phase67-freeze.js";
 export type {
   CasePlan,
@@ -60,30 +62,32 @@ export type * from "./snapshot.js";
 import type { RunPlan } from "./phase67-freeze.js";
 
 export interface CompileInput {
-  /** Snapshot authoring đã fetch sẵn — compiler KHÔNG tự query DB, đó là điều giữ hàm pure. */
+  /** A pre-fetched authoring snapshot — the compiler does NOT query the DB itself; that's what keeps the function pure. */
   readonly snapshot: CompileSnapshot;
-  /** Vắng mặt ⇒ "batch" (đường chạy đêm/CI). */
+  /** Absent ⇒ "batch" (the nightly/CI run path). */
   readonly lane?: RunLane;
-  /** Override per-run; vắng mặt ⇒ mặc định theo lane (§5.2). */
+  /** Per-run override; absent ⇒ defaults by lane (§5.2). */
   readonly screenshots?: ScreenshotPolicy;
 }
 
 export interface CompileOutput {
-  readonly plan?: RunPlan; // undefined khi có ít nhất 1 diagnostic severity=error
+  readonly plan?: RunPlan; // undefined when there's at least 1 diagnostic with severity=error
   readonly diagnostics: readonly CompileDiagnostic[];
 }
 
 /**
- * Chạy trọn phase 1→7.
+ * Runs the full phase 1→7 pipeline.
  *
- * Hai luật chi phối hình dạng của hàm này:
- *  - GOM MỌI LỖI, không first-fail: mọi phase đều chạy đến hết trên mọi chain, diagnostic
- *    được cộng dồn. Tác giả sửa MỘT lượt, không phải compile lại 6 lần để lộ 6 lỗi.
- *  - Có ≥1 `severity: "error"` ⇒ KHÔNG sinh plan. Plan nửa vời còn nguy hiểm hơn không có
- *    plan: nó chạy được, tốn tiền browser, rồi fail vì thứ đã biết từ compile-time.
+ * Two rules govern this function's shape:
+ *  - COLLECT EVERY ERROR, no first-fail: every phase runs to completion on every chain,
+ *    diagnostics accumulate. The author fixes everything in ONE pass, not 6 recompiles to
+ *    surface 6 errors.
+ *  - ≥1 `severity: "error"` ⇒ NO plan is produced. A half-baked plan is more dangerous than
+ *    no plan at all: it can run, burn browser money, then fail on something already known
+ *    at compile-time.
  *
- * Diagnostic xếp theo DÒNG CHẢY PHASE (mọi lỗi phase 3 của chain, rồi mọi lỗi phase 4+5),
- * không theo case — đọc như output của một compiler, không như một danh sách lỗi trộn lẫn.
+ * Diagnostics are ordered by PHASE FLOW (every phase-3 error for a chain, then every
+ * phase-4+5 error), not by case — reads like a compiler's output, not a shuffled error list.
  */
 export function compileRun(input: CompileInput): CompileOutput {
   const { snapshot } = input;
@@ -124,15 +128,16 @@ export function compileRun(input: CompileInput): CompileOutput {
 }
 
 /**
- * Chain là đơn vị CÔ LẬP: một prereq `login` dùng chung bởi 5 target được nở 5 lần, nên một
- * element hỏng trong `login` sinh 5 diagnostic GIỐNG HỆT. Tác giả cần biết `login` hỏng đúng
- * MỘT lần — bản sao y nguyên không mang thêm thông tin nào.
+ * A chain is an ISOLATED unit: a `login` prereq shared by 5 targets gets expanded 5 times,
+ * so a broken element inside `login` produces 5 IDENTICAL diagnostics. The author only needs
+ * to know `login` is broken ONCE — an exact duplicate carries no extra information.
  *
- * Khoá gộp phải là SONG ÁNH với bộ field. Nối field bằng một dấu phân cách thì không: `caseId`
- * đến từ dump hệ cũ và `message` là free-text, nên cả hai đều có thể chứa đúng ký tự đang giữ
- * vai trò cú pháp — hai lỗi khác nhau ra cùng một khoá và một lỗi thật biến mất khỏi output.
- * `JSON.stringify` của mảng field thì không mơ hồ: mọi ký tự trong chuỗi đều được escape, biên
- * giữa các phần tử là cấu trúc chứ không phải quy ước.
+ * The dedup key must be a BIJECTION over the field set. Joining fields with a separator isn't:
+ * `caseId` comes from the legacy dump and `message` is free text, so either one could contain
+ * the exact character acting as the separator — two different errors collapse to the same key
+ * and a real error vanishes from the output. `JSON.stringify` of the field array is unambiguous:
+ * every character in a string is escaped, and the boundary between elements is structural, not
+ * a convention.
  */
 export function dedupeDiagnostics(all: readonly CompileDiagnostic[]): readonly CompileDiagnostic[] {
   const seen = new Set<string>();

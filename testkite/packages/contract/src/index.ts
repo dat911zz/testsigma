@@ -1,36 +1,37 @@
 /**
- * @testkite/contract — zod là NGUỒN hợp đồng duy nhất.
- * OpenAPI 3.1 được SINH RA từ đây và commit; CI fail khi drift; oasdiff chặn breaking change.
+ * @testkite/contract — zod is the SINGLE source of truth for the contract.
+ * OpenAPI 3.1 is GENERATED from it and committed; CI fails on drift; oasdiff blocks breaking changes.
  */
 
 // ---------------------------------------------------------------------------
-// Verdicts (docs/SYSTEM_DESIGN.md §2, §4) — định nghĩa ở `./enums.js` (module lá),
-// tái xuất ở đây để bề mặt facade không đổi. Schema import thẳng module lá, không
-// qua barrel này: barrel re-export schemas nên đọc ngược lên đây là vòng import.
+// Verdicts (docs/SYSTEM_DESIGN.md §2, §4) — defined in `./enums.js` (leaf module),
+// re-exported here so the facade surface stays the same. Schemas import the leaf module
+// directly, not through this barrel: the barrel re-exports schemas, so reading back up to
+// here would be an import cycle.
 // ---------------------------------------------------------------------------
 
 export * from "./enums.js";
 export * from "./schemas/index.js";
 
 // ---------------------------------------------------------------------------
-// Error taxonomy — MỘT vị từ (`retryable === true`) gate mọi retry ở mọi nơi.
-// Định nghĩa ở `./errors.js` (module lá) để `routes/*.ts` ném được lỗi HTTP mà
-// không đọc ngược lên barrel này (vòng import).
+// Error taxonomy — ONE predicate (`retryable === true`) gates every retry everywhere.
+// Defined in `./errors.js` (leaf module) so `routes/*.ts` can throw HTTP errors without
+// reading back up to this barrel (import cycle).
 // ---------------------------------------------------------------------------
 
 export * from "./errors.js";
 
 // ---------------------------------------------------------------------------
-// OpenAPI (zod là nguồn, openapi.json là đầu ra). Schema DTO đã tái xuất ở trên
-// qua `./schemas/index.js` — không lặp lại ở đây (duplicate export).
+// OpenAPI (zod is the source, openapi.json is the output). DTO schemas are already
+// re-exported above via `./schemas/index.js` — not repeated here (duplicate export).
 // ---------------------------------------------------------------------------
 
 export { buildOpenApiDocument, OPENAPI_INFO, OPENAPI_SCHEMA_NAMES, serializeOpenApiDocument } from "./openapi.js";
 
 // ---------------------------------------------------------------------------
-// Sổ đăng ký route (`ROUTES`) + kiểu `RouteDescriptor`: MỘT nguồn cho OpenAPI,
-// router Fastify và bộ test cross-tenant L3. `routes/*` chỉ đọc `./errors.js`
-// (module lá) nên re-export ở đây không tạo vòng.
+// Route registry (`ROUTES`) + `RouteDescriptor` type: ONE source for OpenAPI,
+// the Fastify router, and the L3 cross-tenant test suite. `routes/*` only reads
+// `./errors.js` (leaf module), so re-exporting here creates no cycle.
 // ---------------------------------------------------------------------------
 
 export * from "./routes/index.js";

@@ -7,8 +7,9 @@ import type { AuthoredStep, DataRow } from "./snapshot.js";
 import type { SnapOpts } from "./test-support.js";
 
 /**
- * Phase 4+5 chỉ nhận IR của phase 3 — test luôn đi qua chuỗi thật (expand → bind → resolve),
- * không dựng BoundCase bằng tay: hợp đồng giữa các phase mới là thứ đáng kiểm.
+ * Phase 4+5 only accepts phase 3's IR — tests always go through the real chain
+ * (expand → bind → resolve), never hand-build a BoundCase: the contract between phases is
+ * what's worth checking.
  */
 function resolveOf(
   steps: readonly AuthoredStep[],
@@ -18,12 +19,12 @@ function resolveOf(
   const main = kase("main", steps, caseOpts);
   const snapshot = snap([main], ["main"], opts);
   const bound = bindCases(expandCases(snapshot, ["main"]).cases);
-  expect(bound.diagnostics).toEqual([]); // lỗi phase 3 phải không tồn tại: test này soi phase 4+5
+  expect(bound.diagnostics).toEqual([]); // phase 3 must have no errors: this test is examining phase 4+5
   return resolveCases(bound.cases, snapshot);
 }
 
 describe("phase 4 — element → LocatorSet", () => {
-  it("step có elementId ⇒ StepPlan mang LocatorSet lấy từ snapshot.elements", () => {
+  it("a step with elementId ⇒ the StepPlan carries a LocatorSet taken from snapshot.elements", () => {
     const r = resolveOf([actionOn(1, "web.click", "el-login")], {
       elements: [element("el-login", "ready", [
         { kind: "css", value: "#login" },
@@ -43,7 +44,7 @@ describe("phase 4 — element → LocatorSet", () => {
     });
   });
 
-  it("element status pending_locator ⇒ element_pending_locator kèm caseId + ordinal, step bị loại", () => {
+  it("element status pending_locator ⇒ element_pending_locator with caseId + ordinal, step dropped", () => {
     const r = resolveOf([actionOn(7, "web.click", "el-ghost")], {
       elements: [element("el-ghost", "pending_locator")],
     });
@@ -60,7 +61,7 @@ describe("phase 4 — element → LocatorSet", () => {
     expect(r.cases[0]?.steps).toEqual([]);
   });
 
-  it("element ready nhưng KHÔNG có locator nào ⇒ vẫn là element_pending_locator", () => {
+  it("element ready but with NO locators at all ⇒ still element_pending_locator", () => {
     const r = resolveOf([actionOn(1, "web.click", "el-empty")], {
       elements: [element("el-empty", "ready", [])],
     });
@@ -68,7 +69,7 @@ describe("phase 4 — element → LocatorSet", () => {
     expect(r.diagnostics.map((d) => d.code)).toEqual(["element_pending_locator"]);
   });
 
-  it("elementId không có trong snapshot ⇒ element_not_found", () => {
+  it("elementId not in the snapshot ⇒ element_not_found", () => {
     const r = resolveOf([actionOn(2, "web.click", "el-khong-ton-tai")], { elements: [] });
 
     expect(r.diagnostics).toEqual([
@@ -82,7 +83,7 @@ describe("phase 4 — element → LocatorSet", () => {
     expect(r.diagnostics[0]?.message).toContain("el-khong-ton-tai");
   });
 
-  it("GOM: 2 element hỏng ⇒ 2 diagnostics, step lành vẫn ở lại IR", () => {
+  it("COLLECTS: 2 broken elements ⇒ 2 diagnostics, the healthy step stays in the IR", () => {
     const r = resolveOf(
       [
         actionOn(1, "web.click", "el-mat"),
@@ -97,7 +98,7 @@ describe("phase 4 — element → LocatorSet", () => {
     expect(r.cases[0]?.steps.map((s) => s.ordinal)).toEqual([2]);
   });
 
-  it("step không tham chiếu element ⇒ không có locators, không diagnostic", () => {
+  it("a step referencing no element ⇒ no locators, no diagnostic", () => {
     const r = resolveOf([action(1, "web.enter", { element: "literal", value: "x" })]);
 
     expect(r.diagnostics).toEqual([]);
@@ -105,7 +106,7 @@ describe("phase 4 — element → LocatorSet", () => {
     expect(step?.kind === "action" && step.locators).toBeUndefined();
   });
 
-  it("element hỏng nằm sâu trong children ⇒ diagnostic mang ordinal của step con", () => {
+  it("a broken element deep in children ⇒ the diagnostic carries the child step's ordinal", () => {
     const r = resolveOf([ifStep(1, [actionOn(4, "web.click", "el-mat")])], { elements: [] });
 
     expect(r.diagnostics).toEqual([
@@ -117,8 +118,8 @@ describe("phase 4 — element → LocatorSet", () => {
   });
 });
 
-describe("phase 5 — secret: chỉ là REF, không bao giờ là giá trị", () => {
-  it("$secret:NAME hợp lệ ⇒ arg giữ NGUYÊN dạng ref trong plan (không inline giá trị)", () => {
+describe("phase 5 — secret: only ever a REF, never a value", () => {
+  it("a valid $secret:NAME ⇒ the arg STAYS in ref form in the plan (value never inlined)", () => {
     const r = resolveOf(
       [actionOn(1, "web.enter", "el-pw", { value: "$secret:ADMIN_PW" })],
       { elements: [element("el-pw")], secretNames: ["ADMIN_PW"] },
@@ -128,7 +129,7 @@ describe("phase 5 — secret: chỉ là REF, không bao giờ là giá trị", (
     expect(r.cases[0]?.steps[0]?.args).toEqual({ value: "$secret:ADMIN_PW" });
   });
 
-  it("NAME không có trong env.secretNames ⇒ secret_ref_unknown kèm ordinal + tên secret", () => {
+  it("NAME not in env.secretNames ⇒ secret_ref_unknown with ordinal + secret name", () => {
     const r = resolveOf(
       [actionOn(3, "web.enter", "el-pw", { value: "$secret:GO_NHAM" })],
       { elements: [element("el-pw")], secretNames: ["ADMIN_PW"] },
@@ -146,7 +147,7 @@ describe("phase 5 — secret: chỉ là REF, không bao giờ là giá trị", (
     expect(r.cases[0]?.steps).toEqual([]);
   });
 
-  it("env.secretNames rỗng ⇒ mọi secret ref đều unknown (không có secret nào là mặc định an toàn)", () => {
+  it("an empty env.secretNames ⇒ every secret ref is unknown (no secret is a safe default)", () => {
     const r = resolveOf([actionOn(1, "web.enter", "el-pw", { value: "$secret:BAT_KY" })], {
       elements: [element("el-pw")],
     });
@@ -154,7 +155,7 @@ describe("phase 5 — secret: chỉ là REF, không bao giờ là giá trị", (
     expect(r.diagnostics.map((d) => d.code)).toEqual(["secret_ref_unknown"]);
   });
 
-  it("GOM: element hỏng + secret lạ trên CÙNG step ⇒ 2 diagnostics", () => {
+  it("COLLECTS: a broken element + an unknown secret on the SAME step ⇒ 2 diagnostics", () => {
     const r = resolveOf([actionOn(1, "web.enter", "el-mat", { value: "$secret:LA" })], {
       elements: [],
       secretNames: [],
@@ -164,13 +165,13 @@ describe("phase 5 — secret: chỉ là REF, không bao giờ là giá trị", (
   });
 });
 
-describe("phase 5 — merge data-driven + env vào args", () => {
+describe("phase 5 — merge data-driven + env into args", () => {
   const rows: readonly DataRow[] = [
     { label: "admin", expectedToFail: false, values: { user: "admin", "Ho Ten": "Quản trị" } },
     { label: "khoá", expectedToFail: true, values: { user: "locked", "Ho Ten": "Bị khoá" } },
   ];
 
-  it("$data:COT lấy giá trị từ hàng của CHÍNH iteration đó", () => {
+  it("$data:COLUMN takes its value from THIS iteration's own row", () => {
     const r = resolveOf(
       [actionOn(1, "web.enter", "el-user", { value: "$data:user" })],
       { elements: [element("el-user")], dataProfiles: [profile("p-users", rows)] },
@@ -184,7 +185,7 @@ describe("phase 5 — merge data-driven + env vào args", () => {
     expect(r.cases.map((c) => c.expectedToFail)).toEqual([false, true]);
   });
 
-  it("tên cột có dấu cách vẫn merge được", () => {
+  it("a column name with a space still merges fine", () => {
     const r = resolveOf(
       [actionOn(1, "web.enter", "el-user", { value: "$data:Ho Ten" })],
       { elements: [element("el-user")], dataProfiles: [profile("p-users", rows)] },
@@ -194,7 +195,7 @@ describe("phase 5 — merge data-driven + env vào args", () => {
     expect(r.cases.map((c) => c.steps[0]?.args)).toEqual([{ value: "Quản trị" }, { value: "Bị khoá" }]);
   });
 
-  it("$env:VAR lấy giá trị từ env.vars", () => {
+  it("$env:VAR takes its value from env.vars", () => {
     const r = resolveOf([actionOn(1, "web.enter", "el-host", { value: "$env:tenant" })], {
       elements: [element("el-host")],
       vars: { tenant: "acme-uat" },
@@ -204,7 +205,7 @@ describe("phase 5 — merge data-driven + env vào args", () => {
     expect(r.cases[0]?.steps[0]?.args).toEqual({ value: "acme-uat" });
   });
 
-  it("chuỗi không phải ref giữ nguyên tuyệt đối (kể cả có ký tự $)", () => {
+  it("a string that isn't a ref is kept absolutely as-is (even with a $ character)", () => {
     const r = resolveOf(
       [
         actionOn(1, "web.enter", "el-a", { value: "giá 100$ nhé" }),
@@ -222,7 +223,7 @@ describe("phase 5 — merge data-driven + env vào args", () => {
     ]);
   });
 
-  it("ref trỏ cột/biến không tồn tại ⇒ giữ nguyên ref (vòng for resolve theo hàng lúc chạy)", () => {
+  it("a ref pointing to a nonexistent column/var ⇒ kept as-is (a for loop resolves per-row at run time)", () => {
     const r = resolveOf([actionOn(1, "web.enter", "el-a", { value: "$data:cot_cua_vong_for" })], {
       elements: [element("el-a")],
     });
@@ -231,7 +232,7 @@ describe("phase 5 — merge data-driven + env vào args", () => {
     expect(r.cases[0]?.steps[0]?.args).toEqual({ value: "$data:cot_cua_vong_for" });
   });
 
-  it("MỘT pass duy nhất: giá trị đã thay không bị diễn giải lại thành ref", () => {
+  it("EXACTLY ONE pass: a substituted value is not re-interpreted as a ref", () => {
     const sneaky: readonly DataRow[] = [
       { label: "r1", expectedToFail: false, values: { a: "$data:b", b: "KHONG_DUOC_LO" } },
     ];
@@ -244,7 +245,7 @@ describe("phase 5 — merge data-driven + env vào args", () => {
     expect(r.cases[0]?.steps[0]?.args).toEqual({ value: "$data:b" });
   });
 
-  it("args của step trong children cũng được merge", () => {
+  it("args of a step inside children are also merged", () => {
     const r = resolveOf(
       [ifStep(1, [actionOn(2, "web.enter", "el-a", { value: "$env:tenant" })])],
       { elements: [element("el-a")], vars: { tenant: "acme-uat" } },
@@ -256,8 +257,8 @@ describe("phase 5 — merge data-driven + env vào args", () => {
   });
 });
 
-describe("phase 4+5 — GOM xuyên case và fan-out", () => {
-  it("case data-driven 3 hàng, element hỏng ⇒ CHỈ 1 diagnostic (không nhân bản theo hàng)", () => {
+describe("phase 4+5 — COLLECTS across cases and fan-out", () => {
+  it("a data-driven case with 3 rows, a broken element ⇒ ONLY 1 diagnostic (not duplicated per row)", () => {
     const many: readonly DataRow[] = [
       { label: "a", expectedToFail: false, values: { user: "a" } },
       { label: "b", expectedToFail: false, values: { user: "b" } },
@@ -273,7 +274,7 @@ describe("phase 4+5 — GOM xuyên case và fan-out", () => {
     expect(r.cases).toHaveLength(3);
   });
 
-  it("GOM xuyên case: mỗi diagnostic mang caseId của case hỏng, giữ thứ tự chain", () => {
+  it("COLLECTS across cases: each diagnostic carries the caseId of the broken case, chain order preserved", () => {
     const login = kase("login", [actionOn(1, "web.click", "el-mat")]);
     const main = kase("main", [actionOn(1, "web.enter", "el-ok", { value: "$secret:LA" })], {
       prereqCaseId: "login",
@@ -289,7 +290,7 @@ describe("phase 4+5 — GOM xuyên case và fan-out", () => {
     ]);
   });
 
-  it("CasePlan giữ nguyên metadata phase 2/3 (revisionId, iterationLabel, expectedToFail)", () => {
+  it("CasePlan keeps phase 2/3 metadata unchanged (revisionId, iterationLabel, expectedToFail)", () => {
     const r = resolveOf(
       [actionOn(1, "web.click", "el-a")],
       {
@@ -309,7 +310,7 @@ describe("phase 4+5 — GOM xuyên case và fan-out", () => {
     );
   });
 
-  it("không có case nào ⇒ phase rỗng hợp lệ", () => {
+  it("no cases at all ⇒ an empty phase is valid", () => {
     expect(resolveCases([], snap([], []))).toEqual({ cases: [], diagnostics: [] });
   });
 });

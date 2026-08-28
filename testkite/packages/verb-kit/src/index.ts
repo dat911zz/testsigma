@@ -1,17 +1,17 @@
 /**
- * @testkite/verb-kit — op registry: verb NLP → op thực thi Playwright.
+ * @testkite/verb-kit — op registry: verb NLP → executable Playwright op.
  *
- * Thay thế cơ chế Class.forName của Testsigma cũ (586 dòng natural_text_actions
- * reflection theo tên class — lỗi chỉ lộ lúc runtime). Ở đây: verb là DATA,
- * op là CODE, compiler bind verb→op ở compile-time và GOM MỌI LỖI trước khi
- * bất kỳ browser nào khởi động.
+ * Replaces the old Testsigma Class.forName mechanism (586 lines of natural_text_actions
+ * reflection by class name — errors only surfaced at runtime). Here: a verb is DATA,
+ * an op is CODE, the compiler binds verb→op at compile-time and COLLECTS EVERY ERROR
+ * before any browser starts.
  *
- * Census production: 35 verb phủ 99% của 52.900 step. Port theo histogram:
- * click (15.485) → enter (13.691) → navigateTo (3.341) → ... (docs/asset-census.sql)
+ * Production census: 35 verbs cover 99% of 52,900 steps. Ported by histogram:
+ * click (15,485) → enter (13,691) → navigateTo (3,341) → ... (docs/asset-census.sql)
  */
 import { z } from "zod";
 
-/** Placeholder một verb có thể khai báo trong câu. */
+/** A placeholder a verb can declare in its sentence. */
 export type VerbParamKind = "element" | "test-data" | "attribute" | "raw";
 
 export interface VerbParamSpec {
@@ -20,9 +20,9 @@ export interface VerbParamSpec {
   readonly required: boolean;
 }
 
-/** Ngữ cảnh thực thi op — worker cung cấp, op không bao giờ tự tạo browser/context. */
+/** Op execution context — supplied by the worker; an op never creates its own browser/context. */
 export interface OpContext {
-  /** Playwright Page của context hiện tại (chromium-headless-shell). */
+  /** The Playwright Page of the current context (chromium-headless-shell). */
   readonly page: unknown; // TODO(M4): import type { Page } from "playwright-core"
   readonly stepTimeoutMs: number;
   readonly log: (msg: string) => void;
@@ -30,34 +30,35 @@ export interface OpContext {
 
 export interface OpResult {
   readonly ok: boolean;
-  /** Chỉ set khi ok=false — trở thành AssertionFailure (verdict), không phải infra error. */
+  /** Set only when ok=false — becomes an AssertionFailure (verdict), not an infra error. */
   readonly failureMessage?: string;
 }
 
 /**
- * Schema args của một verb: args luôn là bản đồ chuỗi→chuỗi (giá trị thật do worker
- * resolve lúc chạy — secret giữ nguyên dạng `$secret:<name>` qua compiler).
+ * A verb's args schema: args is always a string→string map (the real value is resolved
+ * by the worker at run time — a secret stays in the `$secret:<name>` form through the compiler).
  */
 export type VerbArgsSchema = z.ZodType<Record<string, string>>;
 
 export interface VerbDefinition {
-  /** op_key ổn định — action_catalog.op_key validate với registry này lúc boot (fail-fast). */
+  /** Stable op_key — action_catalog.op_key is validated against this registry at boot (fail-fast). */
   readonly opKey: string;
-  /** Câu mẫu hiển thị cho QA — placeholder trong ngoặc nhọn, tên trùng `params[].name`. */
+  /** Sample sentence shown to QA — a placeholder in curly braces, name matches `params[].name`. */
   readonly sentence: string;
   readonly params: readonly VerbParamSpec[];
   /**
-   * Hợp đồng args cho compiler phase 3 (`verb_args_invalid` bắt TRƯỚC khi browser chạy).
-   * Optional có chủ đích: verb port trước khi có schema vẫn đăng ký được — thiếu schema
-   * nghĩa là "chưa kiểm", không phải "hợp lệ mọi thứ" (33 verb còn lại sẽ bù dần ở M4).
+   * Args contract for compiler phase 3 (`verb_args_invalid` catches it BEFORE the browser runs).
+   * Deliberately optional: a verb can be registered before it has a schema — a missing schema
+   * means "not checked yet", not "everything is valid" (the remaining 33 verbs get filled in
+   * gradually at M4).
    */
   readonly argsSchema?: VerbArgsSchema;
-  /** true nếu op cần layout thật (actionability) — tài liệu hóa cho audit engine. */
+  /** true if the op needs real layout (actionability) — documented for the audit engine. */
   readonly needsRendering: boolean;
   readonly execute: (ctx: OpContext, args: Record<string, string>) => Promise<OpResult>;
 }
 
-/** Kết quả validateArgs — GOM mọi issue, không first-fail (luật compiler §4). */
+/** Result of validateArgs — COLLECTS every issue, no first-fail (compiler rule §4). */
 export type ArgsValidation =
   | { readonly ok: true }
   | { readonly ok: false; readonly issues: readonly string[] };
@@ -78,12 +79,12 @@ export function allVerbs(): readonly VerbDefinition[] {
 }
 
 /**
- * Kiểm args của một step so với schema của verb — hàm PURE, không I/O, dùng được
- * trong compiler. Verb chưa khai báo argsSchema ⇒ ok (không chặn verb đang port).
+ * Checks a step's args against the verb's schema — a PURE function, no I/O, usable
+ * from the compiler. A verb with no argsSchema yet ⇒ ok (doesn't block a verb still being ported).
  */
 export function validateArgs(opKey: string, args: Readonly<Record<string, string>>): ArgsValidation {
   const verb = registry.get(opKey);
-  if (verb === undefined) return { ok: false, issues: [`opKey không có trong registry: ${opKey}`] };
+  if (verb === undefined) return { ok: false, issues: [`opKey not in registry: ${opKey}`] };
 
   const schema = verb.argsSchema;
   if (schema === undefined) return { ok: true };
@@ -99,12 +100,12 @@ function formatIssue(issue: z.ZodIssue): string {
   return path === "" ? issue.message : `${path}: ${issue.message}`;
 }
 
-/** Tham chiếu element/dữ liệu: chuỗi rỗng là lỗi tác giả, không phải "giá trị rỗng hợp lệ". */
+/** Element/data reference: an empty string is an authoring error, not a "valid empty value". */
 const requiredArg = z.string().min(1);
 
 // ---------------------------------------------------------------------------
-// 2 verb đầu tiên (chiếm 55,7% tổng step production) — làm mẫu cho 33 verb còn lại.
-// TODO(M4): implement thân op trên Playwright + engine golden test (T2) cho từng verb.
+// The first 2 verbs (55.7% of total production steps) — a template for the remaining 33.
+// TODO(M4): implement each op's body on Playwright + a golden-test engine (T2) per verb.
 // ---------------------------------------------------------------------------
 
 registerVerb({
@@ -122,7 +123,7 @@ registerVerb({
   opKey: "web.enter",
   sentence: "Enter {value} in {element} field",
   params: [
-    // kind=test-data: giá trị đến từ data profile/env; name = KHÓA args, phải khớp argsSchema.
+    // kind=test-data: the value comes from a data profile/env; name = args KEY, must match argsSchema.
     { name: "value", kind: "test-data", required: true },
     { name: "element", kind: "element", required: true },
   ],

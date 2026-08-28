@@ -10,7 +10,7 @@ import {
 } from "./authoring.js";
 
 describe("stepInputSchema", () => {
-  it("phủ đúng 6 kind của STEP_KINDS — không thừa, không thiếu", () => {
+  it("covers exactly the 6 kinds in STEP_KINDS — no more, no less", () => {
     const ok = STEP_KINDS.every((kind) => {
       const base = { kind, renderedSentence: "s" } as Record<string, unknown>;
       if (kind === "action") base["verbOpKey"] = "click";
@@ -24,25 +24,25 @@ describe("stepInputSchema", () => {
     expect(ok).toBe(true);
   });
 
-  it("KHÔNG nhận ordinal — vị trí là thứ tự mảng, client không được tự đánh số", () => {
+  it("does NOT accept ordinal — position is array order, the client may not number it itself", () => {
     const r = stepInputSchema.safeParse({ kind: "action", renderedSentence: "s", verbOpKey: "click", ordinal: 3 });
     expect(r.success).toBe(true);
     if (!r.success) throw new Error("unreachable");
     expect("ordinal" in r.data).toBe(false);
   });
 
-  it("id là optional — step mới chưa có id, step cũ echo id về để giữ danh tính", () => {
+  it("id is optional — a new step has no id yet, an existing step echoes its id back to keep identity", () => {
     expect(stepInputSchema.safeParse({ kind: "action", renderedSentence: "s", verbOpKey: "click" }).success).toBe(true);
     expect(
       stepInputSchema.safeParse({ id: "s1", kind: "action", renderedSentence: "s", verbOpKey: "click" }).success,
     ).toBe(true);
   });
 
-  it("từ chối action thiếu verbOpKey", () => {
+  it("rejects an action missing verbOpKey", () => {
     expect(stepInputSchema.safeParse({ kind: "action", renderedSentence: "s" }).success).toBe(false);
   });
 
-  it("children đệ quy đúng — if lồng for lồng action", () => {
+  it("children recurse correctly — if nested in for nested in action", () => {
     const r = stepInputSchema.safeParse({
       kind: "if",
       renderedSentence: "if ok",
@@ -59,7 +59,7 @@ describe("stepInputSchema", () => {
     expect(r.success).toBe(true);
   });
 
-  it("rest nhận method/url", () => {
+  it("rest accepts method/url", () => {
     expect(
       stepInputSchema.safeParse({
         kind: "rest",
@@ -70,13 +70,13 @@ describe("stepInputSchema", () => {
     ).toBe(true);
   });
 
-  it("từ chối rest thiếu method/url — DB có NOT NULL trên cả hai", () => {
+  it("rejects rest missing method/url — the DB has NOT NULL on both", () => {
     expect(stepInputSchema.safeParse({ kind: "rest", renderedSentence: "POST /orders" }).success).toBe(false);
   });
 });
 
 describe("caseSummarySchema", () => {
-  it("version là số nguyên dương và status thuộc CASE_STATUSES", () => {
+  it("version is a positive integer and status is in CASE_STATUSES", () => {
     const r = caseSummarySchema.safeParse({
       id: "c1",
       projectId: "p1",
@@ -94,7 +94,7 @@ describe("caseSummarySchema", () => {
 });
 
 describe("threeWayDiffSchema", () => {
-  it("nhận body 409 đầy đủ ba nhánh + danh sách conflict", () => {
+  it("accepts a 409 body with all three branches + the conflict list", () => {
     const r = threeWayDiffSchema.safeParse({
       baseVersion: 7,
       baseRevisionId: "r7",
@@ -107,7 +107,7 @@ describe("threeWayDiffSchema", () => {
     expect(r.success).toBe(true);
   });
 
-  it("kind chỉ nhận added|removed|modified", () => {
+  it("kind only accepts added|removed|modified", () => {
     expect(CHANGE_KINDS).toEqual(["added", "removed", "modified"]);
     const r = threeWayDiffSchema.safeParse({
       baseVersion: 1, baseRevisionId: "r1", currentVersion: 2, currentRevisionId: "r2",
@@ -116,7 +116,7 @@ describe("threeWayDiffSchema", () => {
     expect(r.success).toBe(false);
   });
 
-  it("REVIEW_DECISIONS đúng 2 lựa chọn — không có 'promoted' (promote là bước riêng)", () => {
+  it("REVIEW_DECISIONS has exactly 2 choices — no 'promoted' (promote is a separate step)", () => {
     expect(REVIEW_DECISIONS).toEqual(["approved", "changes_requested"]);
   });
 });

@@ -3,7 +3,7 @@
     {
       "caseId": "d6-target",
       "code": "prereq_depth_exceeded",
-      "message": "Chuỗi prereq của \"d6-target\" có 6 tổ tiên — vượt trần 5",
+      "message": "Prereq chain of \"d6-target\" has 6 ancestors — exceeds the cap of 5",
       "severity": "error"
     }
   ]

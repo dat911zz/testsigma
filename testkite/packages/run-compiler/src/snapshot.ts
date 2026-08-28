@@ -1,7 +1,7 @@
 /**
- * CompileInput snapshot — orchestration fetch sẵn, compiler KHÔNG I/O.
- * Phản chiếu ngữ nghĩa đã xác minh của hệ cũ (blueprint §2):
- * prereq = chuỗi case; step group = case có isStepGroup; loop chạy trên data profile.
+ * CompileInput snapshot — pre-fetched by orchestration, the compiler does NO I/O.
+ * Mirrors the verified semantics of the old system (blueprint §2):
+ * prereq = case chain; step group = a case with isStepGroup; a loop runs over a data profile.
  */
 
 export type StepKind = "action" | "step_group" | "if" | "for" | "while" | "rest";
@@ -9,22 +9,22 @@ export type StepKind = "action" | "step_group" | "if" | "for" | "while" | "rest"
 export interface AuthoredStep {
   readonly ordinal: number;
   readonly kind: StepKind;
-  /** kind=action: op key trong verb-kit registry. */
+  /** kind=action: the op key in the verb-kit registry. */
   readonly verbOpKey?: string;
   readonly args?: Readonly<Record<string, string>>;
-  /** kind=action: tên tham chiếu element (đã là id trong hệ mới). */
+  /** kind=action: the element reference name (already an id in the new system). */
   readonly elementId?: string;
-  /** kind=step_group: case (isStepGroup=true) được gọi. */
+  /** kind=step_group: the case (isStepGroup=true) being called. */
   readonly stepGroupCaseId?: string;
-  /** kind=if: kết quả kỳ vọng của nhánh (["SUCCESS"] ...). */
+  /** kind=if: the branch's expected outcome (["SUCCESS"] ...). */
   readonly conditionExpected?: readonly string[];
-  /** kind=for: data profile cấp dữ liệu vòng lặp. */
+  /** kind=for: the data profile that feeds the loop. */
   readonly loopDataProfileId?: string;
-  /** kind=while: bắt buộc — không có là compile error. */
+  /** kind=while: mandatory — missing it is a compile error. */
   readonly maxIterations?: number;
-  /** Câu NLP hiển thị cho QA trong kết quả. */
+  /** The NLP sentence shown to QA in the results. */
   readonly renderedSentence: string;
-  /** if/for/while: các step con. */
+  /** if/for/while: child steps. */
   readonly children?: readonly AuthoredStep[];
 }
 
@@ -34,7 +34,7 @@ export interface AuthoredCase {
   readonly name: string;
   readonly isStepGroup: boolean;
   readonly prereqCaseId?: string;
-  /** data-driven: profile + số hàng đã fetch. */
+  /** data-driven: profile + the row count already fetched. */
   readonly dataProfileId?: string;
   readonly steps: readonly AuthoredStep[];
 }
@@ -60,16 +60,16 @@ export interface DataProfileSnapshot {
 export interface EnvSnapshot {
   readonly baseUrl: string;
   readonly vars: Readonly<Record<string, string>>;
-  /** Tên secret hợp lệ — plan chỉ được chứa $secret:<name>, không bao giờ giá trị. */
+  /** Valid secret names — the plan may only contain $secret:<name>, never the value. */
   readonly secretNames: readonly string[];
 }
 
 export interface CompileSnapshot {
   readonly teamId: string;
   readonly projectId: string;
-  /** Các case được yêu cầu chạy (root của chain). */
+  /** The cases requested to run (chain roots). */
   readonly targetCaseIds: readonly string[];
-  /** Toàn bộ case liên quan (kể cả prereq + step group), key theo id. */
+  /** Every case involved (including prereqs + step groups), keyed by id. */
   readonly cases: Readonly<Record<string, AuthoredCase>>;
   readonly elements: Readonly<Record<string, ElementSnapshot>>;
   readonly dataProfiles: Readonly<Record<string, DataProfileSnapshot>>;

@@ -3,7 +3,7 @@
     {
       "caseId": "orphan-checkout",
       "code": "prereq_missing",
-      "message": "Prereq \"ghost-login\" của \"orphan-checkout\" không tồn tại trong snapshot",
+      "message": "Prereq \"ghost-login\" of \"orphan-checkout\" does not exist in the snapshot",
       "severity": "error"
     }
   ]
