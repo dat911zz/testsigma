@@ -10,10 +10,13 @@
       — 17 bảng bật RLS gồm đủ 6 bảng `aut_*` (hash: 1e1cda9, 030fb0b, 7bc9c40, 18b192a; identity: 70bbeba, 8713291, 98d693d)
 - [x] RBAC: ma trận quyền TypeScript 6 vai; scope hiệu lực = token.scopes ∩ rolePerms mỗi request
       (cache 60s; action HIGH bỏ cache); danh sách never-grantable (hash: 27436f0, 73a5804)
-- [ ] Cách ly L1: repository base đòi TenantContext (fail-closed) ✅ (hash: 1306341 — `assertTenantContext`
-      + `TenantRepo`) **+ lint cấm query builder thô ❌ CHƯA CÓ** — eslint hiện chỉ gác queue-client và
-      compiler-pure; thiếu luật chặn gọi thẳng `db.select/insert/update/delete` trên handle thô ngoài
-      `withTenant`/`TenantRepo`. Giao cho wave polish M2 (kiểm chứng 28-08 bởi tổng kiến trúc sư).
+- [x] Cách ly L1: repository base đòi TenantContext (fail-closed) — `assertTenantContext` + `TenantRepo`
+      (hash: 1306341) **+ lint cấm query builder thô trên handle db/*Db** — `no-restricted-syntax`
+      (`rawDbQuery` selector, eslint.config.mjs) khớp mọi entrypoint truy vấn của `PgDatabase`
+      (select/insert/update/delete/transaction/execute/…), có fixture test riêng
+      (`tools/lint-rules.test.ts` describe "isolation L1") (hash: 05d866c). Nghiệm thu 28-08: tạo file vi
+      phạm tạm trong `apps/core/src/modules/`, `pnpm lint` → đỏ đúng rule `no-restricted-syntax`; xoá file
+      → `pnpm lint` xanh lại.
 - [x] Cách ly L2: composite FK (team_id, parent) toàn đồ thị asset — 13 composite FK phủ đồ thị `aut_*`
       (hash: 9218d72, f55e6aa, 030fb0b, 7bc9c40, 18b192a)
 - [x] Cách ly L3: **bộ CI cross-tenant sinh từ OpenAPI — token B + id A ⇒ 404** (không bao giờ 403) (hash: 4eef1e0)

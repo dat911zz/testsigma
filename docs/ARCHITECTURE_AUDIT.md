@@ -351,6 +351,44 @@ Maintainer xác nhận người viết test hằng ngày là **QA thuần no-cod
 
 ---
 
+## 10. TestKite — nhật ký milestone
+
+### 10.1. M2 hoàn tất (28-08-2026)
+
+Milestone M2 (Identity/RBAC/audit/token + Authoring/revision/review — đường E, mục 9.7) nghiệm thu xanh: toàn bộ backlog `testkite/tasks/M2-identity-authoring.md` đã tick `[x]`, cách ly 3 lớp (L1 repository fail-closed + lint gate, L2 composite FK, L2.5 RLS, L3 cross-tenant → 404) đủ cả hai vế thực thi lẫn kiểm tra tĩnh. Verify tổng trên Postgres thật: typecheck/test/lint/test:tools/lint:cycles/openapi:check đều xanh (chi tiết số liệu ở commit nghiệm thu).
+
+**Quyết định chốt trong M2:**
+
+- **IdP: Keycloak self-host** cho SSO OIDC — connector generic (không khoá cứng một IdP thương mại).
+- **Web-only vĩnh viễn** — không mobile/app native trong scope TestKite, kế thừa thẳng từ quyết định census ở mục 9.5–9.6.
+- **Luật ngôn ngữ code/test:** toàn bộ code + test (comment, docstring, tên test, message lỗi/log/diagnostic) viết tiếng Anh; tài liệu (`docs/`, `tasks/`, plan) giữ tiếng Việt; chuỗi hiển thị người dùng cuối đi qua i18n. Gate máy trong CI kiểm bằng grep lớp ký tự có dấu tiếng Việt, bắt buộc chạy dưới `LC_ALL=C.utf8` — thiếu biến này grep rơi về chế độ byte và báo dương tính giả trên dấu ⟨` ⟩ và `§`.
+- **Nghi thức Polish wave cuối mỗi milestone:** gặt toàn bộ nit reviewer đã ghi + 3 lượt rà soát chéo (an ninh end-to-end, đơn giản hoá/nhất quán, chất lượng test), phân loại áp/bỏ/hoãn có lý do, áp fix bằng pipeline impl/review thường lệ trước khi tick Exit — áp dụng lần đầu ở M2, giữ nguyên làm chuẩn cho M3 trở đi.
+
+**Bàn giao trong M2 (agent song song đang giữ file, không phải hoãn sang milestone sau):**
+
+- **NIT-56** (`.github/workflows/testkite-ci.yml`) — trong job `db-tests`, bước "Gate — migration drift" đứng sau bước Test và không có `if: always()`, nên fail-fast của GitHub Actions bỏ qua gate khi test đỏ. Cần `if: always()` hoặc tách job riêng nếu ý đồ là gate drift phải chạy độc lập với kết quả test.
+- **NIT-58 / NIT-59** (`eslint.config.mjs`, `tools/lint-fixtures/`) — rule `no-restricted-imports` chỉ khớp static import với tên module trần, chưa phủ `import()` động lẫn biến thể tiền tố `node:`; cần `no-restricted-syntax` khớp `ImportExpression[source.value=…]` song song, kèm fixture regression cùng file với bản sửa.
+
+**Hoãn sang M3** (lý do đầy đủ trong commit nghiệm thu / thread review polish wave):
+
+- NIT-13 — N+1 khi dựng compile snapshot là đánh đổi có chủ đích của M2; chỉ khi orchestration thật gọi hàm này với volume lớn mới đo được lợi ích batch `loadByIds`.
+- NIT-27 — cast `as RouteRegistration` cần một lượt test type-level (`expectTypeOf`); dựng hạ tầng đó cùng đợt mở rộng registry ở M3.
+- NIT-29 — `OIDC_DEV_MOCK` khai ở `kernel/env.ts:21` chưa có consumer; nối hoặc xoá khi M3 làm đường đăng nhập dev-mock.
+- NIT-23 — chưa route/job nào ghi `last_used_at` (đã grep: chỉ có schema + đọc hiển thị); gắn khi M3 mở task ghi giá trị này.
+- NIT-37 — cast 2 tầng `drizzle(pool) as unknown as TkDb` chỉ kiểm chứng được khi TkDb phải gánh transaction/RETURNING phức tạp hơn — đúng lúc M3 dùng nó thật.
+- NIT-51 — response 204 khai `z.object({})` sinh schema OpenAPI thừa cho body lẽ ra rỗng (sai tài liệu, không sai hành vi HTTP); sửa kèm đợt siết OpenAPI khi doc công bố cho client ở M3.
+- CONS-F6 — facade `findProjectById` của identity chỉ đáng dựng khi có ≥2 consumer downstream; planning/orchestration đến ở M3.
+- CONS-F5 (phần rộng) — thống nhất một kiểu truy cập tenant-scoped (`TenantRepo`) xuyên identity/governance là refactor 2 module, vượt phạm vi polish; phần hẹp (filter `teamId` tường minh cho 2 SELECT còn thiếu) đã áp trong M2.
+
+**Hoãn sang M4:**
+
+- NIT-01 — `argsForCheck()` hard-code khoá `'element'`; đúng cho 2 verb hiện có (cùng tên param), chỉ khi M4 port thêm verb dùng `elementId` mới biết có cần tham số hoá khoá merge.
+- NIT-28 — `configCache` TTL 15 phút chưa có đường invalidate, nhưng cũng chưa có endpoint sửa connector nào kích hoạt vấn đề; móc invalidate vào đúng lúc M4 viết endpoint đó.
+- NIT-32 — `client_secret` plaintext là nợ kỹ thuật đã ghi tường minh tại chỗ (`identity/db/schema.ts` ~220); envelope encryption thuộc module `sec_` của M4, không vá lẻ trong polish.
+- SEC-audit-read-all-unwired — permission `audit:read:all` (HIGH_RISK, break-glass) hiện chỉ tồn tại trong `permissions.ts` + test, chưa route nào dùng — vô hiệu ở tầng thực thi, không phải lỗ hổng khai thác được; route break-glass đọc audit cross-team thuộc phạm vi mở rộng governance M4, ghi vào backlog để ma trận RBAC không bị đọc nhầm là "đã có kiểm soát này".
+
+---
+
 ## Phụ lục A — File đáng chú ý nhất
 
 - `server/src/main/java/com/testsigma/service/AgentExecutionService.java` — god class 1.570 dòng, tâm điểm mọi đường chạy test.
