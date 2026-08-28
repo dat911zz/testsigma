@@ -207,6 +207,34 @@ export class CaseRepo extends TenantRepo {
     return row;
   }
 
+  /**
+   * in_review (đã approved) -> ready. GHIM `ready_revision_id` = bản đang latest:
+   * từ đây schedule/CI compile ĐÚNG bản này kể cả khi tác giả sửa tiếp (blueprint §4
+   * phase 1) — `applyEdit` cố tình KHÔNG đụng cột này.
+   */
+  async applyPromote(
+    caseId: string,
+    nextVersion: number,
+    actorUserId: string,
+    readyRevisionId: string,
+  ): Promise<CaseRow> {
+    const rows = await this.tx
+      .update(autCases)
+      .set({
+        version: nextVersion,
+        status: "ready",
+        promotedAt: new Date(),
+        promotedBy: actorUserId,
+        updatedAt: new Date(),
+        readyRevisionId,
+      })
+      .where(and(eq(autCases.teamId, this.teamId), eq(autCases.id, caseId)))
+      .returning();
+    const row = rows[0];
+    if (row === undefined) throw new Error("aut_cases: UPDATE không trả row");
+    return row;
+  }
+
   async setLatestRevision(caseId: string, revisionId: string): Promise<CaseRow> {
     const rows = await this.tx
       .update(autCases)

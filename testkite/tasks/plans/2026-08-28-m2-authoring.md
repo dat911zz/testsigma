@@ -4189,7 +4189,7 @@ review `withdrawn` ⇔ case `draft`).
 >
 > **Four-eyes** (blueprint §3): `row.lastEditedBy === actor.userId` ⇒ 403, **trừ khi** `teams.allow_self_promote = true`. Chỉ áp ở **promote**, không áp ở review: spec nói "người-sửa-cuối-không-tự-**promote**". Người sửa duyệt bản của người khác vẫn hợp lệ.
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/test/authoring/promote.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/test/authoring/promote.test.ts`**
 
 ```ts
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
@@ -4342,12 +4342,12 @@ describe("promoteCase", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/promote.test.ts`
 Expected: FAIL — `promoteCase` không được export.
 
-- [ ] **Step 3: Thêm `lockCase` + `applyPromote` vào `apps/core/src/modules/authoring/db/case-repo.ts`**
+- [x] **Step 3: Thêm `lockCase` + `applyPromote` vào `apps/core/src/modules/authoring/db/case-repo.ts`**
 
 Thêm `sql` vào import từ `drizzle-orm`, rồi thêm hai phương thức:
 
@@ -4392,7 +4392,7 @@ Thêm `sql` vào import từ `drizzle-orm`, rồi thêm hai phương thức:
   }
 ```
 
-- [ ] **Step 4: Thêm `promoteCase` vào `apps/core/src/modules/authoring/review-service.ts`**
+- [x] **Step 4: Thêm `promoteCase` vào `apps/core/src/modules/authoring/review-service.ts`**
 
 Thêm import (xuôi DAG — `teams` lấy từ **facade** identity, không chạm `identity/db/schema.js`):
 
@@ -4454,12 +4454,16 @@ export async function promoteCase(
 
 > Thêm `import { CaseNotFoundError }` nếu chưa có trong file (Task 10 đã import). `promoteCase` **không** ghi revision mới: nội dung case không đổi, chỉ có con trỏ `ready_revision_id` dịch chuyển — ghi thêm một bản y hệt chỉ làm phình lịch sử. `version` vẫn bump vì ETag của case đã đổi.
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+> **Đã thực thi 28-08 — hai lệch nhỏ so với block trên, cùng một lý do: Task 10 Step 10 đã đi trước.**
+> (a) `lockCase` **đã có sẵn** trong `case-repo.ts` (Task 10 Step 10 thêm, thân hàm y hệt block Step 3) ⇒ Task 11 chỉ thêm `applyPromote`.
+> (b) Ba bước đầu (lock → đọc → 404 → so version → 409) gọi `loadForMutation` thay vì chép lại: Task 10 Step 10 đã biến nó thành **cửa vào duy nhất** của mọi mutation trạng thái, chép lại ở promote là đúng thứ "rải khoá ở bốn chỗ gọi" mà bước đó dựng ra để diệt. Thứ tự bắt buộc không đổi — `loadForMutation` khoá TRƯỚC mọi đọc.
+
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/promote.test.ts`
 Expected: PASS 7 test.
 
-- [ ] **Step 6: Verify + commit**
+- [x] **Step 6: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm lint && pnpm --filter @testkite/core test`
 

@@ -2,13 +2,22 @@
  * Máy trạng thái review. Mọi hàm nhận TkTx (chạy trong withTenant) và đòi
  * `expectedVersion` — đổi trạng thái cũng là mutation, cũng phải mang If-Match.
  */
+import { eq } from "drizzle-orm";
 import type { CaseSummaryDto, ReviewDecisionDto } from "@testkite/contract";
+// Xuôi DAG: cờ four-eyes nằm ở `teams` của identity — đọc qua FACADE, không chạm
+// `identity/db/schema.js`.
+import { teams } from "../identity/index.js";
 import type { TenantContext, TkTx } from "../kernel/index.js";
 import { CaseRepo, type CaseRow } from "./db/case-repo.js";
 import { ReviewRepo } from "./db/review-repo.js";
 import { RevisionRepo } from "./db/revision-repo.js";
 import { toCaseSummary, type Actor } from "./case-service.js";
-import { CaseNotFoundError, CaseStateError, VersionConflictError } from "./errors.js";
+import {
+  CaseNotFoundError,
+  CaseStateError,
+  FourEyesViolationError,
+  VersionConflictError,
+} from "./errors.js";
 import { threeWayDiff } from "./revision/diff.js";
 
 export interface CaseMutationInput {
@@ -160,6 +169,60 @@ export async function decideReview(
     row.version + 1,
     approved ? "in_review" : "draft",
     { userId: actor.userId, stampReviewed: approved },
+  );
+  return toCaseSummary(updated);
+}
+
+/**
+ * in_review (đã approved) -> ready. THỨ TỰ DƯỚI ĐÂY LÀ MỘT PHẦN CỦA TÍNH ĐÚNG ĐẮN:
+ *   1. advisory lock TRƯỚC khi đọc bất cứ thứ gì — lấy sau khi đọc thì hai promote
+ *      song song cùng thấy `in_review` rồi cùng đi tiếp;
+ *   2. rồi mới đọc case (404) / kiểm version (409) / kiểm trạng thái (409) /
+ *      kiểm review đã approved (409) / kiểm four-eyes (403) / ghi.
+ * Ba bước đầu là `loadForMutation` — cùng một cửa với submit/withdraw/decide, nên
+ * khoá không bao giờ bị bỏ quên ở một nhánh gọi nào.
+ *
+ * KHÔNG ghi revision mới: nội dung case không đổi, chỉ con trỏ `ready_revision_id`
+ * dịch chuyển — ghi thêm một bản y hệt chỉ làm phình lịch sử. `version` vẫn bump vì
+ * ETag của case đã đổi.
+ */
+export async function promoteCase(
+  tx: TkTx,
+  ctx: TenantContext,
+  actor: Actor,
+  input: CaseMutationInput,
+): Promise<CaseSummaryDto> {
+  const row = await loadForMutation(tx, ctx, input);
+  if (row.status !== "in_review") {
+    throw new CaseStateError(`Chỉ case in_review mới promote được; case ${row.id} đang ${row.status}`);
+  }
+
+  const latestReview = await new ReviewRepo(tx, ctx).findLatest(row.id);
+  if (latestReview === undefined || latestReview.state !== "approved") {
+    throw new CaseStateError(`Case ${row.id} chưa được duyệt — promote cần một review 'approved'`);
+  }
+
+  // FOUR-EYES (blueprint §3): người-sửa-cuối-không-tự-promote. CHỈ áp ở promote,
+  // không áp ở review — người sửa duyệt bản của người khác vẫn hợp lệ.
+  if (row.lastEditedBy === actor.userId) {
+    const teamRows = await tx
+      .select({ allowSelfPromote: teams.allowSelfPromote })
+      .from(teams)
+      .where(eq(teams.id, ctx.teamId))
+      .limit(1);
+    const allowSelfPromote = teamRows[0]?.allowSelfPromote ?? false;
+    if (!allowSelfPromote) throw new FourEyesViolationError(row.id);
+  }
+
+  const readyRevisionId = row.latestRevisionId;
+  if (readyRevisionId === null) throw new CaseStateError(`Case ${row.id} chưa có revision để ghim`);
+
+  const nextVersion = row.version + 1;
+  const updated = await new CaseRepo(tx, ctx).applyPromote(
+    row.id,
+    nextVersion,
+    actor.userId,
+    readyRevisionId,
   );
   return toCaseSummary(updated);
 }
