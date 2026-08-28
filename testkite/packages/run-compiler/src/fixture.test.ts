@@ -14,7 +14,7 @@ import { COMPILE_ERROR_CODES } from "./index.js";
 function rawFixture(overrides: Readonly<Record<string, unknown>> = {}): Readonly<Record<string, unknown>> {
   return {
     name: "minimal",
-    description: "một case, một step click",
+    description: "one case, one click step",
     expect: "plan",
     snapshot: {
       teamId: "t1",
@@ -77,7 +77,7 @@ describe("parseFixture — valid shape", () => {
     const fixture = parseFixture(rawFixture(), "minimal.json");
 
     expect(fixture.name).toBe("minimal");
-    expect(fixture.description).toBe("một case, một step click");
+    expect(fixture.description).toBe("one case, one click step");
     expect(fixture.expect).toBe("plan");
     expect(fixture.expectCodes).toEqual([]);
     expect(fixture.input.snapshot.targetCaseIds).toEqual(["c1"]);

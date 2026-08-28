@@ -125,7 +125,7 @@ describe("buildCompileSnapshot", () => {
       replaceSteps(tx, ctx(), alice, {
         caseId,
         expectedVersion: promoted.version,
-        steps: [{ kind: "action", renderedSentence: "BẢN NHÁP MỚI", verbOpKey: "goto" }],
+        steps: [{ kind: "action", renderedSentence: "NEW DRAFT", verbOpKey: "goto" }],
       }),
     );
 
@@ -139,7 +139,7 @@ describe("buildCompileSnapshot", () => {
       "Checkout: open page",
       "Checkout: if ok",
     ]);
-    expect(latest.cases[caseId]?.steps.map((s) => s.renderedSentence)).toEqual(["BẢN NHÁP MỚI"]);
+    expect(latest.cases[caseId]?.steps.map((s) => s.renderedSentence)).toEqual(["NEW DRAFT"]);
     expect(ready.cases[caseId]?.revisionId).not.toBe(latest.cases[caseId]?.revisionId);
   });
 

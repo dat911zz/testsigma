@@ -21,7 +21,7 @@ beforeEach(async () => {
 
 const payload = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   orgId: h.ids.orgId,
-  name: "Team Mới",
+  name: "New Team",
   slug: "team-moi",
   adminEmail: "boss@acme.test",
   baseUrl: "https://app.acme.test",
@@ -158,7 +158,7 @@ describe("onboarding team", () => {
       { db: h.db.db },
       {
         orgId: h.ids.orgId,
-        name: "Team Hỏng",
+        name: "Broken Team",
         slug: "team-hong-that",
         adminEmail: "hong@acme.test",
         baseUrl: "ftp://bad.example.test",

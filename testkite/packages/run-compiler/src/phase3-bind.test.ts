@@ -157,8 +157,8 @@ describe("phase 3 — bind verb: multiple cases / data-driven fan-out", () => {
   it("a data-driven case with 3 rows ⇒ 3 BoundCases but the unknown verb is only reported once", () => {
     const rows = [
       { label: "admin", expectedToFail: false, values: { user: "admin" } },
-      { label: "khoá", expectedToFail: true, values: { user: "locked" } },
-      { label: "khách", expectedToFail: false, values: { user: "guest" } },
+      { label: "locked", expectedToFail: true, values: { user: "locked" } },
+      { label: "guest", expectedToFail: false, values: { user: "guest" } },
     ];
     const main = kase("main", [actionOn(1, "web.ouija", "el-a")], { dataProfileId: "p-users" });
 

@@ -167,8 +167,8 @@ describe("phase 5 — secret: only ever a REF, never a value", () => {
 
 describe("phase 5 — merge data-driven + env into args", () => {
   const rows: readonly DataRow[] = [
-    { label: "admin", expectedToFail: false, values: { user: "admin", "Ho Ten": "Quản trị" } },
-    { label: "khoá", expectedToFail: true, values: { user: "locked", "Ho Ten": "Bị khoá" } },
+    { label: "admin", expectedToFail: false, values: { user: "admin", "Ho Ten": "Administrator" } },
+    { label: "locked", expectedToFail: true, values: { user: "locked", "Ho Ten": "Locked" } },
   ];
 
   it("$data:COLUMN takes its value from THIS iteration's own row", () => {
@@ -181,7 +181,7 @@ describe("phase 5 — merge data-driven + env into args", () => {
     expect(r.diagnostics).toEqual([]);
     expect(r.cases).toHaveLength(2);
     expect(r.cases.map((c) => c.steps[0]?.args)).toEqual([{ value: "admin" }, { value: "locked" }]);
-    expect(r.cases.map((c) => c.iterationLabel)).toEqual(["admin", "khoá"]);
+    expect(r.cases.map((c) => c.iterationLabel)).toEqual(["admin", "locked"]);
     expect(r.cases.map((c) => c.expectedToFail)).toEqual([false, true]);
   });
 
@@ -192,7 +192,7 @@ describe("phase 5 — merge data-driven + env into args", () => {
       { dataProfileId: "p-users" },
     );
 
-    expect(r.cases.map((c) => c.steps[0]?.args)).toEqual([{ value: "Quản trị" }, { value: "Bị khoá" }]);
+    expect(r.cases.map((c) => c.steps[0]?.args)).toEqual([{ value: "Administrator" }, { value: "Locked" }]);
   });
 
   it("$env:VAR takes its value from env.vars", () => {
@@ -208,7 +208,7 @@ describe("phase 5 — merge data-driven + env into args", () => {
   it("a string that isn't a ref is kept absolutely as-is (even with a $ character)", () => {
     const r = resolveOf(
       [
-        actionOn(1, "web.enter", "el-a", { value: "giá 100$ nhé" }),
+        actionOn(1, "web.enter", "el-a", { value: "price 100$, right" }),
         actionOn(2, "web.enter", "el-a", { value: "$khong_biet:x" }),
         actionOn(3, "web.enter", "el-a", { value: "$secret" }),
       ],
@@ -217,7 +217,7 @@ describe("phase 5 — merge data-driven + env into args", () => {
 
     expect(r.diagnostics).toEqual([]);
     expect(r.cases[0]?.steps.map((s) => s.args)).toEqual([
-      { value: "giá 100$ nhé" },
+      { value: "price 100$, right" },
       { value: "$khong_biet:x" },
       { value: "$secret" },
     ]);

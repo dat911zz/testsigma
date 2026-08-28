@@ -3,13 +3,13 @@
   "info": {
     "title": "TestKite Contract",
     "version": "0.0.1",
-    "description": "Catalog schema authoring-facing của TestKite, sinh từ zod. M1: chỉ components.schemas — paths gắn ở M2 cùng route Fastify."
+    "description": "TestKite's authoring-facing catalog schema, generated from zod. M1: only components.schemas — paths get wired in M2 together with the Fastify routes."
   },
   "paths": {
     "/v1/auth/login": {
       "post": {
         "operationId": "loginPassword",
-        "summary": "Đăng nhập email/mật khẩu nội bộ, trả session token của một team",
+        "summary": "Internal email/password login, returns a session token for one team",
         "requestBody": {
           "content": {
             "application/json": {
@@ -110,7 +110,7 @@
             }
           },
           "401": {
-            "description": "Chưa xác thực",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -147,7 +147,7 @@
     "/v1/auth/oidc/{connectorId}/start": {
       "post": {
         "operationId": "oidcStart",
-        "summary": "Bắt đầu authorization code + PKCE với IdP (Keycloak self-host)",
+        "summary": "Start authorization code + PKCE with the IdP (self-hosted Keycloak)",
         "parameters": [
           {
             "in": "path",
@@ -202,7 +202,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -239,7 +239,7 @@
     "/v1/auth/oidc/{connectorId}/callback": {
       "post": {
         "operationId": "oidcCallback",
-        "summary": "Đổi authorization code lấy session token",
+        "summary": "Exchange an authorization code for a session token",
         "parameters": [
           {
             "in": "path",
@@ -342,7 +342,7 @@
             }
           },
           "401": {
-            "description": "Chưa xác thực",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -374,7 +374,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -411,7 +411,7 @@
     "/v1/auth/me": {
       "get": {
         "operationId": "getMe",
-        "summary": "Bối cảnh của credential đang dùng: team, vai, scope hiệu lực",
+        "summary": "Context of the credential in use: team, role, effective scope",
         "security": [
           {
             "bearerAuth": []
@@ -473,7 +473,7 @@
             }
           },
           "401": {
-            "description": "Chưa xác thực",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -510,7 +510,7 @@
     "/v1/tokens": {
       "get": {
         "operationId": "listTokens",
-        "summary": "Liệt kê api token của team hiện tại",
+        "summary": "List API tokens of the current team",
         "security": [
           {
             "bearerAuth": []
@@ -590,7 +590,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -625,7 +625,7 @@
       },
       "post": {
         "operationId": "createToken",
-        "summary": "Phát api token mới — secret trả về đúng MỘT lần",
+        "summary": "Issue a new API token — the secret is returned exactly ONCE",
         "security": [
           {
             "bearerAuth": []
@@ -739,7 +739,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -776,7 +776,7 @@
     "/v1/tokens/{tokenId}": {
       "delete": {
         "operationId": "revokeToken",
-        "summary": "Thu hồi api token",
+        "summary": "Revoke an API token",
         "security": [
           {
             "bearerAuth": []
@@ -805,7 +805,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -837,7 +837,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -874,7 +874,7 @@
     "/v1/members": {
       "get": {
         "operationId": "listMembers",
-        "summary": "Thành viên của team hiện tại",
+        "summary": "Members of the current team",
         "security": [
           {
             "bearerAuth": []
@@ -920,7 +920,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -957,7 +957,7 @@
     "/v1/members/{userId}": {
       "patch": {
         "operationId": "setMemberRole",
-        "summary": "Đổi vai của một thành viên (action HIGH, bỏ cache, audit HIGH)",
+        "summary": "Change a member's role (HIGH action, drops cache, HIGH audit)",
         "security": [
           {
             "bearerAuth": []
@@ -1032,7 +1032,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -1064,7 +1064,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1101,7 +1101,7 @@
     "/v1/teams": {
       "post": {
         "operationId": "onboardTeam",
-        "summary": "Onboarding một team trong MỘT transaction idempotent",
+        "summary": "Onboard a team in ONE idempotent transaction",
         "security": [
           {
             "bearerAuth": []
@@ -1195,7 +1195,7 @@
             }
           },
           "400": {
-            "description": "Dữ liệu không hợp lệ",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -1227,7 +1227,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -1259,7 +1259,7 @@
             }
           },
           "409": {
-            "description": "Xung đột phiên bản",
+            "description": "Version conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1296,7 +1296,7 @@
     "/v1/audit-events": {
       "get": {
         "operationId": "listAuditEvents",
-        "summary": "Đọc audit của team hiện tại (append-only, không xoá được)",
+        "summary": "Read the current team's audit log (append-only, cannot be deleted)",
         "security": [
           {
             "bearerAuth": []
@@ -1404,7 +1404,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -1496,7 +1496,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -1528,7 +1528,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1594,7 +1594,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -1626,7 +1626,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1712,7 +1712,7 @@
             }
           },
           "400": {
-            "description": "Dữ liệu không hợp lệ",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -1744,7 +1744,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -1776,7 +1776,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1808,7 +1808,7 @@
             }
           },
           "409": {
-            "description": "Xung đột phiên bản",
+            "description": "Version conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -1840,7 +1840,7 @@
             }
           },
           "428": {
-            "description": "Thiếu If-Match",
+            "description": "Missing If-Match",
             "content": {
               "application/json": {
                 "schema": {
@@ -1906,7 +1906,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -1938,7 +1938,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1970,7 +1970,7 @@
             }
           },
           "409": {
-            "description": "Xung đột phiên bản",
+            "description": "Version conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -2002,7 +2002,7 @@
             }
           },
           "428": {
-            "description": "Thiếu If-Match",
+            "description": "Missing If-Match",
             "content": {
               "application/json": {
                 "schema": {
@@ -2068,7 +2068,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -2100,7 +2100,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2132,7 +2132,7 @@
             }
           },
           "409": {
-            "description": "Xung đột phiên bản",
+            "description": "Version conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -2164,7 +2164,7 @@
             }
           },
           "428": {
-            "description": "Thiếu If-Match",
+            "description": "Missing If-Match",
             "content": {
               "application/json": {
                 "schema": {
@@ -2255,7 +2255,7 @@
             }
           },
           "400": {
-            "description": "Dữ liệu không hợp lệ",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -2287,7 +2287,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -2319,7 +2319,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2351,7 +2351,7 @@
             }
           },
           "409": {
-            "description": "Xung đột phiên bản",
+            "description": "Version conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -2383,7 +2383,7 @@
             }
           },
           "428": {
-            "description": "Thiếu If-Match",
+            "description": "Missing If-Match",
             "content": {
               "application/json": {
                 "schema": {
@@ -2449,7 +2449,7 @@
             }
           },
           "403": {
-            "description": "Thiếu quyền trong chính team của mình",
+            "description": "Missing permission within your own team",
             "content": {
               "application/json": {
                 "schema": {
@@ -2481,7 +2481,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2513,7 +2513,7 @@
             }
           },
           "409": {
-            "description": "Xung đột phiên bản",
+            "description": "Version conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -2545,7 +2545,7 @@
             }
           },
           "428": {
-            "description": "Thiếu If-Match",
+            "description": "Missing If-Match",
             "content": {
               "application/json": {
                 "schema": {
@@ -2585,7 +2585,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "API token của TestKite: `Authorization: Bearer tk_<prefix>_<secret>`. Token gắn ĐÚNG MỘT team và luôn có hạn."
+        "description": "TestKite API token: `Authorization: Bearer tk_<prefix>_<secret>`. A token is bound to EXACTLY ONE team and always has an expiry."
       }
     },
     "schemas": {

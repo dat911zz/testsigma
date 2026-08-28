@@ -195,7 +195,7 @@ describe("decideReview", () => {
         caseId: c.id,
         expectedVersion: s.version,
         decision: "changes_requested",
-        comment: "thiếu bước xác nhận đơn",
+        comment: "missing order confirmation step",
       }),
     );
     expect(after.status).toBe("draft");
@@ -203,7 +203,7 @@ describe("decideReview", () => {
       sql`SELECT state, comment FROM aut_case_reviews WHERE case_id = ${c.id}`,
     );
     expect(r.rows[0]?.["state"]).toBe("changes_requested");
-    expect(r.rows[0]?.["comment"]).toBe("thiếu bước xác nhận đơn");
+    expect(r.rows[0]?.["comment"]).toBe("missing order confirmation step");
   });
 
   it("deciding while the case is draft (no open review) ⇒ CaseStateError", async () => {

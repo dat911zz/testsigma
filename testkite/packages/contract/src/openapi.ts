@@ -66,20 +66,20 @@ export const OPENAPI_INFO = {
   title: "TestKite Contract",
   version: "0.0.1",
   description:
-    "Catalog schema authoring-facing của TestKite, sinh từ zod. M1: chỉ components.schemas — paths gắn ở M2 cùng route Fastify.",
+    "TestKite's authoring-facing catalog schema, generated from zod. M1: only components.schemas — paths get wired in M2 together with the Fastify routes.",
 } as const;
 
 const STATUS_TEXT: Readonly<Record<string, string>> = {
   200: "OK",
   201: "Created",
   204: "No Content",
-  400: "Dữ liệu không hợp lệ",
-  401: "Chưa xác thực",
-  403: "Thiếu quyền trong chính team của mình",
-  404: "Không tìm thấy — GỒM CẢ tài nguyên của team khác (không bao giờ 403)",
-  409: "Xung đột phiên bản",
-  428: "Thiếu If-Match",
-  429: "Chạm quota",
+  400: "Invalid data",
+  401: "Not authenticated",
+  403: "Missing permission within your own team",
+  404: "Not found — INCLUDING a resource belonging to another team (never 403)",
+  409: "Version conflict",
+  428: "Missing If-Match",
+  429: "Quota exceeded",
 };
 
 /** A valid OpenAPI `responses` key: a status code starting with 1..5. */
@@ -135,7 +135,7 @@ export function buildOpenApiDocument(): oas31.OpenAPIObject {
           type: "http",
           scheme: "bearer",
           description:
-            "API token của TestKite: `Authorization: Bearer tk_<prefix>_<secret>`. Token gắn ĐÚNG MỘT team và luôn có hạn.",
+            "TestKite API token: `Authorization: Bearer tk_<prefix>_<secret>`. A token is bound to EXACTLY ONE team and always has an expiry.",
         },
       },
       schemas: {

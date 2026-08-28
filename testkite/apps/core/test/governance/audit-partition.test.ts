@@ -1,11 +1,13 @@
 /**
- * `audit_events` — bảng partition theo THÁNG, append-only Ở TẦNG QUYỀN.
+ * `audit_events` — table partitioned by MONTH, append-only AT THE PRIVILEGE LAYER.
  *
- * Mọi assertion dưới đây bám đúng bằng chứng spike 2026-08-28 (đầu plan M2 identity):
- *  - PK BẮT BUỘC chứa partition key, nếu không Postgres từ chối tạo bảng.
- *  - GRANT trên CHA là đủ (kể cả partition tạo sau); GRANT trên CON là LỖ RÒ TENANT
- *    vì `relrowsecurity` của partition con là false — policy của cha không áp.
- *  - Không dựa vào "code không gọi DELETE": DB phải TỪ CHỐI (42501), không phải 0 row.
+ * Every assertion below tracks the exact evidence from the 2026-08-28 spike (start of the
+ * M2 identity plan):
+ *  - The PK MUST contain the partition key, otherwise Postgres refuses to create the table.
+ *  - GRANT on the PARENT is enough (even for partitions created later); GRANT on a CHILD is
+ *    a TENANT LEAK because `relrowsecurity` on a child partition is false — the parent's
+ *    policy does not apply.
+ *  - Don't rely on "code never calls DELETE": the DB must REJECT it (42501), not return 0 rows.
  */
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
@@ -38,7 +40,7 @@ beforeEach(async () => {
   teamB = String(b.rows[0]?.["id"]);
 });
 
-/** Chạy một khối SQL đúng như request-path thật: role app + app.team_id. */
+/** Run a SQL block exactly like the real request path: app role + app.team_id. */
 async function asTeam<T>(teamId: string, fn: () => Promise<T>): Promise<T> {
   await t.raw.exec(`SET ROLE testkite_app`);
   await t.raw.query(`SELECT set_config('app.team_id', $1, false)`, [teamId]);
@@ -51,7 +53,7 @@ async function asTeam<T>(teamId: string, fn: () => Promise<T>): Promise<T> {
 }
 
 describe("audit_events", () => {
-  it("là bảng partition theo RANGE(occurred_at)", async () => {
+  it("is a table partitioned by RANGE(occurred_at)", async () => {
     const r = await t.db.execute(sql`
       SELECT c.relkind, pg_get_partkeydef(c.oid) AS keydef
       FROM pg_class c WHERE c.relname = 'audit_events'`);
@@ -59,7 +61,7 @@ describe("audit_events", () => {
     expect(String(r.rows[0]?.["keydef"])).toContain("RANGE (occurred_at)");
   });
 
-  it("PK gồm cả partition key (Postgres bắt buộc) và team_id đứng đầu", async () => {
+  it("PK includes the partition key (Postgres requires it) with team_id leading", async () => {
     const r = await t.db.execute(sql`
       SELECT pg_get_constraintdef(c.oid) AS def FROM pg_constraint c
       JOIN pg_class t2 ON t2.oid = c.conrelid
@@ -67,7 +69,7 @@ describe("audit_events", () => {
     expect(String(r.rows[0]?.["def"])).toBe("PRIMARY KEY (team_id, id, occurred_at)");
   });
 
-  it("có partition cho tháng hiện tại và ít nhất 12 tháng tới + default", async () => {
+  it("has a partition for the current month and at least the next 12 months + default", async () => {
     const r = await t.db.execute(sql`
       SELECT count(*)::int AS n FROM pg_inherits i
       JOIN pg_class p ON p.oid = i.inhparent WHERE p.relname='audit_events'`);
@@ -77,7 +79,7 @@ describe("audit_events", () => {
     expect(Number(def.rows[0]?.["n"])).toBe(1);
   });
 
-  it("role app KHÔNG có DELETE/UPDATE/TRUNCATE trên bảng cha", async () => {
+  it("the app role has NO DELETE/UPDATE/TRUNCATE on the parent table", async () => {
     const r = await t.db.execute(sql`
       SELECT
         has_table_privilege('testkite_app','audit_events','SELECT') AS s,
@@ -88,7 +90,7 @@ describe("audit_events", () => {
     expect(r.rows[0]).toMatchObject({ s: true, i: true, u: false, d: false, tr: false });
   });
 
-  it("KHÔNG partition con nào được GRANT — GRANT con là lỗ rò tenant", async () => {
+  it("NO child partition is GRANTed — a child GRANT is a tenant leak", async () => {
     const r = await t.db.execute(sql`
       SELECT c.relname,
              has_table_privilege('testkite_app', c.oid, 'SELECT') AS s,
@@ -97,12 +99,12 @@ describe("audit_events", () => {
       JOIN pg_class p ON p.oid = inh.inhparent WHERE p.relname='audit_events'`);
     expect(r.rows.length).toBeGreaterThan(0);
     for (const row of r.rows) {
-      expect(row["s"], `${String(row["relname"])} bị GRANT SELECT`).toBe(false);
-      expect(row["i"], `${String(row["relname"])} bị GRANT INSERT`).toBe(false);
+      expect(row["s"], `${String(row["relname"])} was GRANTed SELECT`).toBe(false);
+      expect(row["i"], `${String(row["relname"])} was GRANTed INSERT`).toBe(false);
     }
   });
 
-  it("DELETE/UPDATE/TRUNCATE bởi role app ⇒ permission denied, không phải 0 row", async () => {
+  it("DELETE/UPDATE/TRUNCATE by the app role ⇒ permission denied, not 0 rows", async () => {
     await asTeam(teamA, () =>
       t.raw.query(
         `INSERT INTO audit_events (team_id, actor_kind, action, severity) VALUES ($1,'user','token.issue','HIGH')`,
@@ -121,7 +123,7 @@ describe("audit_events", () => {
     }
   });
 
-  it("RLS lọc theo team qua bảng cha", async () => {
+  it("RLS filters by team through the parent table", async () => {
     await asTeam(teamA, () =>
       t.raw.query(
         `INSERT INTO audit_events (team_id,actor_kind,action,severity) VALUES ($1,'user','a','LOW')`,
@@ -142,7 +144,7 @@ describe("audit_events", () => {
     expect(seenA).toEqual(["a"]);
   });
 
-  it("WITH CHECK chặn ghi audit sang team khác", async () => {
+  it("WITH CHECK blocks writing an audit event to another team", async () => {
     await expect(
       asTeam(teamA, () =>
         t.raw.query(
@@ -153,7 +155,7 @@ describe("audit_events", () => {
     ).rejects.toThrow(/row-level security/i);
   });
 
-  it("ghi vào tháng ngoài dải rơi vào default partition, KHÔNG mất bản ghi", async () => {
+  it("a write outside the range falls into the default partition, NO row lost", async () => {
     await asTeam(teamA, () =>
       t.raw.query(
         `INSERT INTO audit_events (team_id, occurred_at, actor_kind, action, severity)
@@ -165,12 +167,12 @@ describe("audit_events", () => {
     expect(Number(r.rows[0]?.["n"])).toBe(1);
   });
 
-  it("index (team_id, occurred_at DESC) tồn tại — truy vấn audit luôn theo team + thời gian", async () => {
+  it("index (team_id, occurred_at DESC) exists — audit queries always filter by team + time", async () => {
     const r = await t.db.execute(sql`SELECT indexdef FROM pg_indexes WHERE tablename='audit_events'`);
     expect(r.rows.map((x) => String(x["indexdef"])).join("\n")).toMatch(/team_id, occurred_at DESC/);
   });
 
-  it("cột trong SQL viết tay khớp ĐÚNG định nghĩa drizzle (không trôi)", async () => {
+  it("columns in hand-written SQL match the drizzle definition EXACTLY (no drift)", async () => {
     const { auditEvents } = await import("../../src/modules/governance/db/audit-schema.js");
     const r = await t.db.execute(sql`
       SELECT column_name FROM information_schema.columns WHERE table_name='audit_events'`);
@@ -178,7 +180,7 @@ describe("audit_events", () => {
     const inTs = Object.values(auditEvents).flatMap((c) =>
       typeof c === "object" && c !== null && "name" in c ? [String((c as { name: string }).name)] : [],
     );
-    for (const c of inTs) expect([...inDb], `drizzle khai ${c} mà DB không có`).toContain(c);
+    for (const c of inTs) expect([...inDb], `drizzle declares ${c} but the DB doesn't have it`).toContain(c);
     expect(inTs.length).toBe(inDb.size);
   });
 });

@@ -1,12 +1,13 @@
 /**
- * Lệch có chủ đích so với plan (Task 7 Step 5 đặt file này ở
- * `src/modules/governance/audit/write.test.ts`): `apps/core/tsconfig.json` khai
- * `rootDir: "src"` + `include: ["src"]`, nên một test nằm trong `src` mà import
- * harness ở `test/harness/pglite.js` làm `pnpm typecheck` đỏ ngay
+ * Deliberate deviation from the plan (Task 7 Step 5 put this file at
+ * `src/modules/governance/audit/write.test.ts`): `apps/core/tsconfig.json` declares
+ * `rootDir: "src"` + `include: ["src"]`, so a test living in `src` that imports the
+ * harness at `test/harness/pglite.js` makes `pnpm typecheck` fail immediately
  * (TS6059 "not under rootDir" + TS6307 "not listed within the file list").
- * Đúng vì thế mọi test CHẠM DB của repo này đều sống dưới `apps/core/test/`;
- * test nằm trong `src` chỉ dành cho unit test thuần. Nội dung test giữ nguyên
- * từng assertion như plan, chỉ đổi vị trí file + đường import.
+ * That's exactly why every test that TOUCHES the DB in this repo lives under
+ * `apps/core/test/`; a test living in `src` is for pure unit tests only. The test
+ * content keeps every assertion exactly as the plan specified — only the file
+ * location + import path changed.
  */
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
@@ -35,7 +36,7 @@ beforeEach(async () => {
 });
 
 describe("writeAuditEvent", () => {
-  it("ghi được trong cùng transaction với hành động", async () => {
+  it("writes successfully in the same transaction as the action", async () => {
     await withTenant(t.db, { teamId: teamA }, async (tx) => {
       await writeAuditEvent(
         tx,
@@ -55,7 +56,7 @@ describe("writeAuditEvent", () => {
     expect(r.rows[0]?.["meta"]).toMatchObject({ prefix: "9f3ac21b" });
   });
 
-  it("rollback của hành động cuốn theo cả dòng audit (không audit ma)", async () => {
+  it("rolling back the action rolls back the audit row too (no ghost audit)", async () => {
     await expect(
       withTenant(t.db, { teamId: teamA }, async (tx) => {
         await writeAuditEvent(
@@ -63,14 +64,14 @@ describe("writeAuditEvent", () => {
           { teamId: teamA },
           { actorKind: "system", actorId: null, action: "x", severity: "LOW" },
         );
-        throw new Error("hành động thất bại");
+        throw new Error("action failed");
       }),
-    ).rejects.toThrow("hành động thất bại");
+    ).rejects.toThrow("action failed");
     const r = await t.db.execute(sql`SELECT count(*)::int AS n FROM audit_events`);
     expect(Number(r.rows[0]?.["n"])).toBe(0);
   });
 
-  it("từ chối action rỗng và meta quá lớn (audit không phải chỗ đổ log)", async () => {
+  it("rejects an empty action and an oversized meta (audit isn't a log dump)", async () => {
     await withTenant(t.db, { teamId: teamA }, async (tx) => {
       await expect(
         writeAuditEvent(

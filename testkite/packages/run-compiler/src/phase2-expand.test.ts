@@ -152,15 +152,15 @@ describe("phase 2 — data-driven fan-out", () => {
   it("a case with 3 rows ⇒ 3 iterations, label taken from the row, expected_to_fail flag preserved", () => {
     const rows = [
       { label: "admin", expectedToFail: false, values: { user: "admin" } },
-      { label: "khoá", expectedToFail: true, values: { user: "locked" } },
-      { label: "khách", expectedToFail: false, values: { user: "guest" } },
+      { label: "locked", expectedToFail: true, values: { user: "locked" } },
+      { label: "guest", expectedToFail: false, values: { user: "guest" } },
     ];
     const main = kase("main", [action(1, "web.click")], { dataProfileId: "p-users" });
 
     const r = expandCases(snap([main], ["main"], { dataProfiles: [profile("p-users", rows)] }), ["main"]);
 
     expect(r.diagnostics).toEqual([]);
-    expect(r.cases.map((c) => c.iterationLabel)).toEqual(["admin", "khoá", "khách"]);
+    expect(r.cases.map((c) => c.iterationLabel)).toEqual(["admin", "locked", "guest"]);
     expect(r.cases.map((c) => c.expectedToFail)).toEqual([false, true, false]);
     expect(r.cases.map((c) => c.dataRow)).toEqual(rows.map((row) => row.values));
   });
