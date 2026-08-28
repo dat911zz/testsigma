@@ -45,6 +45,12 @@ strategy/design/implement → Opus; chỉ judge/synthesis cuối mới dùng mod
 
 ## Luật 4 — Chuẩn code TestKite
 
+- **NGÔN NGỮ (chốt 28-08-2026): mọi CODE và TEST viết TIẾNG ANH** — comment, docstring,
+  tên test (`describe`/`it`), message lỗi/diagnostic, log. Tài liệu (`docs/`, `tasks/`,
+  plan) vẫn tiếng Việt. Chuỗi hiển thị cho người dùng cuối đi qua i18n (vi+en), không
+  hardcode. Plan cũ có block code tiếng Việt thì implementer DỊCH sang tiếng Anh khi
+  viết, giữ nguyên hành vi. Gate máy: grep ký tự có dấu tiếng Việt trong `src/**`,
+  `test/**`, `tools/**` phải = 0 (trừ file fixture dữ liệu có chủ đích).
 - TypeScript strict (`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`), NodeNext,
   Node 22, pnpm workspace, vitest. Không `any`, không `!` phi lý.
 - Compiler (`packages/run-compiler`) là PURE — cấm import fs/net/db, cấm `Date.now()`.
