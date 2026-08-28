@@ -4138,6 +4138,33 @@ git add testkite/apps/core/src/modules/authoring/ testkite/apps/core/drizzle/ \
 git commit -m "M2-AUT T10: aut_case_reviews + may trang thai submit/withdraw/decide"
 ```
 
+- [x] **Step 10 (review fix, 28-08): khoá advisory TRƯỚC MỌI ĐỌC trong `loadForMutation`**
+
+Review chặn T10 vì đúng lỗi mà Step 8 của T9 đã vá cho `replaceSteps` nhưng T10 không hưởng:
+`submitForReview` / `withdrawReview` / `decideReview` đều đi qua `loadForMutation` — đọc
+`row.version`, so với `expectedVersion`, rồi mới ghi — check-then-act **không khoá**, trong khi
+`CaseRepo.lockCase()` đã nằm sẵn trong `case-repo.ts` từ T9.
+
+Tái hiện trên Postgres THẬT (hai connection `pg.Pool`, hai transaction cùng mở trước khi bên nào
+đọc):
+
+1. `decide('approved')` song song `withdraw` cùng `expectedVersion` ⇒ **CẢ HAI trả thành công**
+   (`won.length` = 2), cả hai cùng `close()` một review rồi cùng `applyDecision` — DB chỉ giữ được
+   một quyết định: **lost update IM LẶNG**, response của bên thua mô tả một trạng thái không tồn
+   tại trong DB. Đây là hỏng hóc nặng hơn T9: T9 bên thua ít nhất còn *nổ*.
+2. Hai `submitForReview` song song ⇒ bên thua ném `DrizzleQueryError`/23505 THÔ
+   (`insert into "aut_case_revisions"`) thay vì hợp đồng 409 `VersionConflictError`.
+
+Sửa (một chỗ, vì `loadForMutation` là cửa vào duy nhất của cả ba mutation): gọi
+`cases.lockCase(input.caseId)` ở **dòng đầu** `loadForMutation`, trước cả `findById`. Khoá chỉ là
+một bigint, không đọc row nào ⇒ luật "cross-tenant ⇒ 404" không đổi; `pg_advisory_xact_lock` tự
+nhả khi COMMIT/ROLLBACK.
+
+Bằng chứng ĐỎ→XANH: `apps/core/test/concurrency/review-state-race.test.ts` (Postgres thật, theo
+đúng mẫu `case-edit-race.test.ts`) — 2 test ĐỎ đúng hai triệu chứng trên, XANH sau khi thêm khoá,
+và mỗi test còn khẳng định **DB khớp response bên thắng** (review `approved` ⇔ case `in_review`,
+review `withdrawn` ⇔ case `draft`).
+
 ---
 
 ## Task 11 — Promote: advisory lock `(team, case)` + four-eyes

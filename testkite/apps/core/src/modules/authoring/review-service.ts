@@ -53,12 +53,29 @@ async function conflictFor(
   );
 }
 
+/**
+ * Cửa vào DUY NHẤT của mọi mutation trạng thái (submit/withdraw/decide) — nên khoá
+ * đứng ở đây, không rải ở ba chỗ gọi.
+ *
+ * KHOÁ TRƯỚC MỌI ĐỌC. So `version` với `expectedVersion` rồi mới ghi là check-then-act
+ * y hệt `replaceSteps`: không có khoá, hai transaction trên hai connection thật đều đọc
+ * trúng version CŨ (chưa bên nào commit) nên CẢ HAI qua được nhánh so sánh và cùng ghi.
+ * Đo thật trên Postgres (test/concurrency/review-state-race.test.ts):
+ *  - `decide('approved')` song song `withdraw` ⇒ cả hai trả THÀNH CÔNG, DB chỉ giữ được
+ *    một quyết định — lost update im lặng, response bên thua mô tả trạng thái không có thật;
+ *  - hai `submitForReview` ⇒ bên thua đâm unique (revision_no / `aut_case_reviews_one_open`)
+ *    và ném DrizzleQueryError/23505 THÔ thay vì hợp đồng 409 + diff 3 chiều.
+ * Khoá đứng trước cả kiểm tra tồn tại: nó chỉ khoá một số, không đọc row nào, nên không
+ * đổi được luật "cross-tenant ⇒ 404".
+ */
 async function loadForMutation(
   tx: TkTx,
   ctx: TenantContext,
   input: CaseMutationInput,
 ): Promise<CaseRow> {
-  const row = await new CaseRepo(tx, ctx).findById(input.caseId);
+  const cases = new CaseRepo(tx, ctx);
+  await cases.lockCase(input.caseId);
+  const row = await cases.findById(input.caseId);
   if (row === undefined) throw new CaseNotFoundError(input.caseId);
   if (row.version !== input.expectedVersion) {
     throw await conflictFor(tx, ctx, row, input.expectedVersion);
