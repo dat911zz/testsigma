@@ -29,4 +29,10 @@ export {
   type Permission, type MembershipRole,
 } from "./rbac/permissions.js";
 export { authorize, assertGrantable, effectiveScopes, type CredentialKind } from "./rbac/authorize.js";
+export {
+  createAuthenticator,
+  type AuthenticatedPrincipal,
+  type Authenticator,
+  type AuthenticatorDeps,
+} from "./auth/authenticator.js";
 export { createAuthzCache, AUTHZ_CACHE_TTL_MS, type AuthzCache, type CachedGrant } from "./rbac/cache.js";

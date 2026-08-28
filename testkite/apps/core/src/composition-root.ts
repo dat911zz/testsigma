@@ -10,8 +10,28 @@
  * ghi cùng transaction Postgres) → relay → BullMQ events → handler idempotent.
  * `import ... from "bullmq"` bị lint CẤM ngoài kernel/relay/dispatcher.
  */
+import { createDb, type KernelEnv } from "./modules/kernel/index.js";
+import { createAuthenticator, createAuthzCache } from "./modules/identity/index.js";
+import { identityRouteRegistrations } from "./modules/identity/routes.js";
+import { buildHttpApp, type TkApp } from "./http/app.js";
 
-// TODO(M1): import Fastify + đăng ký route từ facade các module theo thứ tự DAG.
-export async function buildApp(): Promise<{ listen: (o: { host: string; port: number }) => Promise<void> }> {
-  throw new Error("TODO(M1): wire kernel → identity → ... theo blueprint §4");
+export async function buildApp(env: KernelEnv): Promise<TkApp> {
+  const { db, close } = createDb(env);
+  const cache = createAuthzCache({});
+  const authenticator = createAuthenticator({ db, cache });
+
+  const app = await buildHttpApp({
+    env,
+    db,
+    authenticator,
+    registrations: [
+      ...identityRouteRegistrations({ db }),
+      // authoring nối registration của nó vào đây (một dòng, sau identity).
+    ],
+  });
+
+  app.addHook("onClose", async () => {
+    await close();
+  });
+  return app;
 }

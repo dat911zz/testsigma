@@ -7,13 +7,22 @@
  * KHÔNG dùng `now` mặc định là Date.now trong test: clock được tiêm để test TTL
  * không cần sleep.
  */
+import type { CredentialKind } from "./authorize.js";
 import type { MembershipRole, Permission } from "./permissions.js";
 
 export const AUTHZ_CACHE_TTL_MS = 60_000;
 const DEFAULT_MAX_ENTRIES = 10_000;
 
+/**
+ * Nguyên một RequestContext đã tính xong, không chỉ mỗi vai: hook auth (Task 6)
+ * phải dựng lại được context ĐẦY ĐỦ từ cache hit, nếu không "cache hit" vẫn phải
+ * chạm DB để lấy userId/tokenId và TTL 60s trở thành đồ trang trí.
+ */
 export type CachedGrant = {
   readonly teamId: string;
+  readonly userId: string | null;
+  readonly tokenId: string;
+  readonly authKind: CredentialKind;
   readonly role: MembershipRole;
   readonly scopes: readonly Permission[];
   readonly cachedAt: number;

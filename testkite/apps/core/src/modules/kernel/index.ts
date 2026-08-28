@@ -11,7 +11,7 @@ export const MODULE = "kernel" as const;
 
 // Facade công khai của kernel. Module khác chỉ được import từ file này —
 // không bao giờ với tay vào `./db/*.js`.
-export { withTenant } from "./db/tenant.js";
+export { withTenant, withAuthRole } from "./db/tenant.js";
 // Role DB do kernel sở hữu. Module xuôi DAG (identity, authoring, ...) gắn RLS policy
 // bằng `appRole` lấy từ ĐÂY — không định nghĩa lại pgRole cùng tên ở module của mình.
 export { APP_ROLE, appRole, AUTH_ROLE, authRole, RELAY_ROLE, relayRole } from "./db/schema.js";

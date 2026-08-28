@@ -10,7 +10,7 @@ import { loadEnv } from "./modules/kernel/env.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
-  const app = await buildApp();
+  const app = await buildApp(env);
   await app.listen({ host: "0.0.0.0", port: env.PORT });
 }
 

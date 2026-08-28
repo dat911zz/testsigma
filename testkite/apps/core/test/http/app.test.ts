@@ -15,7 +15,14 @@ const ENV = {
 let app: TkApp;
 
 beforeAll(async () => {
-  app = await buildHttpApp({ env: { ...ENV, LOG_LEVEL: "error" }, db: undefined as never });
+  app = await buildHttpApp({
+    env: { ...ENV, LOG_LEVEL: "error" },
+    db: undefined as never,
+    // Skeleton test: không route nào ở đây khai descriptor ⇒ hook auth không chạm
+    // authenticator. Bề mặt có xác thực thật nằm ở test/http/auth.test.ts.
+    authenticator: { authenticate: async () => null },
+    registrations: [],
+  });
   // Route thử nghiệm CHỈ tồn tại trong test này — bề mặt thật đến ở Task 2/Task 6.
   app.withTypeProvider().route({
     method: "POST",

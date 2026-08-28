@@ -6,17 +6,29 @@
  * nói dialect `zod/v4`, còn @testkite/contract viết bằng zod v3 classic; ghép sai
  * cặp thì mọi request trả 500 "Cannot read properties of undefined".
  */
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyPluginAsync } from "fastify";
 import { randomUUID } from "node:crypto";
-import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
+import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
+import { toFastifyPath, UnauthorizedError } from "@testkite/contract";
 import type { KernelEnv, TkDb } from "../modules/kernel/index.js";
+import type { Authenticator } from "../modules/identity/index.js";
+import { installAuth } from "./auth.js";
 import { installErrorHandler } from "./errors.js";
+import type { RouteRegistration } from "./types.js";
 
 export type TkApp = FastifyInstance;
 
 export type HttpDeps = {
   readonly env: KernelEnv;
   readonly db: TkDb;
+  readonly authenticator: Authenticator;
+  readonly registrations: readonly RouteRegistration[];
+  /**
+   * Cửa cho module đăng ký kiểu `FastifyPluginAsync` (plan authoring dùng kiểu này).
+   * Chúng được `register` SAU `installAuth` nên hook auth phủ cả route của plugin —
+   * điều kiện duy nhất: mỗi route của plugin PHẢI mang descriptor ở `config.tk`.
+   */
+  readonly plugins?: readonly FastifyPluginAsync[];
 };
 
 export async function buildHttpApp(deps: HttpDeps): Promise<TkApp> {
@@ -33,7 +45,60 @@ export async function buildHttpApp(deps: HttpDeps): Promise<TkApp> {
   app.setSerializerCompiler(serializerCompiler);
   installErrorHandler(app);
 
+  // Sổ route THẬT của router. Bộ L3 (Task 11) dùng nó để bắt route đăng ký kiểu
+  // plugin mà quên khai descriptor — thứ sẽ vô hình với OpenAPI lẫn test cách ly.
+  // Cài TRƯỚC route đầu tiên: hook onRoute chỉ thấy route đăng ký sau nó.
+  const registered: { method: string; url: string; hasDescriptor: boolean }[] = [];
+  app.decorate("tkRegisteredRoutes", registered);
+  app.addHook("onRoute", (opts) => {
+    const methods = Array.isArray(opts.method) ? opts.method : [opts.method];
+    const cfg = opts.config;
+    for (const m of methods) registered.push({ method: m, url: opts.url, hasDescriptor: cfg?.tk !== undefined });
+  });
+
   app.get("/healthz", async () => ({ status: "ok" }));
+
+  installAuth(app, { authenticator: deps.authenticator });
+
+  for (const reg of deps.registrations) {
+    const d = reg.descriptor;
+    const codes = Object.keys(d.responses).map(Number);
+    app.withTypeProvider<ZodTypeProvider>().route({
+      method: d.method.toUpperCase() as "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
+      url: toFastifyPath(d.path),
+      // Hook auth đọc chính descriptor này — hợp đồng và cưỡng chế không thể lệch nhau.
+      config: { tk: d },
+      schema: {
+        ...(d.params !== undefined ? { params: d.params } : {}),
+        ...(d.query !== undefined ? { querystring: d.query } : {}),
+        ...(d.body !== undefined ? { body: d.body } : {}),
+        response: d.responses,
+      },
+      handler: async (req, reply) => {
+        const ctx = req.tk;
+        // Hook onRequest đã chặn mọi route auth:"required" không có credential; tới
+        // đây mà ctx vẫn null nghĩa là hook không chạy ⇒ đóng cửa, không đoán.
+        // CHÚ Ý cho Task 8/9: route auth:"public" (login, oidc callback) cũng rơi vào
+        // nhánh này — khi đăng ký route public đầu tiên phải nới guard theo `d.auth`.
+        if (ctx === null) throw new UnauthorizedError("thiếu bối cảnh xác thực");
+        const result = await reg.handler({
+          ctx,
+          params: req.params as never,
+          query: req.query as never,
+          body: req.body as never,
+        });
+        const status = codes.includes(201) ? 201 : codes.includes(204) ? 204 : 200;
+        return reply.code(status).send(result);
+      },
+    });
+  }
+
+  // Module đăng ký kiểu FastifyPluginAsync (plan authoring dùng kiểu này) vào SAU —
+  // hook auth ở trên đã cài nên nó phủ cả route của plugin. Plugin vẫn PHẢI đặt
+  // descriptor vào `config: { tk }` của từng route, nếu không Task 11 sẽ đỏ.
+  for (const plugin of deps.plugins ?? []) {
+    await app.register(plugin);
+  }
 
   return app;
 }

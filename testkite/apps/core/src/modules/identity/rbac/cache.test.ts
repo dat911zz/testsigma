@@ -7,7 +7,15 @@ function fakeClock(start = 0): { now: () => number; advance: (ms: number) => voi
 }
 
 const grant = (teamId: string) =>
-  ({ teamId, role: "author" as const, scopes: ["case:read"] as const, cachedAt: 0 });
+  ({
+    teamId,
+    userId: "u-1",
+    tokenId: "tok-1",
+    authKind: "user_pat" as const,
+    role: "author" as const,
+    scopes: ["case:read"] as const,
+    cachedAt: 0,
+  });
 
 describe("cache quyền", () => {
   it("TTL mặc định đúng 60s như blueprint", () => {
