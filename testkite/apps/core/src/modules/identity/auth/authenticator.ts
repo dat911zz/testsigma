@@ -1,10 +1,10 @@
 /**
- * Tra credential → RequestContext. Hai pha, đúng như spike 2026-08-28 chỉ ra:
- *   pha 1 (role testkite_auth, KHÔNG tenant ctx): tìm token theo sha256 + membership
- *   pha 2 (mọi thứ sau đó): withTenant(teamId) như phần còn lại của hệ
+ * Look up credential → RequestContext. Two phases, exactly as the 2026-08-28 spike found:
+ *   phase 1 (role testkite_auth, NO tenant ctx): find the token by sha256 + membership
+ *   phase 2 (everything after): withTenant(teamId) like the rest of the system
  *
- * `fresh: true` (action HIGH) bỏ qua cache hoàn toàn — hạ vai một người phải có
- * hiệu lực NGAY trên các action nhạy cảm, không chờ hết TTL 60s.
+ * `fresh: true` (HIGH action) bypasses the cache entirely — demoting someone must take
+ * effect IMMEDIATELY on sensitive actions, without waiting out the 60s TTL.
  */
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { withAuthRole, type TkDb } from "../../kernel/index.js";
@@ -34,7 +34,7 @@ export type AuthenticatorDeps = {
   readonly db: TkDb;
   readonly cache: AuthzCache;
   readonly now?: () => Date;
-  /** Hook đếm số lần thật sự chạm DB — test cache dùng nó. */
+  /** Hook counting how many times the DB was actually touched — cache tests use this. */
   readonly onLookup?: () => void;
 };
 
@@ -43,12 +43,12 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
 
   return {
     async authenticate(rawSecret, opts) {
-      // Sai định dạng thì không tốn một round-trip DB nào.
+      // Wrong format costs zero DB round-trips.
       if (parseTokenSecret(rawSecret) === null) return null;
-      // Key cache là SHA-256, KHÔNG phải secret thô: bearer token thật không được
-      // nằm nguyên văn trong heap suốt TTL 60s (heap dump/APM đọc được). Cùng đúng
-      // giá trị DB lưu ở token_hash, và chỉ tốn một phép hash CPU (0,0026ms) —
-      // không thêm round-trip nào so với việc dùng chuỗi thô.
+      // Cache key is SHA-256, NOT the raw secret: the user's real bearer token must not
+      // sit verbatim in the heap for the whole 60s TTL (heap dumps/APM can read it). This
+      // matches the exact value the DB stores in token_hash, and costs only one CPU hash
+      // (0.0026ms) — no extra round-trip compared to using the raw string.
       const tokenHash = hashTokenSecret(rawSecret);
       const cacheKey = tokenHash.toString("hex");
 
@@ -88,7 +88,7 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
         const tok = rows[0];
         if (tok === undefined) return null;
 
-        // Token gắn user ⇒ vai lấy từ membership; token service (userId null) ⇒ vai 'runner'.
+        // Token tied to a user ⇒ role comes from membership; service token (userId null) ⇒ role 'runner'.
         if (tok.userId === null) return { tok, role: "runner" as MembershipRole };
         const mem = await tx
           .select({ role: memberships.role })
@@ -96,7 +96,7 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
           .where(and(eq(memberships.teamId, tok.teamId), eq(memberships.userId, tok.userId)))
           .limit(1);
         const role = mem[0]?.role;
-        // Người đã bị gỡ khỏi team: token còn nhưng không còn vai ⇒ coi như không hợp lệ.
+        // Person was removed from the team: token still exists but has no role ⇒ treat as invalid.
         if (role === undefined) return null;
         return { tok, role };
       });
@@ -120,8 +120,8 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
         scopes: principal.scopes,
         cachedAt: 0,
       });
-      // last_used_at cập nhật bằng UPDATE rời (không nằm trong hot path xác thực):
-      // đường auth chỉ có quyền SELECT, nên việc ghi thuộc về withTenant ở tầng route.
+      // last_used_at is updated by a separate UPDATE (not on the auth hot path):
+      // the auth path only has SELECT privileges, so writing belongs to withTenant at the route layer.
       return principal;
     },
   };

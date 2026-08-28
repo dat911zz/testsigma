@@ -1,11 +1,11 @@
 /**
- * Hook onRequest: một chỗ duy nhất biến `Authorization: Bearer …` thành RequestContext.
+ * onRequest hook: the one place that turns `Authorization: Bearer …` into a RequestContext.
  *
- * Ba luật không thương lượng ở đây:
- *  1. teamId đến từ credential, không bao giờ từ client.
- *  2. Không có credential hợp lệ ⇒ 401. Có, nhưng thiếu quyền TRONG team mình ⇒ 403.
- *     Tài nguyên của team khác ⇒ 404 — nhưng đó là việc của handler + RLS, không phải hook.
- *  3. Action HIGH (isHighRisk) bỏ qua cache: `fresh: true`.
+ * Three non-negotiable rules here:
+ *  1. teamId comes from the credential, never from the client.
+ *  2. No valid credential ⇒ 401. Valid, but missing a permission WITHIN one's own team ⇒ 403.
+ *     A resource from another team ⇒ 404 — but that's the handler + RLS's job, not the hook's.
+ *  3. HIGH actions (isHighRisk) bypass the cache: `fresh: true`.
  */
 import type { FastifyContextConfig } from "fastify";
 import { UnauthorizedError } from "@testkite/contract";
@@ -19,20 +19,20 @@ export function installAuth(app: TkApp, deps: { readonly authenticator: Authenti
   app.decorateRequest("tk", null);
 
   app.addHook("onRequest", async (req) => {
-    // Route không tồn tại: Fastify để `config` là undefined (spike 2026-08-28) —
-    // kiểu của Fastify không nói điều đó, nên đọc qua biến có `| undefined`.
+    // A route that doesn't exist: Fastify leaves `config` undefined (spike 2026-08-28) —
+    // Fastify's types don't say so, so it's read through a variable typed `| undefined`.
     const config: FastifyContextConfig | undefined = req.routeOptions.config;
     const descriptor = config?.tk;
-    // Route không khai descriptor (healthz, 404 router) ⇒ không có gì để bảo vệ.
+    // A route with no descriptor declared (healthz, the 404 router) ⇒ nothing to guard.
     if (descriptor === undefined || descriptor.auth === "public") return;
 
     const header = req.headers.authorization ?? "";
     const m = BEARER.exec(header);
-    if (m === null || m[1] === undefined) throw new UnauthorizedError("thiếu hoặc sai Authorization");
+    if (m === null || m[1] === undefined) throw new UnauthorizedError("missing or malformed Authorization");
 
     const fresh = descriptor.permission !== null && isHighRisk(descriptor.permission);
     const principal = await deps.authenticator.authenticate(m[1], { fresh });
-    if (principal === null) throw new UnauthorizedError("credential không hợp lệ");
+    if (principal === null) throw new UnauthorizedError("invalid credential");
 
     authorize(principal.role, principal.scopes, descriptor.permission);
     req.tk = principal;

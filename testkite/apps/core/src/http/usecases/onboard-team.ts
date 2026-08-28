@@ -1,16 +1,18 @@
 /**
- * Onboarding = MỘT transaction (blueprint §3). Tầng shell là chỗ duy nhất được ghép
- * bốn module: identity (team/project/admin/service token) + governance (quota + audit)
- * + planning (3 env stub) + orchestration (egress observe 14 ngày). Mỗi module tự ghi
- * bảng của mình qua facade; `tx` được chuyền xuống nên hoặc TẤT CẢ, hoặc KHÔNG GÌ.
+ * Onboarding = ONE transaction (blueprint §3). The shell layer is the only place allowed
+ * to combine four modules: identity (team/project/admin/service token) + governance
+ * (quota + audit) + planning (3 env stubs) + orchestration (14-day egress observe). Each
+ * module writes its own tables through its facade; `tx` is passed all the way down so it's
+ * either ALL of it, or NONE of it.
  *
- * Idempotency: `idempotencyKey` được băm sha256 thành một uuid tất định — chính là
- * teamId. Gọi lại cùng key ⇒ cùng teamId ⇒ mọi ghi rơi vào ON CONFLICT DO NOTHING.
- * Không cần bảng idempotency riêng, và không có cửa sổ race nào: khoá duy nhất của
- * `teams` là trọng tài.
+ * Idempotency: `idempotencyKey` is sha256-hashed into a deterministic uuid — which becomes
+ * the teamId. Calling again with the same key ⇒ same teamId ⇒ every write falls into ON
+ * CONFLICT DO NOTHING. No separate idempotency table needed, and no race window: the
+ * unique key on `teams` is the arbiter.
  *
- * Route này cũng được NỘP TỪ ĐÂY chứ không từ module identity: use case chạm bốn
- * module, mà identity import ba module kia là đi ngược/ngang DAG.
+ * This route is also REGISTERED FROM HERE rather than from the identity module: the use
+ * case touches four modules, and identity importing the other three would go
+ * backward/sideways across the DAG.
  */
 import { createHash } from "node:crypto";
 import { identityRoutes } from "@testkite/contract";
@@ -36,7 +38,7 @@ export type OnboardResult = {
   readonly projectId: string;
   readonly environmentIds: readonly string[];
   readonly serviceTokenPrefix: string;
-  /** true = lần này thật sự tạo mới; false = chạy lại idempotent (không trả secret). */
+  /** true = actually created this time; false = an idempotent replay (no secret returned). */
   readonly created: boolean;
   readonly serviceTokenSecret: string | null;
 };
@@ -49,9 +51,9 @@ export type OnboardDeps = {
 const SERVICE_TOKEN_DAYS = 365;
 
 /**
- * teamId TIỀN SINH, tất định theo (org, idempotencyKey) — xem chú thích đầu file.
- * Dạng ra là uuid hợp lệ (nibble phiên bản = 4, nibble variant = 8) vì cột `teams.id`
- * là uuid thật, không phải text.
+ * teamId is PRE-GENERATED, deterministic from (org, idempotencyKey) — see the file header.
+ * The output has the shape of a valid uuid (version nibble = 4, variant nibble = 8) because
+ * the `teams.id` column is a real uuid, not text.
  */
 export function teamIdFor(orgId: string, idempotencyKey: string): string {
   const h = createHash("sha256").update(`${orgId}:${idempotencyKey}`).digest("hex");
@@ -81,8 +83,8 @@ export async function onboardTeam(deps: OnboardDeps, input: OnboardInput): Promi
       baseUrl: input.baseUrl,
     });
     await seedEgressObserve(tx, { teamId }, { baseUrl: input.baseUrl, now });
-    // Chỉ lần tạo THẬT mới là một sự kiện; chạy lại idempotent không phải hành động
-    // mới nên không được đẻ thêm dòng audit nào.
+    // Only a REAL creation is an event; an idempotent replay isn't a new action, so it
+    // must not produce another audit line.
     if (core.created) {
       await writeAuditEvent(tx, { teamId }, {
         actorKind: "user",
@@ -106,12 +108,13 @@ export async function onboardTeam(deps: OnboardDeps, input: OnboardInput): Promi
 }
 
 /**
- * Registration của `POST /v1/teams`. Descriptor vẫn nằm ở @testkite/contract nên
- * OpenAPI, router và bộ cách ly L3 đọc cùng một nguồn; chỉ handler ở tầng shell.
+ * Registration for `POST /v1/teams`. The descriptor still lives in @testkite/contract so
+ * OpenAPI, the router, and the L3 isolation checks all read from the same source; only the
+ * handler lives in the shell layer.
  */
 export function onboardRouteRegistration(deps: OnboardDeps): RouteRegistration {
   const descriptor = identityRoutes.find((r) => r.operationId === "onboardTeam");
-  if (descriptor === undefined) throw new Error("descriptor thiếu: onboardTeam");
+  if (descriptor === undefined) throw new Error("missing descriptor: onboardTeam");
 
   return route(descriptor, async ({ ctx, body }) => {
     const r = await onboardTeam(deps, {
@@ -123,8 +126,8 @@ export function onboardRouteRegistration(deps: OnboardDeps): RouteRegistration {
       idempotencyKey: body.idempotencyKey,
       actorUserId: ctx.userId,
     });
-    // `serviceTokenSecret` KHÔNG có mặt trong hợp đồng 201 và cũng không được trả:
-    // service account nhận secret qua đường phát token, không qua phản hồi onboarding.
+    // `serviceTokenSecret` is NOT part of the 201 contract and is never returned:
+    // the service account gets its secret via the token-issue path, not the onboarding response.
     return {
       teamId: r.teamId,
       projectId: r.projectId,

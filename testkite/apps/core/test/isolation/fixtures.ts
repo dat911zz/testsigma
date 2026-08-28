@@ -1,11 +1,12 @@
 /**
- * Fixture cho bộ cách ly L3. MỖI module nộp fixture cho path param của mình:
- *   - RESOURCE_FIXTURES[<tên param>]  -> tạo tài nguyên THUỘC TEAM A, trả id
- *   - BODY_FIXTURES[<operationId>]    -> body hợp lệ (nếu route có body)
- * Thiếu một trong hai ⇒ coverage.test.ts đỏ. Không có đường im lặng bỏ qua.
+ * Fixtures for the L3 isolation harness. EACH module submits fixtures for its own path params:
+ *   - RESOURCE_FIXTURES[<param name>]  -> creates a resource OWNED BY TEAM A, returns its id
+ *   - BODY_FIXTURES[<operationId>]     -> a valid body (if the route has one)
+ * Missing either one ⇒ coverage.test.ts goes red. There is no silent way to skip it.
  *
- * Fixture phải tạo tài nguyên bằng ĐÚNG đường sản phẩm khi có thể (gọi route thật với
- * credential của team A). Chỉ đi thẳng SQL khi chưa có route nào tạo được thứ đó.
+ * A fixture should create its resource through the REAL product path whenever possible
+ * (call the actual route with team A's credential). Only reach straight for SQL when no
+ * route can create that resource yet.
  */
 import type { TestApp } from "../harness/http.js";
 
@@ -20,7 +21,7 @@ export const RESOURCE_FIXTURES: Readonly<Record<string, (c: FixtureCtx) => Promi
       headers: { authorization: `Bearer ${app.tokens.adminA}` },
       payload: { name: "fixture", scopes: ["case:read"], expiresInDays: 30 },
     });
-    if (r.statusCode !== 201) throw new Error(`fixture tokenId hỏng: ${r.statusCode} ${r.body}`);
+    if (r.statusCode !== 201) throw new Error(`fixture tokenId failed: ${r.statusCode} ${r.body}`);
     return (r.json() as { id: string }).id;
   },
   userId: async ({ app }) => app.ids.authorUser,
@@ -31,7 +32,7 @@ export const RESOURCE_FIXTURES: Readonly<Record<string, (c: FixtureCtx) => Promi
       [app.ids.teamA],
     );
     const id = r.rows[0]?.id;
-    if (id === undefined) throw new Error("fixture connectorId hỏng: INSERT không trả id");
+    if (id === undefined) throw new Error("fixture connectorId failed: INSERT returned no id");
     return id;
   },
   // --- authoring ---
@@ -65,12 +66,12 @@ export const BODY_FIXTURES: Readonly<Record<string, unknown>> = {
 };
 
 /**
- * Miễn trừ PHẢI có lý do bằng chữ, và lý do phải là một trong hai loại:
- * (a) route không đọc/ghi tài nguyên tenant nào theo id, (b) route public chưa có
- * credential nên khái niệm "token team B" không tồn tại.
+ * An exemption MUST have a written reason, and the reason must be one of two kinds:
+ * (a) the route reads/writes no tenant resource by id, (b) it's a public route with no
+ * credential yet, so the notion of "team B's token" doesn't apply.
  */
 export const EXEMPT: Readonly<Record<string, string>> = {
   oidcStart:
-    "route public — chưa có credential nên không tồn tại 'token team B'; cách ly connector test riêng ở oidc.test.ts",
-  oidcCallback: "route public — như trên; state một-lần + composite FK là lớp chặn",
+    "public route — no credential yet, so there is no 'team B token'; connector isolation is tested separately in oidc.test.ts",
+  oidcCallback: "public route — same as above; single-use state + the composite FK are the enforcement layer",
 };

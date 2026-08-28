@@ -1,16 +1,17 @@
 /**
- * Gate độ phủ: route mới mà quên fixture thì bộ L3 sẽ IM LẶNG bỏ qua nó — đó là
- * kiểu hỏng tệ nhất (xanh giả). Test này biến sự im lặng đó thành CI đỏ.
+ * Coverage gate: a new route that forgets a fixture gets SILENTLY skipped by the L3
+ * harness — that is the worst kind of failure (a false green). This test turns that
+ * silence into a red CI run.
  *
- * Nó cố ý KHÔNG dựng app/DB: đây là kiểm tra tĩnh trên hợp đồng, chạy trong vài ms và
- * đỏ ngay cả khi harness PGlite hỏng vì lý do khác.
+ * It deliberately does NOT stand up an app/DB: this is a static check on the contract,
+ * runs in a few ms, and goes red even when the PGlite harness is broken for an unrelated reason.
  */
 import { describe, expect, it } from "vitest";
 import { ROUTES, pathParamNames } from "@testkite/contract";
 import { BODY_FIXTURES, EXEMPT, RESOURCE_FIXTURES } from "./fixtures.js";
 
-describe("độ phủ bộ cách ly L3", () => {
-  it("mọi path param đều có RESOURCE_FIXTURES (hoặc route được miễn trừ CÓ LÝ DO)", () => {
+describe("L3 isolation-harness coverage", () => {
+  it("every path param has a RESOURCE_FIXTURES entry (or the route is exempt with a reason)", () => {
     const missing: string[] = [];
     for (const r of ROUTES) {
       if (EXEMPT[r.operationId] !== undefined) continue;
@@ -18,10 +19,10 @@ describe("độ phủ bộ cách ly L3", () => {
         if (RESOURCE_FIXTURES[name] === undefined) missing.push(`${r.operationId} -> ${name}`);
       }
     }
-    expect(missing, "thêm fixture vào test/isolation/fixtures.ts").toEqual([]);
+    expect(missing, "add a fixture to test/isolation/fixtures.ts").toEqual([]);
   });
 
-  it("mọi route CÓ BODY và cần test L3 đều có BODY_FIXTURES", () => {
+  it("every route WITH A BODY that needs an L3 test has a BODY_FIXTURES entry", () => {
     const missing = ROUTES.filter(
       (r) =>
         r.body !== undefined &&
@@ -29,43 +30,44 @@ describe("độ phủ bộ cách ly L3", () => {
         EXEMPT[r.operationId] === undefined &&
         BODY_FIXTURES[r.operationId] === undefined,
     ).map((r) => r.operationId);
-    // Thiếu body hợp lệ ⇒ route trả 400 và che mất câu hỏi 404-hay-403.
+    // A missing valid body ⇒ the route returns 400 and hides the 404-vs-403 question.
     expect(missing).toEqual([]);
   });
 
-  it("mọi miễn trừ đều có lý do bằng chữ, không phải cờ trống", () => {
+  it("every exemption has a written reason, not an empty flag", () => {
     for (const [op, reason] of Object.entries(EXEMPT)) {
-      expect(reason.length, `${op}: lý do quá ngắn`).toBeGreaterThan(30);
+      expect(reason.length, `${op}: reason is too short`).toBeGreaterThan(30);
       expect(
         ROUTES.some((r) => r.operationId === op),
-        `${op} không còn tồn tại — xoá khỏi EXEMPT`,
+        `${op} no longer exists — remove it from EXEMPT`,
       ).toBe(true);
     }
   });
 
-  it("miễn trừ chỉ dành cho route CÓ path param — route không có id thì không có gì để miễn", () => {
-    // Miễn trừ một route không path param là vô nghĩa (bộ L3 vốn đã không nhắm tới nó)
-    // và nguy hiểm: nó dạy người sau rằng EXEMPT là chỗ để làm im tiếng bất kỳ route nào.
+  it("an exemption is only valid for a route WITH a path param — a route with no id has nothing to exempt", () => {
+    // Exempting a route with no path param is meaningless (the L3 harness was never
+    // targeting it anyway) and dangerous: it teaches whoever comes next that EXEMPT is a
+    // place to silence any route.
     for (const op of Object.keys(EXEMPT)) {
       const r = ROUTES.find((x) => x.operationId === op);
       expect(
         pathParamNames(r?.path ?? "").length,
-        `${op} không có path param — bỏ khỏi EXEMPT`,
+        `${op} has no path param — remove it from EXEMPT`,
       ).toBeGreaterThan(0);
     }
   });
 
-  it("fixture không thừa: mọi khoá RESOURCE_FIXTURES đều được ít nhất một route dùng", () => {
+  it("no unused fixtures: every RESOURCE_FIXTURES key is used by at least one route", () => {
     const used = new Set(ROUTES.flatMap((r) => pathParamNames(r.path)));
     for (const key of Object.keys(RESOURCE_FIXTURES)) {
-      expect(used.has(key), `fixture "${key}" không route nào dùng — xoá đi`).toBe(true);
+      expect(used.has(key), `fixture "${key}" is used by no route — remove it`).toBe(true);
     }
   });
 
-  it("body fixture không thừa: mọi khoá BODY_FIXTURES đều trỏ vào một operationId có thật", () => {
+  it("no unused body fixtures: every BODY_FIXTURES key points at a real operationId", () => {
     const ops = new Set(ROUTES.map((r) => r.operationId));
     for (const key of Object.keys(BODY_FIXTURES)) {
-      expect(ops.has(key), `BODY_FIXTURES["${key}"] không còn route nào — xoá đi`).toBe(true);
+      expect(ops.has(key), `BODY_FIXTURES["${key}"] matches no route — remove it`).toBe(true);
     }
   });
 });

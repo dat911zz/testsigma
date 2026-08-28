@@ -37,14 +37,14 @@ async function insertToken(teamId: string, hash: Buffer, prefix: string, expires
 }
 
 describe("api_tokens", () => {
-  it("hạn dùng là NOT NULL — không thể tạo token vô hạn", async () => {
+  it("expiry is NOT NULL — an unlimited-lifetime token cannot be created", async () => {
     const r = await t.db.execute(sql`
       SELECT is_nullable FROM information_schema.columns
       WHERE table_name='api_tokens' AND column_name='expires_at'`);
     expect(r.rows[0]?.["is_nullable"]).toBe("NO");
   });
 
-  it("token_hash duy nhất toàn cục và có UNIQUE(team_id,id) làm mỏ neo composite FK", async () => {
+  it("token_hash is globally unique and has a UNIQUE(team_id,id) anchor for the composite FK", async () => {
     const defs = await t.db.execute(sql`
       SELECT indexdef FROM pg_indexes WHERE tablename='api_tokens'`);
     const all = defs.rows.map((x) => String(x["indexdef"])).join("\n");
@@ -52,7 +52,7 @@ describe("api_tokens", () => {
     expect(all).toMatch(/\(team_id, id\)/);
   });
 
-  it("secret KHÔNG được lưu ở bất kỳ cột nào — chỉ hash và prefix", async () => {
+  it("the secret is NOT stored in any column — only hash and prefix", async () => {
     const cols = await t.db.execute(sql`
       SELECT column_name FROM information_schema.columns WHERE table_name='api_tokens'`);
     const names = cols.rows.map((x) => String(x["column_name"]));
@@ -62,7 +62,7 @@ describe("api_tokens", () => {
     expect(names).not.toContain("token");
   });
 
-  it("RLS: team B không thấy token của team A", async () => {
+  it("RLS: team B cannot see team A's token", async () => {
     const m = mintTokenSecret();
     await insertToken(teamA, m.tokenHash, m.prefix);
     await t.raw.exec(`SET ROLE testkite_app`);
@@ -72,7 +72,7 @@ describe("api_tokens", () => {
     expect(seen.rows[0]?.n).toBe(0);
   });
 
-  it("BẾ TẮC ĐÃ BIẾT: role app KHÔNG tra được token khi chưa biết tenant", async () => {
+  it("KNOWN DEADLOCK: the app role CANNOT look up a token before the tenant is known", async () => {
     const m = mintTokenSecret();
     await insertToken(teamA, m.tokenHash, m.prefix);
     await t.raw.exec(`SET ROLE testkite_app`);
@@ -83,7 +83,7 @@ describe("api_tokens", () => {
     expect(r.rows[0]?.n).toBe(0);
   });
 
-  it("role testkite_auth tra được token + membership khi CHƯA có app.team_id", async () => {
+  it("the testkite_auth role can look up the token + membership WITHOUT app.team_id set", async () => {
     const m = mintTokenSecret();
     await insertToken(teamA, m.tokenHash, m.prefix);
     await t.raw.exec(`SET ROLE testkite_auth`);
@@ -97,7 +97,7 @@ describe("api_tokens", () => {
     expect(mem.rows[0]?.role).toBe("author");
   });
 
-  it("testkite_auth chỉ ĐỌC được, và chỉ đọc đúng 3 bảng", async () => {
+  it("testkite_auth can only READ, and only from exactly 3 tables", async () => {
     await t.raw.exec(`SET ROLE testkite_auth`);
     await expect(t.raw.query(`UPDATE api_tokens SET revoked_at = now()`)).rejects.toThrow(/permission denied/i);
     await expect(t.raw.query(`SELECT count(*) FROM teams`)).rejects.toThrow(/permission denied/i);
@@ -105,7 +105,7 @@ describe("api_tokens", () => {
     await t.raw.exec(`RESET ROLE`);
   });
 
-  it("testkite_auth KHÔNG superuser, KHÔNG bypassrls", async () => {
+  it("testkite_auth is NOT superuser, NOT bypassrls", async () => {
     const r = await t.db.execute(sql`
       SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname='testkite_auth'`);
     expect(r.rows[0]?.["rolsuper"]).toBe(false);

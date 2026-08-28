@@ -1,26 +1,29 @@
 /**
- * Connector OIDC generic — authorization code + PKCE S256, id_token verify bằng JWKS.
+ * Generic OIDC connector — authorization code + PKCE S256, id_token verified via JWKS.
  *
- * BA ĐIỀU BẮT BUỘC, mỗi điều có bằng chứng spike 2026-08-28 đứng sau:
- *  1. `enableNonRepudiationChecks(config)`: openid-client MẶC ĐỊNH KHÔNG kiểm chữ ký
- *     id_token (OIDC Core §3.1.3.7 mục 6 cho phép khi token về thẳng qua TLS). Đã tái
- *     hiện: token ký bằng khoá ngoài JWKS được CHẤP NHẬN nếu không bật cờ này. TestKite
- *     tự host Keycloak sau reverse proxy nội bộ ⇒ không được hưởng giả định TLS đó.
- *  2. `allowInsecureRequests` CHỈ khi connector bật cờ `allow_insecure_http` (mock/dev).
- *     Mặc định openid-client chặn http:// với "only requests to HTTPS are allowed".
- *  3. state DÙNG MỘT LẦN, có hạn 10 phút, lưu trong DB — không cookie, không bộ nhớ tiến trình.
+ * THREE MANDATORY REQUIREMENTS, each backed by evidence from the 2026-08-28 spike:
+ *  1. `enableNonRepudiationChecks(config)`: openid-client does NOT verify the id_token
+ *     signature BY DEFAULT (OIDC Core §3.1.3.7 item 6 permits this when the token arrives
+ *     directly over TLS). Reproduced: a token signed with a key outside the JWKS is
+ *     ACCEPTED unless this flag is set. TestKite self-hosts Keycloak behind an internal
+ *     reverse proxy ⇒ it does not get to rely on that TLS assumption.
+ *  2. `allowInsecureRequests` ONLY when the connector has `allow_insecure_http` enabled
+ *     (mock/dev). By default openid-client blocks http:// with "only requests to HTTPS are allowed".
+ *  3. state is SINGLE-USE, has a 10-minute TTL, stored in the DB — no cookie, no process memory.
  *
- * ĐIỀU THỨ TƯ, về ghép identity vào `users` — cùng hạng nghiêm trọng với ba điều trên:
- * `users` là bảng TOÀN CỤC còn connector thì MỖI TEAM tự cấu hình (Keycloak của chính
- * họ, admin của họ tự quản). Ghép bằng email ⇒ team B khai `email` của người chỉ thuộc
- * team A là mint được phiên mang userId thật của người đó. Nên:
- *   - Khoá tra cứu là `(connector_id, sub)` trong `idn_oidc_identities` — `sub` chỉ có
- *     nghĩa trong phạm vi connector, team khác không giả được.
- *   - Email CHỈ dùng ở lần đầu của một `sub`, và chỉ được phép trỏ vào một tài khoản ĐÃ
- *     CÓ khi thoả CẢ HAI: IdP khẳng định `email_verified`, VÀ team này đã tự bảo lãnh
- *     người đó bằng membership sẵn có (luồng "mời trước, SSO sau"). Không đủ ⇒ 401.
- *   - Email chưa ai dùng ⇒ tạo user mới, và `email_verified_at` chép ĐÚNG những gì IdP
- *     nói, không tự tuyên bố là đã xác minh.
+ * A FOURTH REQUIREMENT, about linking identity into `users` — just as critical as the
+ * three above: `users` is a GLOBAL table, while each connector is configured PER TEAM
+ * (their own Keycloak, managed by their own admins). Linking by email ⇒ team B could claim
+ * the `email` of someone who only belongs to team A and mint a session carrying that
+ * person's real userId. So:
+ *   - The lookup key is `(connector_id, sub)` in `idn_oidc_identities` — `sub` only has
+ *     meaning within a connector's scope, another team can't fake it.
+ *   - Email is used ONLY on a `sub`'s first login, and may only be linked to an EXISTING
+ *     account when BOTH hold: the IdP asserts `email_verified`, AND this team has already
+ *     vouched for that person via an existing membership (the "invite first, SSO later"
+ *     flow). Not enough ⇒ 401.
+ *   - If the email belongs to no one ⇒ create a new user, and `email_verified_at` copies
+ *     EXACTLY what the IdP says, never self-declared as verified.
  */
 import * as client from "openid-client";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -50,7 +53,7 @@ type ConnectorRow = typeof idnOidcConnectors.$inferSelect;
 
 export type OidcDeps = { readonly db: TkDb; readonly now?: () => Date };
 
-/** Cache Configuration theo connector (discovery là một round-trip HTTP mỗi lần). */
+/** Configuration cache per connector (discovery is one HTTP round-trip each time). */
 const configCache = new Map<string, { config: client.Configuration; at: number }>();
 const CONFIG_TTL_MS = 900_000;
 
@@ -77,7 +80,7 @@ async function configFor(row: ConnectorRow): Promise<client.Configuration> {
     undefined,
     row.allowInsecureHttp ? { execute: [client.allowInsecureRequests] } : {},
   );
-  // Bắt buộc kiểm chữ ký id_token — xem điều (1) đầu file.
+  // Mandatory id_token signature check — see requirement (1) at the top of the file.
   client.enableNonRepudiationChecks(config);
   configCache.set(row.id, { config, at: Date.now() });
   return config;
@@ -138,10 +141,10 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
     }): Promise<OidcIdentity> {
       const row = await loadConnector(deps, input.connectorId);
       const state = new URL(input.callbackUrl).searchParams.get("state") ?? "";
-      const invalid = new UnauthorizedError("đăng nhập OIDC không hợp lệ");
+      const invalid = new UnauthorizedError("invalid OIDC login");
 
-      // Tiêu thụ state MỘT LẦN, ngay trong một UPDATE có điều kiện — hai callback
-      // song song với cùng state thì chỉ một cái thắng (không cần khoá riêng).
+      // Consume state EXACTLY ONCE, in a single conditional UPDATE — two parallel
+      // callbacks with the same state means only one wins (no separate lock needed).
       const consumed = await withTenant(deps.db, { teamId: row.teamId }, async (tx) => {
         const rows = await tx
           .update(idnOidcLoginStates)
@@ -173,7 +176,7 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
         });
         claims = { ...tokens.claims() };
       } catch {
-        // Hết hạn / sai aud / sai iss / chữ ký lạ — tất cả ra CÙNG một 401.
+        // Expired / wrong aud / wrong iss / unknown signature — all become the SAME 401.
         throw invalid;
       }
 
@@ -186,12 +189,12 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
       const mapped = groups.map((g) => mapping[g]).find((r): r is string => r !== undefined);
       const role = (mapped ?? row.defaultRole) as MembershipRole;
 
-      // Claim chuẩn OIDC, đi cặp với `email`. IdP không phát ⇒ coi như CHƯA xác minh.
+      // Standard OIDC claim, paired with `email`. The IdP not sending it ⇒ treated as NOT verified.
       const emailVerified = claims["email_verified"] === true;
 
       const userId = await withTenant(deps.db, { teamId: row.teamId }, async (tx) => {
-        // (1) Neo theo (connector, sub): đường đi của mọi lần đăng nhập sau lần đầu.
-        //     Không đụng tới email — user đổi email ở IdP vẫn là đúng người đó.
+        // (1) Anchored by (connector, sub): the path every login after the first one takes.
+        //     Doesn't touch email — a user who changes their email at the IdP is still the same person.
         const anchored = await tx
           .select({ userId: idnOidcIdentities.userId })
           .from(idnOidcIdentities)
@@ -211,8 +214,8 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
           return known;
         }
 
-        // (2) Lần đầu của `sub` này. Email đối chiếu theo lower() — đúng cột của
-        //     unique index `users_email_lower_uidx`, không để "A@x" lách thành user khác.
+        // (2) This `sub`'s first login. Email is matched via lower() — the same column the
+        //     `users_email_lower_uidx` unique index uses, so "A@x" can't sneak in as a different user.
         const existing = await tx
           .select({ id: users.id })
           .from(users)
@@ -222,9 +225,10 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
 
         let id: string;
         if (found !== undefined) {
-          // Tài khoản ĐÃ CÓ (có thể thuộc team khác): chỉ được liên kết khi IdP xác
-          // minh email VÀ team này đã tự mời người đó. Thiếu một trong hai ⇒ CÙNG
-          // một 401 với mọi nhánh hỏng khác, không nói vì sao (không làm oracle).
+          // An EXISTING account (possibly in another team): may only be linked when the
+          // IdP verifies the email AND this team has already invited that person. Missing
+          // either one ⇒ the SAME 401 as every other failure branch, with no explanation
+          // (never act as an oracle).
           if (!emailVerified) throw invalid;
           const member = await tx
             .select({ id: memberships.id })
@@ -234,8 +238,8 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
           if (member[0] === undefined) throw invalid;
           id = found.id;
         } else {
-          // Email chưa ai dùng ⇒ không có tài khoản nào để chiếm: tạo mới, ghi
-          // email_verified_at ĐÚNG như IdP nói (null khi chưa xác minh).
+          // No one is using this email ⇒ no account to take over: create a new one, and
+          // record email_verified_at EXACTLY as the IdP states it (null when unverified).
           const created = await tx
             .insert(users)
             .values({
@@ -245,17 +249,17 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
             })
             .returning({ id: users.id });
           const newId = created[0]?.id;
-          if (newId === undefined) throw new Error("oidc: không tạo được user");
+          if (newId === undefined) throw new Error("oidc: failed to create the user");
           id = newId;
-          // Provisioning just-in-time: có tài khoản IdP + connector của team ⇒ có membership.
+          // Just-in-time provisioning: an IdP account + the team's connector ⇒ a membership.
           await tx
             .insert(memberships)
             .values({ teamId: row.teamId, userId: id, role })
             .onConflictDoNothing({ target: [memberships.teamId, memberships.userId] });
         }
 
-        // Neo lại để lần sau không còn phải hỏi tới email nữa. Hai tab đăng nhập
-        // song song cùng `sub` ⇒ một cái thắng, cái kia bỏ qua (cùng userId).
+        // Anchor it so next time we never need to consult email again. Two tabs logging in
+        // in parallel with the same `sub` ⇒ one wins, the other is a no-op (same userId).
         await tx
           .insert(idnOidcIdentities)
           .values({ teamId: row.teamId, connectorId: row.id, subject, userId: id })

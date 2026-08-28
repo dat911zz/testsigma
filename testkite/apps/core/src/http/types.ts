@@ -1,14 +1,14 @@
 /**
- * Kiểu của TẦNG SHELL HTTP. Module nghiệp vụ import từ đây (một chiều: shell không
- * import ngược vào trong module nào ngoài facade).
+ * Types for the HTTP SHELL LAYER. Business modules import from here (one direction: the
+ * shell never imports back into a module except through its facade).
  */
 import type { z } from "zod";
 import type { RouteDescriptor } from "@testkite/contract";
 import type { CredentialKind, MembershipRole, Permission } from "../modules/identity/index.js";
 
 /**
- * Bối cảnh của MỘT request. `teamId` ở đây là nguồn sự thật duy nhất về tenant —
- * nó đến từ credential, KHÔNG BAO GIỜ từ path/query/body (Global Constraints).
+ * The context of ONE request. `teamId` here is the single source of truth for the tenant —
+ * it comes from the credential, NEVER from the path/query/body (Global Constraints).
  */
 export type RequestContext = {
   readonly teamId: string;
@@ -29,11 +29,12 @@ export type RouteInput<D extends RouteDescriptor> = {
 };
 
 /**
- * Route `auth: "public"` (đăng nhập, OIDC callback) chạy KHI CHƯA có credential —
- * ở đó `RequestContext` chưa tồn tại. Thay vì nới `ctx` thành `RequestContext | null`
- * cho mọi handler (bắt ~50 handler sau này phải tự kiểm null, và chỉ cần quên MỘT
- * lần là tenant đến từ chỗ khác credential), input của route public đơn giản KHÔNG
- * có `ctx`. Kiểu ép đúng chuyện đó: handler public không thể đọc bối cảnh không có.
+ * An `auth: "public"` route (login, OIDC callback) runs BEFORE any credential exists —
+ * `RequestContext` doesn't exist there yet. Instead of widening `ctx` to
+ * `RequestContext | null` for every handler (forcing ~50 future handlers to null-check
+ * themselves, where forgetting it just ONCE means the tenant comes from somewhere other
+ * than the credential), a public route's input simply has NO `ctx`. The type forces exactly
+ * that: a public handler cannot read a context that doesn't exist.
  */
 export type PublicRouteInput<D extends RouteDescriptor> = Omit<RouteInput<D>, "ctx">;
 
@@ -50,50 +51,51 @@ export type RouteRegistration =
     };
 
 /**
- * Ghép descriptor (hợp đồng, ở @testkite/contract) với handler (nghiệp vụ, ở module).
- * Giữ được kiểu tại chỗ định nghĩa; ở registry thì thu về RouteRegistration.
+ * Pairs a descriptor (the contract, in @testkite/contract) with a handler (business logic,
+ * in a module). Keeps the type precise at the definition site; the registry collapses it
+ * down to a RouteRegistration.
  */
 export function route<D extends RouteDescriptor>(
   descriptor: D,
   handler: (input: RouteInput<D>) => Promise<unknown>,
 ): RouteRegistration {
-  // Descriptor public + handler đòi ctx = 401 vĩnh viễn trên một route đáng lẽ mở.
-  // Bắt ngay lúc dựng app, không để phát hiện bằng một bug production.
+  // A public descriptor + a handler that requires ctx = a permanently-401 route that was
+  // supposed to be open. Catch it at app-setup time, not by a production bug.
   if (descriptor.auth === "public") {
-    throw new Error(`route(): ${descriptor.operationId} là route public — dùng publicRoute()`);
+    throw new Error(`route(): ${descriptor.operationId} is a public route — use publicRoute()`);
   }
   return { auth: "required", descriptor, handler } as RouteRegistration;
 }
 
-/** Đối ngẫu của `route()` cho descriptor `auth: "public"`. */
+/** The counterpart of `route()` for `auth: "public"` descriptors. */
 export function publicRoute<D extends RouteDescriptor>(
   descriptor: D,
   handler: (input: PublicRouteInput<D>) => Promise<unknown>,
 ): RouteRegistration {
   if (descriptor.auth !== "public") {
-    throw new Error(`publicRoute(): ${descriptor.operationId} đòi xác thực — dùng route()`);
+    throw new Error(`publicRoute(): ${descriptor.operationId} requires auth — use route()`);
   }
   return { auth: "public", descriptor, handler } as RouteRegistration;
 }
 
 declare module "fastify" {
   interface FastifyRequest {
-    /** null trên route public; hook auth gán trước mọi handler cho route required. */
+    /** null on a public route; the auth hook sets it before every handler on a required route. */
     tk: RequestContext | null;
   }
 
   /**
-   * Descriptor hợp đồng đi kèm route, đọc lại được trong hook `onRequest`
-   * (`req.routeOptions.config.tk`). Fastify để `FastifyContextConfig` rỗng đúng
-   * cho mục đích này — khai ở đây thì cả route kiểu `RouteRegistration` lẫn route
-   * kiểu `FastifyPluginAsync` (plan authoring) cùng nói một hợp đồng, không cast.
+   * The contract descriptor carried alongside a route, readable back in the `onRequest`
+   * hook (`req.routeOptions.config.tk`). Fastify leaves `FastifyContextConfig` empty
+   * precisely for this purpose — declaring it here means both `RouteRegistration`-style
+   * routes and `FastifyPluginAsync`-style routes (plan authoring) speak the same contract, no casting.
    */
   interface FastifyContextConfig {
     readonly tk?: RouteDescriptor;
   }
 
   interface FastifyInstance {
-    /** Mọi route router đang phục vụ + route đó có descriptor hợp đồng hay không. */
+    /** Every route the router is serving + whether that route has a contract descriptor. */
     tkRegisteredRoutes: { method: string; url: string; hasDescriptor: boolean }[];
   }
 }

@@ -1,6 +1,6 @@
 /**
- * Handler của identity. Descriptor nằm ở @testkite/contract (routes/identity.ts) —
- * file này chỉ nối nghiệp vụ vào hợp đồng đó.
+ * identity's handlers. The descriptor lives in @testkite/contract (routes/identity.ts) —
+ * this file only wires business logic onto that contract.
  */
 import { and, desc, eq } from "drizzle-orm";
 import { identityRoutes, NotFoundError } from "@testkite/contract";
@@ -16,25 +16,25 @@ import type { AuthzCache } from "./rbac/cache.js";
 import { ROLE_PERMISSIONS } from "./rbac/permissions.js";
 
 /**
- * `cache` là DEPENDENCY, không phải tuỳ chọn: đổi vai / thu hồi token mà không xoá
- * cache thì quyền vừa thu hồi còn hiệu lực tới hết TTL 60s trên mọi action
- * KHÔNG-HIGH (xem cache.ts).
+ * `cache` is a DEPENDENCY, not optional: changing a role / revoking a token without
+ * clearing the cache leaves the just-revoked permission in effect until the 60s TTL runs
+ * out on every NON-HIGH action (see cache.ts).
  *
- * `audit` cũng vậy — nó là CỔNG (audit-port.ts) do tầng shell tiêm, vì bảng
- * audit_events thuộc governance, module cùng tầng DAG với identity.
+ * `audit` is the same — it's a PORT (audit-port.ts) injected by the shell layer, because
+ * the audit_events table belongs to governance, a module at the same DAG layer as identity.
  */
 export type IdentityRouteDeps = {
   readonly db: TkDb;
   readonly audit: AuditPort;
   readonly cache: AuthzCache;
   readonly now?: () => Date;
-  /** Xem `DeferPort`: audit của lần đăng nhập HỎNG chạy ngoài đường phản hồi. */
+  /** See `DeferPort`: audit for a FAILED login runs outside the response path. */
   readonly defer?: DeferPort;
 };
 
 const byId = (operationId: string): (typeof identityRoutes)[number] => {
   const d = identityRoutes.find((r) => r.operationId === operationId);
-  if (d === undefined) throw new Error(`descriptor thiếu: ${operationId}`);
+  if (d === undefined) throw new Error(`missing descriptor: ${operationId}`);
   return d;
 };
 
@@ -64,8 +64,8 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
       };
     }),
 
-    // Descriptor oidcStart/oidcCallback là `auth: "public"` — chúng chạy KHI CHƯA có
-    // credential, nên phải đi qua publicRoute() (route() ném ngay lúc dựng app).
+    // The oidcStart/oidcCallback descriptors are `auth: "public"` — they run BEFORE any
+    // credential exists, so they must go through publicRoute() (route() throws immediately at app setup).
     publicRoute(byId("oidcStart"), async ({ params, body }) =>
       oidc.start({ connectorId: params.connectorId, redirectUri: body.redirectUri }),
     ),
@@ -142,7 +142,7 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
           })
           .from(apiTokens)
           .orderBy(desc(apiTokens.createdAt));
-        // Không có cột nào ở đây chạm token_hash: secret đã rời hệ thống lúc phát.
+        // None of these columns touch token_hash: the secret already left the system at issue time.
         return rows.map((r) => ({
           ...r,
           expiresAt: r.expiresAt.toISOString(),
@@ -169,8 +169,8 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
           },
           now,
         );
-        // Never-grantable ném ForbiddenError TRONG transaction ⇒ rollback ⇒ không có
-        // token nào được tạo, cũng không có dòng audit nào nói dối là có.
+        // never-grantable throws ForbiddenError INSIDE the transaction ⇒ rollback ⇒ no
+        // token gets created, and no audit line lies about one existing.
         await deps.audit(tx, { teamId: ctx.teamId }, {
           actorKind: "token",
           actorId: ctx.userId,
@@ -190,7 +190,7 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
           createdAt: now.toISOString(),
           revokedAt: null,
           lastUsedAt: null,
-          // Lần DUY NHẤT secret rời khỏi tiến trình. DB chỉ giữ sha256 của nó.
+          // The ONE time the secret leaves the process. The DB only ever keeps its sha256.
           secret: minted.secret,
         };
       });
@@ -199,7 +199,7 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
     route(byId("revokeToken"), async ({ ctx, params }) => {
       const now = clock();
       await withTenant(deps.db, { teamId: ctx.teamId }, async (tx) => {
-        // Token của team khác: RLS lọc mất ⇒ NotFoundError ⇒ 404, không bao giờ 403.
+        // A token from another team: RLS filters it out ⇒ NotFoundError ⇒ 404, never 403.
         await revokeApiToken(tx, { teamId: ctx.teamId }, params.tokenId, now);
         await deps.audit(tx, { teamId: ctx.teamId }, {
           actorKind: "token",
@@ -210,8 +210,8 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
           targetId: params.tokenId,
         });
       });
-      // Token vừa thu hồi có thể đang nằm trong cache 60s ⇒ thổi cache của team ngay,
-      // nếu không nó vẫn xác thực được tới một phút sau khi bị thu hồi.
+      // The just-revoked token may still sit in the 60s cache ⇒ blow away the team's cache
+      // right now, otherwise it would keep authenticating for up to a minute after revocation.
       deps.cache.invalidateTeam(ctx.teamId);
       return {};
     }),
@@ -236,8 +236,8 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
           .where(and(eq(memberships.teamId, ctx.teamId), eq(memberships.userId, params.userId)))
           .returning({ userId: memberships.userId, role: memberships.role });
         const found = updated[0];
-        // Không thấy row = hoặc không tồn tại, hoặc thuộc team khác (RLS đã lọc).
-        // Cả hai đều trả 404 — không bao giờ 403 (blueprint §3 L3).
+        // No row found = either it doesn't exist, or it belongs to another team (RLS filtered it).
+        // Both cases return 404 — never 403 (blueprint §3 L3).
         if (found === undefined) throw new NotFoundError("member");
         await deps.audit(tx, { teamId: ctx.teamId }, {
           actorKind: "token",
@@ -250,10 +250,11 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
         });
         return found;
       });
-      // SAU khi transaction commit (404 ném ở trên ⇒ rollback ⇒ không xoá nhầm):
-      // quyền vừa đổi phải có hiệu lực NGAY, kể cả trên action KHÔNG-HIGH — chúng
-      // đọc cache 60s, còn action HIGH thì đã luôn `fresh`. Đây chính là lời hứa
-      // ghi ở đầu rbac/cache.ts; không có dòng này thì nó là lời hứa suông.
+      // AFTER the transaction commits (a 404 thrown above ⇒ rollback ⇒ nothing wrongly
+      // cleared): the just-changed permission must take effect IMMEDIATELY, even on
+      // NON-HIGH actions — those read the 60s cache, while HIGH actions are always
+      // `fresh` already. This is exactly the promise documented at the top of
+      // rbac/cache.ts; without this line, that promise would be hollow.
       deps.cache.invalidateTeam(ctx.teamId);
       return row;
     }),

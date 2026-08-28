@@ -6,25 +6,25 @@ beforeAll(async () => { h = await makeTestApp(); });
 afterAll(async () => { await h.close(); });
 beforeEach(async () => { await h.seed(); });
 
-describe("hook xác thực", () => {
-  it("route public không cần credential", async () => {
+describe("auth hook", () => {
+  it("a public route needs no credential", async () => {
     expect((await h.app.inject({ method: "GET", url: "/healthz" })).statusCode).toBe(200);
   });
 
-  it("thiếu Authorization ⇒ 401 UNAUTHORIZED", async () => {
+  it("missing Authorization ⇒ 401 UNAUTHORIZED", async () => {
     const r = await h.app.inject({ method: "GET", url: "/v1/auth/me" });
     expect(r.statusCode).toBe(401);
     expect(r.json()).toMatchObject({ code: "UNAUTHORIZED" });
   });
 
-  it("token bịa / sai định dạng / đúng định dạng nhưng không có trong DB ⇒ 401", async () => {
+  it("a made-up / malformed / well-formed-but-not-in-DB token ⇒ 401", async () => {
     for (const bad of ["Bearer abc", "Bearer tk_00000000_khong-ton-tai-nhung-du-dai-hon-20", "Token x", ""]) {
       const r = await h.app.inject({ method: "GET", url: "/v1/auth/me", headers: { authorization: bad } });
       expect(r.statusCode, bad).toBe(401);
     }
   });
 
-  it("token hợp lệ ⇒ 200 và context có teamId lấy từ TOKEN, không từ client", async () => {
+  it("a valid token ⇒ 200 and the context's teamId comes from the TOKEN, not the client", async () => {
     const r = await h.app.inject({
       method: "GET", url: "/v1/auth/me",
       headers: { authorization: `Bearer ${h.tokens.authorA}` },
@@ -33,7 +33,7 @@ describe("hook xác thực", () => {
     expect(r.json()).toMatchObject({ teamId: h.ids.teamA, role: "author", authKind: "api_token" });
   });
 
-  it("scope hiệu lực trong /me = token ∩ role (token xin member:manage bị cắt)", async () => {
+  it("the effective scope in /me = token ∩ role (a token requesting member:manage gets it trimmed)", async () => {
     const r = await h.app.inject({
       method: "GET", url: "/v1/auth/me",
       headers: { authorization: `Bearer ${h.tokens.authorAOverreach}` },
@@ -43,7 +43,7 @@ describe("hook xác thực", () => {
     expect(body.scopes).not.toContain("member:manage");
   });
 
-  it("token hết hạn ⇒ 401", async () => {
+  it("an expired token ⇒ 401", async () => {
     const r = await h.app.inject({
       method: "GET", url: "/v1/auth/me",
       headers: { authorization: `Bearer ${h.tokens.expiredA}` },
@@ -51,7 +51,7 @@ describe("hook xác thực", () => {
     expect(r.statusCode).toBe(401);
   });
 
-  it("token đã thu hồi ⇒ 401", async () => {
+  it("a revoked token ⇒ 401", async () => {
     const r = await h.app.inject({
       method: "GET", url: "/v1/auth/me",
       headers: { authorization: `Bearer ${h.tokens.revokedA}` },
@@ -59,7 +59,7 @@ describe("hook xác thực", () => {
     expect(r.statusCode).toBe(401);
   });
 
-  it("thiếu permission của route ⇒ 403 (trong chính team của mình)", async () => {
+  it("missing the route's permission ⇒ 403 (within one's own team)", async () => {
     const r = await h.app.inject({
       method: "GET", url: "/v1/members",
       headers: { authorization: `Bearer ${h.tokens.authorA}` },
@@ -68,7 +68,7 @@ describe("hook xác thực", () => {
     expect(r.json()).toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("đủ permission ⇒ 200", async () => {
+  it("having the permission ⇒ 200", async () => {
     const r = await h.app.inject({
       method: "GET", url: "/v1/members",
       headers: { authorization: `Bearer ${h.tokens.adminA}` },
@@ -76,7 +76,7 @@ describe("hook xác thực", () => {
     expect(r.statusCode).toBe(200);
   });
 
-  it("cache 60s: lần thứ hai không đọc lại DB", async () => {
+  it("60s cache: the second call doesn't hit the DB again", async () => {
     h.counters.reset();
     await h.app.inject({ method: "GET", url: "/v1/auth/me", headers: { authorization: `Bearer ${h.tokens.authorA}` } });
     const first = h.counters.authLookups;
@@ -85,7 +85,7 @@ describe("hook xác thực", () => {
     expect(h.counters.authLookups).toBe(1);
   });
 
-  it("action HIGH BỎ QUA cache — luôn đọc lại DB", async () => {
+  it("a HIGH action BYPASSES the cache — always hits the DB again", async () => {
     await h.app.inject({ method: "GET", url: "/v1/members", headers: { authorization: `Bearer ${h.tokens.adminA}` } });
     h.counters.reset();
     await h.app.inject({ method: "GET", url: "/v1/members", headers: { authorization: `Bearer ${h.tokens.adminA}` } });
@@ -93,18 +93,18 @@ describe("hook xác thực", () => {
     expect(h.counters.authLookups).toBe(2);
   });
 
-  it("hạ vai giữa chừng: action HIGH thấy ngay, không chờ hết TTL", async () => {
+  it("mid-flight role demotion: a HIGH action sees it immediately, doesn't wait out the TTL", async () => {
     await h.app.inject({ method: "GET", url: "/v1/members", headers: { authorization: `Bearer ${h.tokens.adminA}` } });
     await h.demoteAdminToViewer();
     const r = await h.app.inject({ method: "GET", url: "/v1/members", headers: { authorization: `Bearer ${h.tokens.adminA}` } });
     expect(r.statusCode).toBe(403);
   });
 
-  it("hạ vai qua API: action KHÔNG-HIGH cũng mất quyền NGAY, không chờ hết TTL 60s", async () => {
-    // Bài test "hạ vai giữa chừng" ở trên đi qua /v1/members (member:manage = HIGH ⇒
-    // luôn fresh) nên nó KHÔNG chứng minh được gì về cache. Bài này dùng /v1/auth/me
-    // (permission null ⇒ KHÔNG HIGH ⇒ đi qua cache): nếu setMemberRole không xoá cache,
-    // quyền vừa thu hồi vẫn còn hiệu lực tới 60 giây.
+  it("demotion via the API: a NON-HIGH action also loses the permission IMMEDIATELY, without waiting out the 60s TTL", async () => {
+    // The "mid-flight demotion" test above goes through /v1/members (member:manage = HIGH
+    // ⇒ always fresh), so it proves nothing about the cache. This test uses /v1/auth/me
+    // (permission null ⇒ NOT HIGH ⇒ goes through the cache): if setMemberRole doesn't
+    // clear the cache, the just-revoked permission stays in effect for up to 60 seconds.
     const before = await h.app.inject({
       method: "GET", url: "/v1/auth/me",
       headers: { authorization: `Bearer ${h.tokens.authorA}` },
@@ -128,7 +128,7 @@ describe("hook xác thực", () => {
     expect((after.json() as { scopes: string[] }).scopes).not.toContain("case:write");
   });
 
-  it("token của team B KHÔNG bao giờ nhìn thấy dữ liệu team A", async () => {
+  it("a token from team B can NEVER see team A's data", async () => {
     const r = await h.app.inject({
       method: "GET", url: "/v1/auth/me",
       headers: { authorization: `Bearer ${h.tokens.adminB}` },
@@ -136,7 +136,7 @@ describe("hook xác thực", () => {
     expect(r.json()).toMatchObject({ teamId: h.ids.teamB });
   });
 
-  it("mọi phản hồi mang requestId để lần vết log", async () => {
+  it("every response carries a requestId for log tracing", async () => {
     const r = await h.app.inject({ method: "GET", url: "/v1/auth/me" });
     expect((r.json() as { requestId: string }).requestId.length).toBeGreaterThan(0);
   });

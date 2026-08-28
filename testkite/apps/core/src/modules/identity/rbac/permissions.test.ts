@@ -8,51 +8,51 @@ const ROLES: readonly MembershipRole[] = [
   "instance_operator", "org_admin", "team_admin", "author", "runner", "viewer",
 ];
 
-describe("ma trận quyền 6 vai", () => {
-  it("phủ đúng 6 vai của blueprint §3, không thừa không thiếu", () => {
+describe("6-role permission matrix", () => {
+  it("covers exactly the 6 roles from blueprint §3, no more no less", () => {
     expect(Object.keys(ROLE_PERMISSIONS).sort()).toEqual([...ROLES].sort());
   });
 
-  it("mọi permission trong ma trận đều nằm trong PERMISSIONS", () => {
+  it("every permission in the matrix is in PERMISSIONS", () => {
     for (const role of ROLES) {
       for (const p of ROLE_PERMISSIONS[role]) expect(PERMISSIONS).toContain(p);
     }
   });
 
-  it("never-grantable đúng 5 mục blueprint chốt", () => {
+  it("never-grantable is exactly the 5 entries the blueprint locked in", () => {
     expect([...NEVER_GRANTABLE].sort()).toEqual(
       ["element:write", "quota:set", "secret:write", "team:purge", "token:issue:service"].sort(),
     );
   });
 
-  it("element:write không bao giờ vào tay author — author chỉ được element:propose", () => {
+  it("element:write never reaches author — author only gets element:propose", () => {
     expect(ROLE_PERMISSIONS.author).toContain("element:propose");
     expect(ROLE_PERMISSIONS.author).not.toContain("element:write");
   });
 
-  it("runner chỉ trigger + đọc, KHÔNG sửa được test (CI không viết lại test)", () => {
+  it("runner is trigger + read only, CANNOT edit tests (CI doesn't rewrite tests)", () => {
     expect(ROLE_PERMISSIONS.runner).toContain("run:trigger");
     expect(ROLE_PERMISSIONS.runner).toContain("case:read");
     expect(ROLE_PERMISSIONS.runner).not.toContain("case:write");
     expect(ROLE_PERMISSIONS.runner).not.toContain("case:promote");
   });
 
-  it("viewer chỉ đọc — không có permission nào chứa :write/:trigger/:promote", () => {
+  it("viewer is read-only — no permission contains :write/:trigger/:promote", () => {
     for (const p of ROLE_PERMISSIONS.viewer) {
       expect(p).not.toMatch(/:(write|trigger|promote|abort|set|purge)/);
     }
   });
 
-  it("org_admin KHÔNG đọc tài sản team mặc nhiên (break-glass audit HIGH)", () => {
+  it("org_admin does NOT read team assets by default (break-glass audit HIGH)", () => {
     for (const p of ["case:read", "suite:read", "run:read", "element:read", "testdata:read"] as const) {
       expect(ROLE_PERMISSIONS.org_admin).not.toContain(p);
     }
     expect(ROLE_PERMISSIONS.org_admin).toContain("audit:read:all");
   });
 
-  it("tạo team mới là quyền CẤP ORG: team_admin không có team:create", () => {
-    // Gộp việc dựng team vào `team:manage` là đường leo thang — mọi team_admin đều có
-    // `team:manage`, và team_admin là vai thường gặp nhất trong hệ.
+  it("creating a new team is an ORG-LEVEL permission: team_admin doesn't have team:create", () => {
+    // Folding team creation into `team:manage` would be a privilege-escalation path —
+    // every team_admin has `team:manage`, and team_admin is the most common role in the system.
     expect(ROLE_PERMISSIONS.team_admin).toContain("team:manage");
     expect(ROLE_PERMISSIONS.team_admin).not.toContain("team:create");
     expect(ROLE_PERMISSIONS.org_admin).toContain("team:create");
@@ -63,34 +63,34 @@ describe("ma trận quyền 6 vai", () => {
     expect(isHighRisk("team:create")).toBe(true);
   });
 
-  it("instance_operator là vai hạ tầng: không đọc tài sản, có team:purge", () => {
+  it("instance_operator is an infra role: no asset reads, but has team:purge", () => {
     expect(ROLE_PERMISSIONS.instance_operator).not.toContain("case:read");
     expect(ROLE_PERMISSIONS.instance_operator).toContain("team:purge");
   });
 
-  it("mọi vai đều là tập con thực sự của PERMISSIONS và không trùng lặp", () => {
+  it("every role is a proper subset of PERMISSIONS with no duplicates", () => {
     for (const role of ROLES) {
       const perms = ROLE_PERMISSIONS[role];
       expect(new Set(perms).size).toBe(perms.length);
     }
   });
 
-  it("mọi never-grantable đều là HIGH", () => {
+  it("every never-grantable permission is HIGH", () => {
     for (const p of NEVER_GRANTABLE) expect(isHighRisk(p)).toBe(true);
   });
 
-  it("isPermission chặn chuỗi lạ", () => {
+  it("isPermission rejects an unknown string", () => {
     expect(isPermission("case:read")).toBe(true);
     expect(isPermission("case:*")).toBe(false);
     expect(isPermission("")).toBe(false);
   });
 
-  it("isNeverGrantable nhận cả chuỗi lạ mà không ném", () => {
+  it("isNeverGrantable accepts even an unknown string without throwing", () => {
     expect(isNeverGrantable("secret:write")).toBe(true);
-    expect(isNeverGrantable("khong-ton-tai")).toBe(false);
+    expect(isNeverGrantable("does-not-exist")).toBe(false);
   });
 
-  it("HIGH_RISK phủ hết nhóm quản trị nhạy cảm", () => {
+  it("HIGH_RISK covers the whole sensitive admin group", () => {
     for (const p of ["member:manage", "team:manage", "quota:set", "secret:read", "audit:read:all"] as const) {
       expect(HIGH_RISK).toContain(p);
     }

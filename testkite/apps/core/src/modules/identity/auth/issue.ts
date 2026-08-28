@@ -1,6 +1,6 @@
 /**
- * Phát và thu hồi api token. Secret trả về ĐÚNG MỘT LẦN — không có đường đọc lại:
- * DB chỉ giữ sha256(secret) và `prefix`.
+ * Issue and revoke api tokens. The secret is returned EXACTLY ONCE — there is no way to
+ * read it back: the DB only ever keeps sha256(secret) and the `prefix`.
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { NotFoundError } from "@testkite/contract";
@@ -33,9 +33,9 @@ export async function issueApiToken(
   now: Date,
 ): Promise<MintedApiToken> {
   const teamId = assertTenantContext(ctx);
-  // Never-grantable chặn ở ĐÂY, lúc phát — không phải chỉ lúc dùng.
-  // Session do loginWithPassword tạo đã lọc qua effectiveScopes(kind="session"),
-  // nên nhánh này chỉ gác token do người dùng xin.
+  // Never-grantable is gated HERE, at issue time — not only at use time.
+  // A session created by loginWithPassword has already been filtered through
+  // effectiveScopes(kind="session"), so this branch only guards tokens a user requested.
   if (input.kind !== "session") assertGrantable(input.scopes);
   const expiresAt = expiryFromDays(input.expiresInDays, now);
   const minted = mintTokenSecret();
@@ -54,11 +54,11 @@ export async function issueApiToken(
     })
     .returning({ id: apiTokens.id });
   const row = rows[0];
-  if (row === undefined) throw new Error("issueApiToken: INSERT không trả id");
+  if (row === undefined) throw new Error("issueApiToken: INSERT returned no id");
   return { id: row.id, prefix: minted.prefix, secret: minted.secret, expiresAt };
 }
 
-/** Thu hồi idempotent: gọi lại trên token đã thu hồi vẫn thành công (không ném). */
+/** Idempotent revoke: calling it again on an already-revoked token still succeeds (no throw). */
 export async function revokeApiToken(
   tx: TkTx,
   ctx: TenantContext,
@@ -72,8 +72,8 @@ export async function revokeApiToken(
     .where(and(eq(apiTokens.teamId, teamId), eq(apiTokens.id, tokenId), isNull(apiTokens.revokedAt)))
     .returning({ id: apiTokens.id });
   if (rows[0] !== undefined) return;
-  // Không cập nhật được: hoặc đã thu hồi rồi (idempotent, OK), hoặc không tồn tại /
-  // thuộc team khác — cả hai trường hợp sau đều là 404, KHÔNG BAO GIỜ 403.
+  // Update matched nothing: either already revoked (idempotent, OK), or it doesn't exist /
+  // belongs to another team — both of the latter cases are a 404, NEVER a 403.
   const still = await tx
     .select({ id: apiTokens.id })
     .from(apiTokens)

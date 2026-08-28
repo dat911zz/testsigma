@@ -1,13 +1,13 @@
 /**
- * API token: secret sinh ngẫu nhiên, DB chỉ giữ SHA-256 của nó.
+ * API token: the secret is generated randomly, the DB only ever keeps its SHA-256.
  *
- * Vì sao SHA-256 chứ không argon2 như mật khẩu: secret ở đây có 32 byte entropy
- * ngẫu nhiên (không phải thứ người nghĩ ra) nên không có gì để brute-force; và nó
- * bị tra MỖI request — 0,0026ms/hash (đo thật) so với 18ms của argon2 là khác biệt
- * giữa "auth miễn phí" và "auth là hot path".
+ * Why SHA-256 instead of argon2 like the password: the secret here has 32 bytes of
+ * random entropy (not something a human made up), so there's nothing to brute-force;
+ * and it's looked up on EVERY request — 0.0026ms/hash (measured) versus argon2's 18ms is
+ * the difference between "auth is free" and "auth is a hot path".
  *
- * `prefix` là 4 byte đầu, lưu dạng rõ để UI hiển thị lại token ("tk_9f3ac21b…")
- * và để log/audit gọi tên token mà không bao giờ chạm secret.
+ * `prefix` is the first 4 bytes, stored in the clear so the UI can display the token back
+ * ("tk_9f3ac21b…") and so logs/audit can name the token without ever touching the secret.
  */
 import { createHash, randomBytes } from "node:crypto";
 
@@ -41,10 +41,10 @@ export function parseTokenSecret(raw: string): { readonly prefix: string } | nul
   return { prefix };
 }
 
-/** Hạn dùng là BẮT BUỘC (blueprint §3) — hàm này không có nhánh nào trả về null. */
+/** Expiry is MANDATORY (blueprint §3) — this function has no branch that returns null. */
 export function expiryFromDays(days: number, now: Date): Date {
   if (!Number.isInteger(days) || days < 1 || days > MAX_TOKEN_TTL_DAYS) {
-    throw new RangeError(`hạn token phải là số nguyên trong 1..${MAX_TOKEN_TTL_DAYS} ngày, nhận: ${days}`);
+    throw new RangeError(`token TTL must be an integer in 1..${MAX_TOKEN_TTL_DAYS} days, got: ${days}`);
   }
   return new Date(now.getTime() + days * 86_400_000);
 }

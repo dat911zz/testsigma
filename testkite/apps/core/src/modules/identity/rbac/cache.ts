@@ -1,15 +1,15 @@
 /**
- * Cache quyền TTL 60s (blueprint §3). Đây là cache CỦA MỘT TIẾN TRÌNH, không phải
- * Redis: hệ quả là mỗi instance API có thể lệch nhau tối đa 60s sau khi đổi vai.
- * Chấp nhận được vì (a) action HIGH bỏ qua cache hoàn toàn — xem Task 6, và
- * (b) đổi vai gọi invalidateTeam() ngay trong tiến trình xử lý — chỗ gọi thật là
- * `identity/routes.ts::setMemberRole`, ngay sau khi UPDATE commit.
+ * Permission cache, TTL 60s (blueprint §3). This is a cache PER PROCESS, not Redis:
+ * the consequence is each API instance can drift up to 60s apart after a role change.
+ * Acceptable because (a) HIGH actions bypass the cache entirely — see Task 6, and
+ * (b) a role change calls invalidateTeam() right within the handling process — the real
+ * call site is `identity/routes.ts::setMemberRole`, right after the UPDATE commits.
  *
- * Key của cache là SHA-256 hex của secret (authenticator.ts), KHÔNG phải secret thô:
- * không có đường nào để bearer token nằm nguyên văn trong bộ nhớ tiến trình.
+ * The cache key is the SHA-256 hex of the secret (authenticator.ts), NOT the raw secret:
+ * there is no path where a bearer token sits verbatim in process memory.
  *
- * KHÔNG dùng `now` mặc định là Date.now trong test: clock được tiêm để test TTL
- * không cần sleep.
+ * Do NOT default `now` to Date.now in tests: the clock is injected so TTL tests don't
+ * need to sleep.
  */
 import type { CredentialKind } from "./authorize.js";
 import type { MembershipRole, Permission } from "./permissions.js";
@@ -18,9 +18,10 @@ export const AUTHZ_CACHE_TTL_MS = 60_000;
 const DEFAULT_MAX_ENTRIES = 10_000;
 
 /**
- * Nguyên một RequestContext đã tính xong, không chỉ mỗi vai: hook auth (Task 6)
- * phải dựng lại được context ĐẦY ĐỦ từ cache hit, nếu không "cache hit" vẫn phải
- * chạm DB để lấy userId/tokenId và TTL 60s trở thành đồ trang trí.
+ * The whole already-computed RequestContext, not just the role: the auth hook (Task 6)
+ * must be able to rebuild the FULL context from a cache hit — otherwise a "cache hit"
+ * would still have to touch the DB for userId/tokenId, and the 60s TTL would be
+ * decorative.
  */
 export type CachedGrant = {
   readonly teamId: string;
@@ -60,7 +61,7 @@ export function createAuthzCache(opts: {
       return hit;
     },
     set(key, grant) {
-      // Map giữ thứ tự chèn ⇒ entry cũ nhất là key đầu tiên (FIFO, đủ cho một cache 60s).
+      // Map preserves insertion order ⇒ the oldest entry is the first key (FIFO, good enough for a 60s cache).
       if (store.size >= max) {
         const oldest = store.keys().next();
         if (!oldest.done) store.delete(oldest.value);

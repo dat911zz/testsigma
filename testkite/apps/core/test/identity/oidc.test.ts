@@ -15,7 +15,7 @@ afterAll(async () => {
   await h.close();
 });
 
-/** Connector OIDC của một team bất kỳ — team B dùng để dựng ca xuyên-tenant. */
+/** An OIDC connector for an arbitrary team — team B uses this to set up the cross-tenant case. */
 async function newConnector(teamId: string, name: string): Promise<string> {
   const r = await h.db.raw.query<{ id: string }>(
     `INSERT INTO idn_oidc_connectors (team_id, name, issuer_url, client_id, client_secret, scopes, default_role, allow_insecure_http)
@@ -42,7 +42,7 @@ async function start(cid = connectorId): Promise<{ authorizationUrl: string; sta
   return r.json() as { authorizationUrl: string; state: string };
 }
 
-/** Đi qua IdP giả để lấy callback URL, có thể ép nó phát token độc hại. */
+/** Walks the mock IdP to get the callback URL, and can force it to issue a malicious token. */
 async function walkIdp(
   authorizationUrl: string,
   extra: Record<string, string> = {},
@@ -51,7 +51,7 @@ async function walkIdp(
   for (const [k, v] of Object.entries(extra)) u.searchParams.set(k, v);
   const res = await fetch(u, { redirect: "manual" });
   const loc = res.headers.get("location");
-  expect(loc, "IdP không trả redirect").not.toBeNull();
+  expect(loc, "IdP did not return a redirect").not.toBeNull();
   return String(loc);
 }
 
@@ -65,7 +65,7 @@ const callback = (
     payload: { callbackUrl },
   });
 
-/** Một lượt đăng nhập trọn vẹn qua IdP giả, trên connector `cid`. */
+/** One full login round-trip through the mock IdP, on connector `cid`. */
 async function login(
   cid: string,
   extra: Record<string, string> = {},
@@ -78,7 +78,7 @@ const userIdOf = (r: { json: () => unknown }): string =>
   (r.json() as { context: { userId: string } }).context.userId;
 
 describe("OIDC connector", () => {
-  it("start trả authorization URL có PKCE S256 + state + nonce", async () => {
+  it("start returns an authorization URL with PKCE S256 + state + nonce", async () => {
     const { authorizationUrl, state } = await start();
     const u = new URL(authorizationUrl);
     expect(u.searchParams.get("code_challenge_method")).toBe("S256");
@@ -88,7 +88,7 @@ describe("OIDC connector", () => {
     expect(u.searchParams.get("client_id")).toBe(idp.clientId);
   });
 
-  it("callback hợp lệ ⇒ 200 + session token dùng được, user được tạo tự động", async () => {
+  it("a valid callback ⇒ 200 + a usable session token, the user is auto-created", async () => {
     const { authorizationUrl } = await start();
     const cb = await walkIdp(authorizationUrl, { tk_email: "moi@acme.test" });
     const r = await callback(cb);
@@ -107,7 +107,7 @@ describe("OIDC connector", () => {
     expect(u.rows[0]?.n).toBe(1);
   });
 
-  it("đăng nhập lần hai KHÔNG tạo user trùng", async () => {
+  it("logging in a second time does NOT create a duplicate user", async () => {
     for (let i = 0; i < 2; i += 1) {
       const r = await login(connectorId, { tk_email: "lap@acme.test", tk_sub: "kc-user-9" });
       expect(r.statusCode).toBe(200);
@@ -118,10 +118,10 @@ describe("OIDC connector", () => {
     expect(u.rows[0]?.n).toBe(1);
   });
 
-  it("neo theo SUBJECT: lần hai đổi email nhưng cùng subject ⇒ vẫn đúng user cũ", async () => {
-    // Đây là thứ phân biệt "có neo theo subject" với "khớp mù theo email": nếu chỉ
-    // khớp email thì email đổi ⇒ đẻ ra user thứ hai. Ca ngược (đổi subject, giữ
-    // email) nằm ở nhóm "chống chiếm phiên xuyên-tenant" bên dưới.
+  it("anchored by SUBJECT: a second login with a different email but the same subject ⇒ still the same user", async () => {
+    // This is what distinguishes "anchored by subject" from "blind email matching": with
+    // email-only matching, a changed email would spawn a second user. The reverse case
+    // (subject changes, email stays) is in the "cross-tenant session hijack" group below.
     const first = await login(connectorId, { tk_email: "neo@acme.test", tk_sub: "kc-neo" });
     expect(first.statusCode).toBe(200);
 
@@ -135,43 +135,43 @@ describe("OIDC connector", () => {
     expect(u.rows[0]?.n).toBe(1);
   });
 
-  it("id_token HẾT HẠN ⇒ 401", async () => {
+  it("an EXPIRED id_token ⇒ 401", async () => {
     const { authorizationUrl } = await start();
     expect((await callback(await walkIdp(authorizationUrl, { tk_mode: "expired" }))).statusCode).toBe(
       401,
     );
   });
 
-  it("id_token sai audience ⇒ 401", async () => {
+  it("id_token with the wrong audience ⇒ 401", async () => {
     const { authorizationUrl } = await start();
     expect(
       (await callback(await walkIdp(authorizationUrl, { tk_mode: "wrong_aud" }))).statusCode,
     ).toBe(401);
   });
 
-  it("id_token sai issuer ⇒ 401", async () => {
+  it("id_token with the wrong issuer ⇒ 401", async () => {
     const { authorizationUrl } = await start();
     expect(
       (await callback(await walkIdp(authorizationUrl, { tk_mode: "wrong_iss" }))).statusCode,
     ).toBe(401);
   });
 
-  it("id_token ký bằng khoá NGOÀI JWKS ⇒ 401 (enableNonRepudiationChecks)", async () => {
-    // Không bật kiểm chữ ký thì openid-client CHẤP NHẬN token này (spike 2026-08-28).
+  it("id_token signed with a key OUTSIDE the JWKS ⇒ 401 (enableNonRepudiationChecks)", async () => {
+    // Without the signature check enabled, openid-client ACCEPTS this token (spike 2026-08-28).
     const { authorizationUrl } = await start();
     expect(
       (await callback(await walkIdp(authorizationUrl, { tk_mode: "unknown_kid" }))).statusCode,
     ).toBe(401);
   });
 
-  it("state dùng LẠI lần hai ⇒ 401 (chống replay)", async () => {
+  it("state REUSED a second time ⇒ 401 (replay protection)", async () => {
     const { authorizationUrl } = await start();
     const cb = await walkIdp(authorizationUrl);
     expect((await callback(cb)).statusCode).toBe(200);
     expect((await callback(cb)).statusCode).toBe(401);
   });
 
-  it("state hết hạn ⇒ 401", async () => {
+  it("expired state ⇒ 401", async () => {
     const { authorizationUrl, state } = await start();
     const cb = await walkIdp(authorizationUrl);
     await h.db.raw.query(
@@ -181,14 +181,15 @@ describe("OIDC connector", () => {
     expect((await callback(cb)).statusCode).toBe(401);
   });
 
-  it("state bịa (không có trong DB) ⇒ 401", async () => {
+  it("a made-up state (not in the DB) ⇒ 401", async () => {
     expect((await callback(`${REDIRECT}?code=abc&state=khong-ton-tai`)).statusCode).toBe(401);
   });
 
-  it("start là route CÔNG KHAI: connector team khác vẫn 200, chỉ trả URL uỷ quyền + state", async () => {
-    // Hành vi THẬT, nói thẳng: /start chạy khi chưa có credential nào nên không có
-    // tenant ctx để so — id connector là uuid ngẫu nhiên, đóng vai capability. Điều
-    // phải giữ là body KHÔNG rò tên connector của team khác.
+  it("start is a PUBLIC route: another team's connector still 200s, returning only the authorization URL + state", async () => {
+    // The REAL behavior, stated plainly: /start runs before any credential exists, so
+    // there's no tenant ctx to compare against — the connector id is a random uuid, acting
+    // as a capability. What must hold is that the body does NOT leak another team's
+    // connector name.
     const cidB = await newConnector(h.ids.teamB, "kc-b");
     const r = await h.app.inject({
       method: "POST",
@@ -203,7 +204,7 @@ describe("OIDC connector", () => {
     expect(r.payload).not.toContain("kc-b");
   });
 
-  it("nhánh LỖI của start ⇒ 404 sạch: không 403, không 500, không rò tên/issuer team khác", async () => {
+  it("start's ERROR branch ⇒ a clean 404: no 403, no 500, no leaking another team's name/issuer", async () => {
     const cidB = await newConnector(h.ids.teamB, "kc-b");
     await h.db.raw.query(`UPDATE idn_oidc_connectors SET enabled=false WHERE id=$1`, [cidB]);
     const r = await h.app.inject({
@@ -216,7 +217,7 @@ describe("OIDC connector", () => {
     expect(r.payload).not.toContain(idp.issuer);
   });
 
-  it("connector disabled ⇒ 404", async () => {
+  it("a disabled connector ⇒ 404", async () => {
     await h.db.raw.query(`UPDATE idn_oidc_connectors SET enabled = false WHERE id = $1`, [
       connectorId,
     ]);
@@ -228,14 +229,14 @@ describe("OIDC connector", () => {
     expect(r.statusCode).toBe(404);
   });
 
-  it("client_secret KHÔNG BAO GIỜ ra khỏi API", async () => {
+  it("client_secret NEVER leaves the API", async () => {
     const { authorizationUrl } = await start();
     const r = await callback(await walkIdp(authorizationUrl));
     expect(JSON.stringify(r.json())).not.toContain(idp.clientSecret);
     expect(authorizationUrl).not.toContain(idp.clientSecret);
   });
 
-  it("đăng nhập OIDC ghi audit LOW kèm connector và subject", async () => {
+  it("an OIDC login writes a LOW audit entry with the connector and subject", async () => {
     const { authorizationUrl } = await start();
     await callback(await walkIdp(authorizationUrl, { tk_sub: "kc-user-77" }));
     const r = await h.db.raw.query<{ action: string; severity: string; meta: { subject?: string } }>(
@@ -248,13 +249,14 @@ describe("OIDC connector", () => {
 });
 
 /**
- * `users` là bảng TOÀN CỤC (schema.ts: "một người ở nhiều team"), còn connector OIDC
- * thì mỗi team tự cấu hình lấy — admin team B trỏ về Keycloak của chính họ và khai
- * claim gì cũng được. Nếu callback khớp identity mới vào user cũ CHỈ bằng email thì
- * team B mint được phiên mang userId thật của người chỉ thuộc team A.
+ * `users` is a GLOBAL table (schema.ts: "one person, many teams"), while each team
+ * configures its own OIDC connector — team B's admin points it at their own Keycloak and
+ * can declare whatever claims they like. If a callback linked a new identity to an
+ * existing user by email ALONE, team B could mint a session carrying the real userId of
+ * someone who only belongs to team A.
  */
-describe("OIDC — chống chiếm phiên xuyên-tenant qua email", () => {
-  it("team B khai email của user CHỈ thuộc team A ⇒ 401, không phiên, không membership", async () => {
+describe("OIDC — resisting cross-tenant session hijack via email", () => {
+  it("team B claims the email of a user who ONLY belongs to team A ⇒ 401, no session, no membership", async () => {
     const cidB = await newConnector(h.ids.teamB, "kc-b");
     const r = await login(cidB, { tk_email: "author@acme.test", tk_sub: "kc-ke-tan-cong" });
     expect(r.statusCode).toBe(401);
@@ -275,9 +277,9 @@ describe("OIDC — chống chiếm phiên xuyên-tenant qua email", () => {
     expect(u.rows[0]?.n).toBe(1);
   });
 
-  it("user ĐÃ là thành viên team (team tự mời) + email đã xác minh ⇒ liên kết đúng user đó", async () => {
-    // Ranh giới của luật: team CHỈ được liên kết vào tài khoản mà chính nó đã bảo
-    // lãnh bằng membership — đó là luồng "mời trước, SSO sau" hợp lệ.
+  it("a user who is ALREADY a team member (invited by the team) + verified email ⇒ links to that exact user", async () => {
+    // The boundary of the rule: a team may ONLY link to an account it has already vouched
+    // for via membership — that's the valid "invite first, SSO later" flow.
     const cidB = await newConnector(h.ids.teamB, "kc-b");
     const r = await login(cidB, { tk_email: "admin@acme.test", tk_sub: "kc-admin" });
     expect(r.statusCode).toBe(200);
@@ -288,7 +290,7 @@ describe("OIDC — chống chiếm phiên xuyên-tenant qua email", () => {
     expect(u.rows[0]?.n).toBe(1);
   });
 
-  it("email đã có chủ + IdP nói email_verified=false ⇒ 401 dù user là thành viên team", async () => {
+  it("email already belongs to someone + the IdP says email_verified=false ⇒ 401 even though the user is a team member", async () => {
     const cidB = await newConnector(h.ids.teamB, "kc-b");
     const r = await login(cidB, {
       tk_email: "admin@acme.test",
@@ -298,11 +300,11 @@ describe("OIDC — chống chiếm phiên xuyên-tenant qua email", () => {
     expect(r.statusCode).toBe(401);
   });
 
-  it("user JIT tạo mới: IdP không xác minh email ⇒ email_verified_at NULL", async () => {
+  it("a newly JIT-created user: the IdP doesn't verify the email ⇒ email_verified_at is NULL", async () => {
     for (const [verified, email] of [
       ["false", "chua-xac-minh@acme.test"],
-      // IdP im lặng (không phát claim) cũng là CHƯA xác minh — và vẫn đăng nhập được:
-      // email chưa ai dùng thì không có tài khoản nào để chiếm.
+      // The IdP staying silent (not sending the claim) also counts as NOT verified — and
+      // login still succeeds: if no one uses that email yet, there's no account to take over.
       ["absent", "im-lang@acme.test"],
     ] as const) {
       const r = await login(connectorId, {

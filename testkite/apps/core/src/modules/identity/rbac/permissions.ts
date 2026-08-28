@@ -1,6 +1,7 @@
 /**
- * RBAC = ma trận TypeScript, KHÔNG bảng grants trong DB (blueprint §3).
- * Đổi quyền = đổi code = qua review = có trong git blame. Không ai "sửa quyền nóng".
+ * RBAC = a TypeScript matrix, NOT a grants table in the DB (blueprint §3).
+ * Changing permissions = changing code = going through review = shows up in git blame.
+ * Nobody "hot-patches" permissions.
  */
 
 export const PERMISSIONS = [
@@ -26,24 +27,25 @@ const VIEWER: readonly Permission[] = [
   "case:read", "suite:read", "run:read", "element:read", "testdata:read", "env:read",
 ];
 
-/** runner = CI: bấm nút chạy và đọc kết quả, KHÔNG sửa được test. */
+/** runner = CI: presses the run button and reads results, CANNOT edit tests. */
 const RUNNER: readonly Permission[] = [...VIEWER, "run:trigger", "run:abort"];
 
 const AUTHOR: readonly Permission[] = [
   ...RUNNER,
   "case:write", "case:promote", "suite:write",
-  // element:write là never-grantable ⇒ author đề xuất, không tự ghi (blueprint §3, S5).
+  // element:write is never-grantable ⇒ author proposes, cannot write directly (blueprint §3, S5).
   "element:propose",
   "testdata:write",
   "token:issue:user",
 ];
 
 /**
- * `team:manage` = quản trị team ĐANG CÓ (đổi cấu hình, quản người trong đó). Nó KHÔNG
- * bao hàm việc DỰNG team mới: dựng team là hành vi cấp org (chọn org, cấp hạn mức, chỉ
- * định admin đầu tiên) nên đứng riêng thành `team:create`. Gộp hai thứ này là đường leo
- * thang: mọi team_admin đều có `team:manage`, tức mọi team_admin đều tự cấp cho mình
- * một team mới và tự gắn admin cho người khác.
+ * `team:manage` = administering a team that ALREADY EXISTS (change its config, manage its
+ * members). It does NOT cover CREATING a new team: creating a team is an org-level action
+ * (pick the org, set quotas, designate the first admin), so it stands apart as
+ * `team:create`. Merging the two would be a privilege-escalation path: every team_admin
+ * has `team:manage`, so every team_admin could spin up a new team for themselves and hand
+ * out admin to whoever they like.
  */
 const TEAM_ADMIN: readonly Permission[] = [
   ...AUTHOR,
@@ -53,15 +55,16 @@ const TEAM_ADMIN: readonly Permission[] = [
 ];
 
 /**
- * org_admin KHÔNG đọc tài sản team mặc nhiên — muốn đọc thì break-glass, và
- * break-glass ghi audit HIGH (blueprint §3). Vai này quản người + hạn mức, không xem test.
+ * org_admin does NOT read team assets by default — reading requires break-glass, and
+ * break-glass writes a HIGH audit entry (blueprint §3). This role manages people + quotas,
+ * it doesn't view tests.
  */
 const ORG_ADMIN: readonly Permission[] = [
   "member:manage", "team:manage", "team:create",
   "quota:read", "quota:set", "audit:read", "audit:read:all",
 ];
 
-/** Vai hạ tầng: vận hành instance, không phải người dùng nghiệp vụ. */
+/** Infra role: operates the instance, not a business user. */
 const INSTANCE_OPERATOR: readonly Permission[] = [
   ...ORG_ADMIN, "team:purge", "token:issue:service",
 ];
@@ -76,15 +79,16 @@ export const ROLE_PERMISSIONS: Readonly<Record<MembershipRole, readonly Permissi
 };
 
 /**
- * KHÔNG BAO GIỜ gắn được vào credential không tương tác (api token kind user_pat/service).
- * Sao nguyên văn blueprint §3. Người thật đang ngồi trước máy (kind=session) vẫn dùng
- * được nếu vai của họ có, nhưng mỗi lần dùng là một dòng audit HIGH và bỏ qua cache.
+ * Can NEVER be attached to a non-interactive credential (api token kind user_pat/service).
+ * Copied verbatim from blueprint §3. A real human sitting at the keyboard (kind=session)
+ * can still use it if their role has it, but every use is a HIGH audit line and bypasses
+ * the cache.
  */
 export const NEVER_GRANTABLE: readonly Permission[] = [
   "secret:write", "quota:set", "element:write", "token:issue:service", "team:purge",
 ];
 
-/** Action HIGH: bỏ qua cache 60s, luôn đọc DB, luôn ghi audit severity=HIGH. */
+/** HIGH actions: bypass the 60s cache, always hit the DB, always write audit severity=HIGH. */
 export const HIGH_RISK: readonly Permission[] = [
   ...NEVER_GRANTABLE,
   "member:manage", "team:manage", "team:create", "secret:read", "audit:read:all", "token:issue:user",

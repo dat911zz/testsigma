@@ -1,19 +1,20 @@
 /**
- * Đăng nhập email/mật khẩu nội bộ.
+ * Internal email/password login.
  *
- * Luật chống dò tài khoản: MỌI nhánh thất bại (email không có, mật khẩu sai, user
- * suspend, không là thành viên team được xin) đều trả CÙNG MỘT UnauthorizedError với
- * cùng message. Đường thất bại vẫn chạy một lần verify giả để thời gian phản hồi
- * không tố cáo "email này không tồn tại".
+ * Account-enumeration-resistance rule: EVERY failure branch (email doesn't exist, wrong
+ * password, user suspended, not a member of the requested team) throws the exact SAME
+ * UnauthorizedError with the same message. The failure path still runs a dummy verify so
+ * response timing doesn't give away "this email doesn't exist".
  *
- * Quyết định có chủ đích — session LÀ api_token `kind='session'`: không bảng phiên,
- * không cookie/CSRF trong M2. Một secret hạn 1 ngày gắn ĐÚNG một team; đổi team =
- * đăng nhập lại. Đổi lại, nó là credential duy nhất được mang never-grantable (người
- * thật đang ngồi trước máy — xem `effectiveScopes`). Khi UI thật ra đời ở M4, đây là
- * chỗ xem lại (cookie httpOnly + CSRF) và ghi vào docs/ARCHITECTURE_AUDIT.md.
+ * A deliberate decision — the session IS an api_token with `kind='session'`: no session
+ * table, no cookie/CSRF in M2. A secret with a 1-day TTL is tied to EXACTLY one team;
+ * switching teams means logging in again. In exchange, it's the only credential allowed to
+ * carry never-grantable permissions (a real human sitting at the keyboard — see
+ * `effectiveScopes`). When a real UI lands in M4, this is the place to revisit (httpOnly
+ * cookie + CSRF) and record in docs/ARCHITECTURE_AUDIT.md.
  *
- * `audit` là CỔNG tiêm từ tầng shell, không phải import: identity và governance cùng
- * tầng DAG nên identity không được import governance (xem ../audit-port.ts).
+ * `audit` is a PORT injected from the shell layer, not an import: identity and governance
+ * are at the same DAG layer, so identity may not import governance (see ../audit-port.ts).
  */
 import { eq, sql } from "drizzle-orm";
 import { UnauthorizedError } from "@testkite/contract";
@@ -28,31 +29,31 @@ import { issueApiToken } from "./issue.js";
 export const SESSION_TTL_DAYS = 1;
 
 /**
- * Một message duy nhất cho mọi nhánh thất bại. (Client thấy câu chung của
- * error handler vì UnauthorizedError không tenantVisible — nhưng ngay cả log nội bộ
- * cũng không được phân biệt "email không tồn tại" với "mật khẩu sai".)
+ * One single message for every failure branch. (The client sees the generic error-handler
+ * message anyway because UnauthorizedError isn't tenantVisible — but even internal logs
+ * must not distinguish "email doesn't exist" from "wrong password".)
  */
-export const LOGIN_FAILED_MESSAGE = "email hoặc mật khẩu không đúng";
+export const LOGIN_FAILED_MESSAGE = "incorrect email or password";
 
-/** Hash mồi để nhánh "không có user" tốn đúng chừng ấy thời gian như nhánh có user. */
+/** Dummy hash so the "no such user" branch costs exactly as much time as the "user found" branch. */
 const DUMMY_HASH =
   "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-/** uuid mồi cho truy vấn membership của nhánh "không có user" — luôn 0 row. */
+/** Dummy uuid for the membership query on the "no such user" branch — always 0 rows. */
 const DUMMY_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 /**
- * Cổng chạy việc NGOÀI đường phản hồi. Lý do tồn tại là chống dò tài khoản bằng
- * đồng hồ, không phải hiệu năng: xem ghi chú ở nhánh sai mật khẩu bên dưới.
+ * A port to run work OUTSIDE the response path. It exists to resist account enumeration
+ * via timing, not for performance — see the note on the wrong-password branch below.
  */
 export type DeferPort = (task: () => Promise<void>) => void;
 
 /**
- * Mặc định: xếp task vào pha `check` của vòng lặp sự kiện — nó chỉ chạy SAU khi
- * phản hồi 401 đã được tuần tự hoá xong, nên không một mili-giây nào của nó rơi vào
- * thời gian phản hồi. Lỗi bị NUỐT có chủ đích: một dòng audit hỏng không được biến
- * thành unhandled rejection giết tiến trình API. Tầng shell muốn log thì tiêm
- * `defer` của riêng nó (khi có cổng log ở M4).
+ * Default: queues the task into the `check` phase of the event loop — it only runs AFTER
+ * the 401 response has finished being serialized, so not a single millisecond of it lands
+ * in response time. The error is swallowed on purpose: one broken audit write must not
+ * become an unhandled rejection that kills the API process. If the shell layer wants
+ * logging, it injects its own `defer` (once a logging port exists in M4).
  */
 const deferAfterResponse: DeferPort = (task) => {
   setImmediate(() => {
@@ -84,8 +85,8 @@ export async function loginWithPassword(
   const defer = deps.defer ?? deferAfterResponse;
   const fail = new UnauthorizedError(LOGIN_FAILED_MESSAGE);
 
-  // Pha 1 chạy bằng role testkite_auth: lúc này CHƯA biết tenant, mà đó chính là
-  // thứ đang đi tìm. Role đó chỉ SELECT được users/memberships/api_tokens.
+  // Phase 1 runs as role testkite_auth: the tenant is NOT known yet — it's exactly what
+  // we're looking for. That role can only SELECT from users/memberships/api_tokens.
   const found = await withAuthRole(deps.db, async (tx) => {
     const rows = await tx
       .select({ id: users.id, hash: users.passwordHash, status: users.status })
@@ -93,14 +94,14 @@ export async function loginWithPassword(
       .where(sql`lower(${users.email}) = lower(${input.email})`)
       .limit(1);
     const u = rows[0];
-    // password_hash NULL = tài khoản chỉ đăng nhập bằng OIDC ⇒ 401, không 500.
+    // password_hash NULL = account only logs in via OIDC ⇒ 401, not 500.
     const usable =
       u !== undefined && u.hash !== null && u.status === "active"
         ? { id: u.id, hash: u.hash }
         : null;
-    // Câu membership chạy KỂ CẢ khi không có user dùng được — bằng một uuid mồi (0 row).
-    // Cùng lý do với DUMMY_HASH: chỉ riêng việc "có chạy câu này hay không" đã là một
-    // chênh lệch thời gian tố cáo email nào có thật.
+    // The membership query runs EVEN WHEN there's no usable user — with a dummy uuid (0
+    // rows). Same reasoning as DUMMY_HASH: merely whether this query runs at all is already
+    // a timing difference that gives away which emails are real.
     const mem = await tx
       .select({
         teamId: memberships.teamId,
@@ -115,17 +116,18 @@ export async function loginWithPassword(
   });
 
   if (found === null) {
-    await verifyPassword(DUMMY_HASH, input.password); // đốt thời gian tương đương
+    await verifyPassword(DUMMY_HASH, input.password); // burn an equivalent amount of time
     throw fail;
   }
   if (!(await verifyPassword(found.hash, input.password))) {
-    // Audit ghi NGOÀI đường phản hồi. Ghi đồng bộ ở đây là mở thêm MỘT transaction
-    // Postgres (BEGIN → SET LOCAL ROLE → set_config → INSERT → COMMIT) mà nhánh
-    // "email không tồn tại / OIDC-only / suspended" không tốn — đo thật khi review:
-    // ~5,1–5,9ms trên nền ~23–29ms (20–25%), đủ để đếm email nào có thật dù response
-    // giống hệt nhau. Nó vô hiệu hoá đúng cái DUMMY_HASH đang bảo vệ.
-    // Outbox không cứu được: `enqueueOutbox` cũng là một transaction trên chính
-    // đường ấy — thứ phải bỏ là việc ĐỒNG BỘ, không phải cái bảng được ghi.
+    // Audit is written OUTSIDE the response path. Writing it synchronously here would open
+    // ONE extra Postgres transaction (BEGIN → SET LOCAL ROLE → set_config → INSERT →
+    // COMMIT) that the "email doesn't exist / OIDC-only / suspended" branch doesn't pay
+    // for — measured during review: ~5.1–5.9ms on top of a ~23–29ms baseline (20–25%),
+    // enough to count which emails are real even though the responses look identical. It
+    // would defeat the exact protection DUMMY_HASH provides.
+    // The outbox doesn't save us here: `enqueueOutbox` is itself a transaction on the same
+    // path — what has to go is the SYNCHRONOUS part, not which table gets written.
     const at = clock();
     const teamId = found.memberships[0]?.teamId;
     defer(() => auditFailure(deps, teamId, input.email, at));
@@ -136,12 +138,12 @@ export async function loginWithPassword(
     input.teamId === undefined
       ? found.memberships[0]
       : found.memberships.find((m) => m.teamId === input.teamId);
-  // Không phải thành viên ⇒ 401, KHÔNG xác nhận team đó có tồn tại hay không.
+  // Not a member ⇒ 401, and we do NOT confirm whether that team even exists.
   if (picked === undefined) throw fail;
 
   const teamId = picked.teamId;
   const role: MembershipRole = picked.role;
-  // Session của người thật mang trọn quyền của vai (effectiveScopes lọc lại lần cuối).
+  // A real human's session carries the role's full permission set (effectiveScopes filters it one last time).
   const scopes = effectiveScopes(role, ROLE_PERMISSIONS[role], "session");
   const at = clock();
 
@@ -159,8 +161,8 @@ export async function loginWithPassword(
       },
       at,
     );
-    // Rehash im lặng khi tham số argon2 của hash cũ yếu hơn tham số hiện hành —
-    // gộp chung một UPDATE với last_login_at, cùng transaction với phiên vừa phát.
+    // Silent rehash when the old hash's argon2 parameters are weaker than the current ones —
+    // folded into the same UPDATE as last_login_at, same transaction as the session just issued.
     const rehash = needsRehash(found.hash)
       ? { passwordHash: await hashPassword(input.password), updatedAt: at }
       : {};
@@ -188,13 +190,14 @@ export async function loginWithPassword(
 }
 
 /**
- * Đăng nhập hỏng vẫn phải để lại dấu vết — nhưng audit_events là bảng TENANT-SCOPED:
- * không biết tenant thì không có chỗ ghi. Người không tồn tại vì thế không sinh audit
- * (và cũng không được sinh: đó sẽ là kênh dò tài khoản qua chính bảng audit).
+ * A failed login still has to leave a trace — but audit_events is a TENANT-SCOPED table:
+ * with no known tenant, there's nowhere to write it. A nonexistent user therefore produces
+ * no audit entry (and must not: that would itself be an account-enumeration channel via the
+ * audit table).
  *
- * CHỈ được gọi qua `defer` — đây là việc chạy sau khi 401 đã rời tiến trình. Đánh đổi
- * đã cân nhắc: một dòng audit của lần đăng nhập HỎNG có thể mất nếu tiến trình chết
- * giữa chừng; đổi lại thời gian phản hồi không còn phụ thuộc vào việc email có thật.
+ * ONLY called through `defer` — this runs after the 401 has already left the process. A
+ * deliberate tradeoff: the audit line for a FAILED login can be lost if the process dies
+ * mid-flight; in exchange, response time no longer depends on whether the email is real.
  */
 async function auditFailure(
   deps: LoginDeps,

@@ -1,7 +1,8 @@
 /**
- * Scope hiệu lực = token.scopes ∩ ROLE_PERMISSIONS[role], tính LẠI MỖI REQUEST.
- * Hệ quả cố ý: hạ vai một người là tước quyền mọi token của họ tức thì — không phải
- * đi thu hồi từng token, không có cửa sổ "token còn quyền cũ".
+ * Effective scope = token.scopes ∩ ROLE_PERMISSIONS[role], recomputed on EVERY REQUEST.
+ * Intended consequence: demoting someone's role strips every one of their tokens'
+ * permissions instantly — no need to revoke tokens one by one, no window where a
+ * "token still holds the old permissions".
  */
 import { ForbiddenError } from "@testkite/contract";
 import {
@@ -19,19 +20,19 @@ export function effectiveScopes(
   const rolePerms = new Set<string>(ROLE_PERMISSIONS[role]);
   const out: Permission[] = [];
   for (const s of tokenScopes) {
-    if (!isPermission(s)) continue;             // scope rác/cũ: bỏ qua, không vỡ request
-    if (!rolePerms.has(s)) continue;            // token xin rộng hơn vai: cắt
-    if (kind !== "session" && isNeverGrantable(s)) continue; // never-grantable: chỉ người thật
+    if (!isPermission(s)) continue;             // stale/garbage scope: skip, don't break the request
+    if (!rolePerms.has(s)) continue;            // token asks for more than the role grants: trim it
+    if (kind !== "session" && isNeverGrantable(s)) continue; // never-grantable: real humans only
     out.push(s);
   }
   return out;
 }
 
-/** Gate lúc PHÁT token — never-grantable không bao giờ được ghi vào api_tokens.scopes. */
+/** Gate at token ISSUE time — never-grantable must never be written into api_tokens.scopes. */
 export function assertGrantable(scopes: readonly string[]): asserts scopes is readonly Permission[] {
   const bad = scopes.filter((s) => !isPermission(s) || isNeverGrantable(s));
   if (bad.length > 0) {
-    throw new ForbiddenError(`scope không được phép gắn vào token: ${bad.join(", ")}`);
+    throw new ForbiddenError(`scope not allowed on a token: ${bad.join(", ")}`);
   }
 }
 
@@ -41,8 +42,8 @@ export function authorize(
   required: string | null,
 ): void {
   if (required === null) return;
-  if (!isPermission(required)) throw new ForbiddenError(`permission không tồn tại: ${required}`);
+  if (!isPermission(required)) throw new ForbiddenError(`permission does not exist: ${required}`);
   if (!effective.includes(required)) {
-    throw new ForbiddenError(`thiếu quyền ${required} với vai ${role}`);
+    throw new ForbiddenError(`missing permission ${required} for role ${role}`);
   }
 }

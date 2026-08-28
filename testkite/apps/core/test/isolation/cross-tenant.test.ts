@@ -1,13 +1,14 @@
 /**
- * L3 — bộ cách ly tenant sinh từ hợp đồng OpenAPI (blueprint §3, T4 không thương lượng).
+ * L3 — the tenant-isolation harness generated from the OpenAPI contract (blueprint §3, T4 non-negotiable).
  *
- * Luật: token của team B + id của team A ⇒ **404**, KHÔNG BAO GIỜ 403.
- * Vì sao không 403: 403 xác nhận "tài nguyên này có tồn tại" — đó đã là rò rỉ. Với
- * team B thì tài nguyên của team A đơn giản là không tồn tại.
+ * Rule: team B's token + team A's id ⇒ **404**, NEVER 403.
+ * Why not 403: a 403 confirms "this resource exists" — that's already a leak. To team B,
+ * team A's resource simply does not exist.
  *
- * Đây KHÔNG phải danh sách viết tay: nó đọc `ROUTES` và sinh một case cho mỗi
- * (route × path param). Thêm route mà quên fixture ⇒ `coverage.test.ts` đỏ; thêm route
- * mà quên descriptor ⇒ test "router thật" ở cuối file đỏ.
+ * This is NOT a hand-written list: it reads `ROUTES` and generates one case per
+ * (route × path param). Adding a route and forgetting its fixture ⇒ `coverage.test.ts`
+ * goes red; adding a route and forgetting its descriptor ⇒ the "real router" test at the
+ * end of this file goes red.
  */
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { ROUTES, pathParamNames, toFastifyPath } from "@testkite/contract";
@@ -30,30 +31,32 @@ const TARGETS = ROUTES.filter(
 );
 
 /**
- * Global Constraint: `teamId` chỉ ra đời từ credential đã xác thực.
+ * Global Constraint: `teamId` is only ever born from an authenticated credential.
  *
- * Plan viết luật này thành một dòng phủ định ("không route nào nhận teamId"), nhưng
- * chính plan ấy (Task 8) cho `loginPassword` nhận `teamId` trong body — và đó không
- * phải mâu thuẫn: login là nơi credential RA ĐỜI, lúc đó chưa có tenant nào để ghi
- * đè, còn `teamId` ở đó chỉ chọn giữa các membership CỦA CHÍNH người vừa chứng minh
- * mật khẩu (xin team mình không thuộc về ⇒ 401, `login.test.ts`). Nên gate dưới đây
- * tách hai vế và CHẶT HƠN một dòng phủ định đơn giản:
- *   - route `auth: "required"` (đã có `RequestContext`): tuyệt đối không teamId, ở
- *     bất kỳ đâu — path, query hay body;
- *   - route public: chỉ operationId nằm trong allowlist CÓ LÝ DO dưới đây mới được
- *     nhận teamId trong body. Thêm route public mới nhận teamId ⇒ CI đỏ.
- * Path param và query thì KHÔNG có ngoại lệ nào, kể cả route public.
+ * The plan states this rule as one blanket negative ("no route accepts teamId"), but that
+ * very plan (Task 8) has `loginPassword` accept `teamId` in its body — and that's not a
+ * contradiction: login is where the credential IS BORN, so there is no tenant yet to
+ * overwrite, and `teamId` there only picks among the memberships OF THE PERSON WHO JUST
+ * PROVED their password (requesting a team they don't belong to ⇒ 401, see
+ * `login.test.ts`). So the gate below splits the rule into two halves and is STRICTER than
+ * a single blanket negative:
+ *   - an `auth: "required"` route (already has a `RequestContext`): absolutely no teamId,
+ *     anywhere — path, query, or body;
+ *   - a public route: only an operationId in the allowlist below, WITH A REASON, may
+ *     accept teamId in its body. Adding a new public route that accepts teamId ⇒ CI goes red.
+ * Path params and query have NO exception, not even on a public route.
  */
 const TEAM_SELECTOR_PUBLIC_ROUTES: Readonly<Record<string, string>> = {
   loginPassword:
-    "chọn team giữa các membership của chính người vừa xác thực mật khẩu — credential chưa tồn tại nên không có tenant nào bị ghi đè; xin team mình không thuộc về ⇒ 401 (không phải 403, không xác nhận team có thật)",
+    "picks a team among the memberships of the person who just authenticated with a password — no credential exists yet so there is no tenant to overwrite; requesting a team you don't belong to ⇒ 401 (not 403, doesn't confirm the team is real)",
 };
 
 /**
- * Khoá để so route THẬT với descriptor. HEAD được quy về GET: Fastify tự sinh HEAD cho
- * mỗi GET (`exposeHeadRoutes` mặc định true) từ CHÍNH route options của GET — cùng
- * `config.tk`, cùng hook auth, cùng permission — còn OpenAPI thì không tả HEAD bao giờ.
- * Quy về (chứ không bỏ qua) để HEAD nào không có GET song sinh vẫn bị bắt là route lậu.
+ * Key used to compare the REAL router against the descriptor. HEAD is normalized to GET:
+ * Fastify auto-generates a HEAD for every GET (`exposeHeadRoutes` defaults to true) from
+ * the GET's OWN route options — same `config.tk`, same auth hook, same permission — while
+ * OpenAPI never describes HEAD. Normalized (rather than skipped) so a HEAD with no GET
+ * twin still gets caught as a rogue route.
  */
 function declaredKey(method: string, url: string): string {
   return method === "HEAD" ? `GET ${url}` : `${method} ${url}`;
@@ -64,28 +67,28 @@ function bodyShapeKeys(body: unknown): readonly string[] {
   return shape === undefined ? [] : Object.keys(shape);
 }
 
-describe("cách ly tenant L3 (sinh từ ROUTES)", () => {
-  it("có route để kiểm — danh sách rỗng nghĩa là bộ test này vô dụng", () => {
+describe("L3 tenant isolation (generated from ROUTES)", () => {
+  it("there are routes to check — an empty list means this test suite is useless", () => {
     expect(TARGETS.length).toBeGreaterThan(0);
   });
 
   for (const r of TARGETS) {
-    it(`${r.method.toUpperCase()} ${r.path} — token team B + id team A ⇒ 404`, async () => {
-      // 1. Dựng tài nguyên THẬT thuộc team A.
+    it(`${r.method.toUpperCase()} ${r.path} — team B's token + team A's id ⇒ 404`, async () => {
+      // 1. Build a REAL resource belonging to team A.
       let url = toFastifyPath(r.path);
       for (const name of pathParamNames(r.path)) {
         const make = RESOURCE_FIXTURES[name];
-        // Ném (không chỉ expect) để url không bao giờ đi tiếp với `:param` chưa thay —
-        // route sẽ trả 400 và che mất câu hỏi 404-hay-403.
+        // Throw (not just expect) so the url never proceeds with an unreplaced `:param` —
+        // the route would return 400 and hide the 404-vs-403 question.
         if (make === undefined) {
-          throw new Error(`thiếu RESOURCE_FIXTURES["${name}"] cho ${r.operationId}`);
+          throw new Error(`missing RESOURCE_FIXTURES["${name}"] for ${r.operationId}`);
         }
         url = url.replace(`:${name}`, await make({ app: h }));
       }
 
-      // 2. Gọi bằng credential của TEAM B.
-      // `BODY_FIXTURES` khai kiểu `unknown` (mỗi module nộp body của mình); thu hẹp về
-      // object ở đây thay vì cast — thiếu fixture thì coverage.test.ts đã đỏ trước rồi.
+      // 2. Call it with TEAM B's credential.
+      // `BODY_FIXTURES` is declared `unknown` (each module submits its own body); narrow
+      // it here instead of casting — a missing fixture already turned coverage.test.ts red.
       const fixture = BODY_FIXTURES[r.operationId];
       const payload = typeof fixture === "object" && fixture !== null ? { payload: fixture } : {};
       const res = await h.app.inject({
@@ -95,16 +98,16 @@ describe("cách ly tenant L3 (sinh từ ROUTES)", () => {
         ...(r.body !== undefined ? payload : {}),
       });
 
-      // 3. Phán quyết.
-      expect(res.statusCode, `${r.operationId}: 403 là RÒ RỈ — phải 404`).not.toBe(403);
-      expect(res.statusCode, `${r.operationId} trả ${res.statusCode}: ${res.body}`).toBe(404);
+      // 3. The verdict.
+      expect(res.statusCode, `${r.operationId}: 403 is a LEAK — must be 404`).not.toBe(403);
+      expect(res.statusCode, `${r.operationId} returned ${res.statusCode}: ${res.body}`).toBe(404);
       expect(res.json()).toMatchObject({ code: "NOT_FOUND" });
     });
   }
 
-  it("404 của tài nguyên team khác GIỐNG HỆT 404 của id không tồn tại (không phân biệt được)", async () => {
+  it("the 404 for another team's resource is IDENTICAL to the 404 for a nonexistent id (indistinguishable)", async () => {
     const makeToken = RESOURCE_FIXTURES["tokenId"];
-    if (makeToken === undefined) throw new Error("fixture tokenId biến mất");
+    if (makeToken === undefined) throw new Error("fixture tokenId is gone");
     const tokenA = await makeToken({ app: h });
     const foreign = await h.app.inject({
       method: "DELETE",
@@ -121,7 +124,7 @@ describe("cách ly tenant L3 (sinh từ ROUTES)", () => {
     expect(foreign.statusCode).toBe(ghost.statusCode);
   });
 
-  it("route LIST không bao giờ trả row của team khác", async () => {
+  it("a LIST route never returns another team's rows", async () => {
     const listB = await h.app.inject({
       method: "GET",
       url: "/v1/tokens",
@@ -139,29 +142,29 @@ describe("cách ly tenant L3 (sinh từ ROUTES)", () => {
     for (const row of bodyB) expect(setA.has(row.id)).toBe(false);
   });
 
-  it("mọi route /v1 mà ROUTER THẬT đang phục vụ đều có descriptor hợp đồng", () => {
-    // Route đăng ký kiểu FastifyPluginAsync (plan authoring) không tự vào ROUTES.
-    // Thiếu descriptor = vô hình với OpenAPI VÀ với chính bộ test này ⇒ xanh giả.
+  it("every /v1 route the REAL ROUTER is serving has a contract descriptor", () => {
+    // A route registered as a FastifyPluginAsync (plan authoring) doesn't automatically
+    // land in ROUTES. Missing a descriptor = invisible to OpenAPI AND to this very test suite ⇒ a false green.
     const live = h.app.tkRegisteredRoutes.filter((r) => r.url.startsWith("/v1"));
     expect(live.length).toBeGreaterThan(0);
     const noDescriptor = live.filter((r) => !r.hasDescriptor).map((r) => `${r.method} ${r.url}`);
     expect(
       noDescriptor,
-      "khai descriptor trong packages/contract/src/routes/ và đặt vào config.tk",
+      "declare a descriptor in packages/contract/src/routes/ and put it in config.tk",
     ).toEqual([]);
     const declared = new Set(ROUTES.map((r) => `${r.method.toUpperCase()} ${toFastifyPath(r.path)}`));
     const orphan = live
       .filter((r) => !declared.has(declaredKey(r.method, r.url)))
       .map((r) => `${r.method} ${r.url}`);
-    expect(orphan, "route có config.tk nhưng descriptor không nằm trong ROUTES").toEqual([]);
+    expect(orphan, "route has config.tk but its descriptor is not in ROUTES").toEqual([]);
   });
 
-  it("route HEAD tự sinh dùng CHUNG descriptor với GET của nó (không phải cửa sau)", () => {
-    // Fastify bật `exposeHeadRoutes` mặc định: mỗi GET kèm một HEAD dùng ĐÚNG route
-    // options của GET — cùng `config.tk` nên cùng hook auth, cùng permission. Nó không
-    // nằm trong ROUTES vì OpenAPI không tả HEAD, và test trên quy nó về GET để so.
-    // Test này giữ cho phép quy đó luôn đúng: HEAD nào không có GET song sinh mang
-    // descriptor thì là route lậu, không phải shadow.
+  it("an auto-generated HEAD route SHARES the descriptor of its GET (not a back door)", () => {
+    // Fastify enables `exposeHeadRoutes` by default: every GET comes with a HEAD that uses
+    // the GET's EXACT route options — same `config.tk`, so the same auth hook, same
+    // permission. It's not in ROUTES because OpenAPI never describes HEAD, and the test
+    // above normalizes it to GET for comparison. This test keeps that normalization valid:
+    // a HEAD with no GET twin carrying a descriptor is a rogue route, not a Fastify shadow.
     const live = h.app.tkRegisteredRoutes.filter((r) => r.url.startsWith("/v1"));
     const getWithDescriptor = new Set(
       live.filter((r) => r.method === "GET" && r.hasDescriptor).map((r) => r.url),
@@ -169,13 +172,13 @@ describe("cách ly tenant L3 (sinh từ ROUTES)", () => {
     const lone = live
       .filter((r) => r.method === "HEAD" && !getWithDescriptor.has(r.url))
       .map((r) => r.url);
-    expect(lone, "HEAD không có GET tương ứng ⇒ không phải shadow của Fastify").toEqual([]);
+    expect(lone, "a HEAD with no matching GET ⇒ not a Fastify shadow route").toEqual([]);
   });
 
-  it("mọi descriptor trong ROUTES đều được router THẬT phục vụ (không có hợp đồng chết)", () => {
-    // Chiều ngược của test trên: descriptor có trong OpenAPI nhưng không route nào
-    // phục vụ ⇒ tài liệu nói dối, và bộ L3 ở trên thì test một URL trả 404 vì KHÔNG
-    // TỒN TẠI chứ không phải vì cách ly tenant — xanh giả kiểu tệ nhất.
+  it("every descriptor in ROUTES is served by the REAL router (no dead contract)", () => {
+    // The reverse of the test above: a descriptor exists in OpenAPI but no route serves it
+    // ⇒ the docs are lying, and the L3 harness above would be testing a URL that returns
+    // 404 because it DOESN'T EXIST, not because of tenant isolation — the worst kind of false green.
     const live = new Set(
       h.app.tkRegisteredRoutes
         .filter((r) => r.url.startsWith("/v1"))
@@ -184,33 +187,33 @@ describe("cách ly tenant L3 (sinh từ ROUTES)", () => {
     const dead = ROUTES.filter(
       (r) => !live.has(`${r.method.toUpperCase()} ${toFastifyPath(r.path)}`),
     ).map((r) => r.operationId);
-    expect(dead, "descriptor không có handler nào phục vụ").toEqual([]);
+    expect(dead, "descriptor has no handler serving it").toEqual([]);
   });
 
-  it("không route nào chấp nhận teamId từ client (không có đường ghi đè tenant)", () => {
+  it("no route accepts teamId from the client (no way to override the tenant)", () => {
     for (const r of ROUTES) {
-      expect(pathParamNames(r.path), `${r.operationId} nhận teamId trong path`).not.toContain(
+      expect(pathParamNames(r.path), `${r.operationId} accepts teamId in the path`).not.toContain(
         "teamId",
       );
       expect(
         Object.keys(r.query?.shape ?? {}),
-        `${r.operationId} nhận teamId trong query`,
+        `${r.operationId} accepts teamId in the query`,
       ).not.toContain("teamId");
       const bodyKeys = bodyShapeKeys(r.body);
       if (r.auth === "required" || TEAM_SELECTOR_PUBLIC_ROUTES[r.operationId] === undefined) {
-        expect(bodyKeys, `${r.operationId} nhận teamId trong body`).not.toContain("teamId");
+        expect(bodyKeys, `${r.operationId} accepts teamId in the body`).not.toContain("teamId");
       }
     }
   });
 
-  it("allowlist teamId chỉ chứa route public còn sống, kèm lý do bằng chữ", () => {
+  it("the teamId allowlist only contains live public routes, each with a written reason", () => {
     for (const [op, reason] of Object.entries(TEAM_SELECTOR_PUBLIC_ROUTES)) {
       const r = ROUTES.find((x) => x.operationId === op);
-      expect(r, `${op} không còn tồn tại — xoá khỏi allowlist`).toBeDefined();
-      expect(r?.auth, `${op} đã thành route có xác thực — bỏ ngoại lệ teamId đi`).toBe("public");
-      expect(reason.length, `${op}: lý do quá ngắn`).toBeGreaterThan(30);
-      // Ngoại lệ chỉ có nghĩa khi route THẬT SỰ còn nhận teamId; nếu không, nó là rác.
-      expect(bodyShapeKeys(r?.body), `${op} không còn nhận teamId — xoá khỏi allowlist`).toContain(
+      expect(r, `${op} no longer exists — remove it from the allowlist`).toBeDefined();
+      expect(r?.auth, `${op} now requires auth — remove the teamId exception`).toBe("public");
+      expect(reason.length, `${op}: reason is too short`).toBeGreaterThan(30);
+      // The exception only makes sense while the route ACTUALLY still accepts teamId; otherwise it's dead weight.
+      expect(bodyShapeKeys(r?.body), `${op} no longer accepts teamId — remove it from the allowlist`).toContain(
         "teamId",
       );
     }

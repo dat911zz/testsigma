@@ -1,7 +1,7 @@
 /**
- * Module identity — bộ ba tenancy (ownership.json: organizations/teams/projects/users/memberships).
- * Blueprint §3: organizations (1 row) → teams (= TENANT) → projects → tài sản.
- * Mọi bảng tenant-scoped: team_id dẫn đầu index + UNIQUE(team_id, id) làm mỏ neo composite FK.
+ * identity module — the tenancy triple (ownership.json: organizations/teams/projects/users/memberships).
+ * Blueprint §3: organizations (1 row) → teams (= TENANT) → projects → assets.
+ * Every tenant-scoped table: team_id leads the index + UNIQUE(team_id, id) anchors the composite FK.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -19,18 +19,18 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-// Xuôi DAG: identity → kernel qua FACADE. `appRole` là role DB do kernel sở hữu.
+// Forward along the DAG: identity → kernel via the FACADE. `appRole` is a DB role owned by kernel.
 import { appRole, authRole } from "../../kernel/index.js";
 
-/** bytea: drizzle 0.45 chưa có builder sẵn. Lưu Buffer thô, không base64/hex. */
+/** bytea: drizzle 0.45 has no builtin builder for it yet. Stores a raw Buffer, not base64/hex. */
 const customBytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => "bytea",
 });
 
 /**
- * Vị từ tenant dùng chung. NULLIF là BẮT BUỘC: `RESET app.team_id` để GUC lại
- * thành chuỗi rỗng (không phải NULL) ⇒ ''::uuid ném 22P02 thay vì fail-closed.
- * Đã kiểm chứng trên PG 16.13 thật và PGlite 18.3.
+ * The shared tenant predicate. NULLIF is MANDATORY: `RESET app.team_id` sets the GUC back
+ * to an empty string (not NULL) ⇒ ''::uuid throws 22P02 instead of failing closed.
+ * Verified against real PG 16.13 and PGlite 18.3.
  */
 const tenantPredicate = sql`team_id = NULLIF(current_setting('app.team_id', true), '')::uuid`;
 
@@ -66,16 +66,16 @@ export const teams = pgTable(
     status: teamStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     /**
-     * Four-eyes (blueprint §3): mặc định người-sửa-cuối KHÔNG được tự promote.
-     * Team một người / team pilot bật cờ này để tự promote — quyết định của
-     * team_admin, ghi audit, không phải mặc định im lặng.
+     * Four-eyes (blueprint §3): by default the last person to edit CANNOT self-promote.
+     * A single-person or pilot team can flip this flag to self-promote — that's a
+     * team_admin decision, written to audit, never a silent default.
      */
     allowSelfPromote: boolean("allow_self_promote").notNull().default(false),
   },
   (t) => [
     unique("teams_org_slug_unique").on(t.orgId, t.slug),
     index("teams_org_idx").on(t.orgId),
-    // teams: cột khoá tenant là `id` chứ không phải `team_id`.
+    // teams: the tenant key column is `id`, not `team_id`.
     pgPolicy("tenant_isolation", {
       as: "permissive",
       for: "all",
@@ -98,7 +98,7 @@ export const projects = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    // Mỏ neo composite FK: mọi tài sản trỏ về (team_id, id) chứ không phải id trần.
+    // Composite FK anchor: every asset points at (team_id, id), never a bare id.
     unique("projects_team_id_unique").on(t.teamId, t.id),
     unique("projects_team_slug_unique").on(t.teamId, t.slug),
     index("projects_team_idx").on(t.teamId),
@@ -113,10 +113,10 @@ export const projects = pgTable(
 ).enableRLS();
 
 /**
- * users là TOÀN CỤC (một người ở nhiều team) — KHÔNG tenant-scoped, KHÔNG RLS.
- * `email` lưu dạng đã chuẩn hoá chữ thường: unique index trên lower(email) là thứ
- * chặn "QA@Acme.test" và "qa@acme.test" thành hai tài khoản khác nhau.
- * `passwordHash` NULL = tài khoản chỉ đăng nhập bằng OIDC (không đặt mật khẩu nội bộ).
+ * users is GLOBAL (one person, many teams) — NOT tenant-scoped, NO RLS.
+ * `email` is stored lowercase-normalized: the unique index on lower(email) is what stops
+ * "QA@Acme.test" and "qa@acme.test" from becoming two different accounts.
+ * `passwordHash` NULL = an account that only logs in via OIDC (no internal password set).
  */
 export const users = pgTable(
   "users",
@@ -158,7 +158,7 @@ export const memberships = pgTable(
       using: tenantPredicate,
       withCheck: tenantPredicate,
     }),
-    // Đường xác thực đọc membership của user KHI CHƯA biết tenant (chọn team nào).
+    // The auth path reads a user's membership BEFORE the tenant is known (which team to pick).
     pgPolicy("auth_lookup", { as: "permissive", for: "select", to: authRole, using: sql`true` }),
   ],
 ).enableRLS();
@@ -166,8 +166,8 @@ export const memberships = pgTable(
 export const apiTokenKind = pgEnum("api_token_kind", ["user_pat", "service", "session"]);
 
 /**
- * Token gắn ĐÚNG MỘT team (blueprint §3). Người ở nhiều team ⇒ nhiều token.
- * `token_hash` là SHA-256 raw 32 byte; secret không tồn tại ở đâu trong DB.
+ * A token is tied to EXACTLY one team (blueprint §3). Someone on multiple teams ⇒ multiple tokens.
+ * `token_hash` is a raw 32-byte SHA-256; the secret exists nowhere in the DB.
  */
 export const apiTokens = pgTable(
   "api_tokens",
@@ -182,7 +182,7 @@ export const apiTokens = pgTable(
     kind: apiTokenKind("kind").notNull(),
     userId: uuid("user_id").references(() => users.id),
     scopes: text("scopes").array().notNull(),
-    // Hạn BẮT BUỘC — không có token vĩnh viễn trong hệ này.
+    // Expiry is MANDATORY — there is no permanent token in this system.
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
@@ -200,7 +200,7 @@ export const apiTokens = pgTable(
       using: tenantPredicate,
       withCheck: tenantPredicate,
     }),
-    // Đường xác thực: CHỈ SELECT, KHÔNG withCheck ⇒ role này không ghi được gì.
+    // The auth path: SELECT only, NO withCheck ⇒ this role cannot write anything.
     pgPolicy("auth_lookup", { as: "permissive", for: "select", to: authRole, using: sql`true` }),
   ],
 ).enableRLS();
@@ -213,12 +213,12 @@ export const oidcDefaultRole = pgEnum("oidc_default_role", [
 ]);
 
 /**
- * Connector OIDC generic. IdP chốt cho prod là Keycloak self-host (28-08-2026),
- * nhưng KHÔNG có một dòng code nào riêng cho Keycloak: mọi thứ đi qua discovery
- * document chuẩn ⇒ đổi sang Authentik/Okta chỉ là đổi issuer_url.
+ * Generic OIDC connector. The IdP settled on for prod is self-hosted Keycloak
+ * (2026-08-28), but there is NOT a single line of Keycloak-specific code: everything goes
+ * through the standard discovery document ⇒ switching to Authentik/Okta is just changing issuer_url.
  *
- * `client_secret` là secret THẬT nằm trong DB. M2 lưu thẳng; M4 (module sec_) sẽ
- * bọc envelope encryption — ghi vào ARCHITECTURE_AUDIT khi làm.
+ * `client_secret` is a REAL secret living in the DB. M2 stores it in plaintext; M4 (the
+ * sec_ module) will wrap it in envelope encryption — record that in ARCHITECTURE_AUDIT when done.
  */
 export const idnOidcConnectors = pgTable(
   "idn_oidc_connectors",
@@ -234,10 +234,10 @@ export const idnOidcConnectors = pgTable(
     scopes: text("scopes").array().notNull(),
     claimEmail: text("claim_email").notNull().default("email"),
     claimGroups: text("claim_groups").notNull().default("groups"),
-    /** group IdP -> vai TestKite. Không khớp gì ⇒ defaultRole. */
+    /** IdP group -> TestKite role. No match ⇒ defaultRole. */
     roleMapping: jsonb("role_mapping").notNull().default({}),
     defaultRole: oidcDefaultRole("default_role").notNull().default("viewer"),
-    /** CHỈ bật cho mock/dev. Prod Keycloak luôn https. */
+    /** ONLY enabled for mock/dev. Prod Keycloak is always https. */
     allowInsecureHttp: boolean("allow_insecure_http").notNull().default(false),
     enabled: boolean("enabled").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -258,19 +258,19 @@ export const idnOidcConnectors = pgTable(
 ).enableRLS();
 
 /**
- * Neo `(connector, subject)` → user. ĐÂY LÀ MỎ NEO DANH TÍNH, không phải email.
+ * Anchors `(connector, subject)` → user. THIS IS THE IDENTITY ANCHOR, not email.
  *
- * VÌ SAO PHẢI CÓ BẢNG NÀY: `users` là bảng TOÀN CỤC (xem ghi chú ở trên) còn connector
- * OIDC thì MỖI TEAM tự cấu hình — team nào cũng trỏ được về Keycloak của chính mình và
- * khai claim `email` tuỳ ý. Khớp identity vào user cũ bằng email ⇒ team B mint được
- * phiên mang userId thật của người chỉ thuộc team A. `sub` của IdP là thứ duy nhất ổn
- * định và không giả được bởi team KHÁC (nó chỉ có nghĩa trong phạm vi connector này),
- * nên nó là khoá tra cứu; email chỉ còn dùng cho lần đầu, dưới hai điều kiện chặt
- * (xem `oidc/connector.ts`).
+ * WHY THIS TABLE HAS TO EXIST: `users` is a GLOBAL table (see the note above), while each
+ * team configures its own OIDC connector — any team can point it at its own Keycloak and
+ * declare whatever `email` claim it likes. Linking a new identity to an existing user by
+ * email ⇒ team B could mint a session carrying the real userId of someone who only belongs
+ * to team A. The IdP's `sub` is the one thing that's stable and cannot be faked by ANOTHER
+ * team (it only has meaning within this connector's scope), so it's the lookup key; email
+ * is only used on the first login, under two strict conditions (see `oidc/connector.ts`).
  *
- * KHÔNG có policy `auth_lookup`: mọi truy cập đều xảy ra SAU khi đã biết team (team của
- * connector), tức luôn đi qua `withTenant` + role app. Đường `testkite_auth` không cần
- * đọc bảng này, nên không được cấp quyền đọc nó.
+ * NO `auth_lookup` policy: every access here happens AFTER the team is already known (the
+ * connector's team), i.e. always through `withTenant` + the app role. The `testkite_auth`
+ * path never needs to read this table, so it isn't granted read access to it.
  */
 export const idnOidcIdentities = pgTable(
   "idn_oidc_identities",
@@ -280,7 +280,7 @@ export const idnOidcIdentities = pgTable(
       .references(() => teams.id),
     id: uuid("id").primaryKey().defaultRandom(),
     connectorId: uuid("connector_id").notNull(),
-    /** `sub` của IdP — định danh bất biến, không đổi khi user đổi email. */
+    /** The IdP's `sub` — an immutable identifier, unchanged when the user changes their email. */
     subject: text("subject").notNull(),
     userId: uuid("user_id")
       .notNull()
@@ -289,10 +289,10 @@ export const idnOidcIdentities = pgTable(
   },
   (t) => [
     unique("idn_oidc_identities_team_id_unique").on(t.teamId, t.id),
-    // Một subject của một connector chỉ trỏ tới ĐÚNG MỘT user.
+    // One subject of one connector maps to EXACTLY one user.
     uniqueIndex("idn_oidc_identities_connector_subject_uidx").on(t.connectorId, t.subject),
     index("idn_oidc_identities_team_idx").on(t.teamId),
-    // Composite FK: neo không bao giờ trỏ sang connector của team khác (lớp L2).
+    // Composite FK: the anchor can never point at another team's connector (L2 layer).
     foreignKey({
       name: "idn_oidc_identities_connector_fk",
       columns: [t.teamId, t.connectorId],
@@ -309,9 +309,10 @@ export const idnOidcIdentities = pgTable(
 ).enableRLS();
 
 /**
- * State của một lượt đăng nhập OIDC. Sống trong DB chứ không cookie/bộ nhớ tiến trình:
- * (a) nhiều instance API, (b) state phải DÙNG MỘT LẦN — `consumed_at` là thứ chặn replay.
- * `code_verifier` là bí mật ngắn hạn (10 phút), xoá bằng job dọn hoặc TTL.
+ * The state of one OIDC login attempt. Lives in the DB rather than a cookie/process
+ * memory: (a) there are multiple API instances, (b) state must be SINGLE-USE —
+ * `consumed_at` is what blocks replay.
+ * `code_verifier` is a short-lived (10-minute) secret, cleaned up by a job or TTL.
  */
 export const idnOidcLoginStates = pgTable(
   "idn_oidc_login_states",
@@ -332,7 +333,7 @@ export const idnOidcLoginStates = pgTable(
   (t) => [
     unique("idn_oidc_login_states_team_id_unique").on(t.teamId, t.id),
     uniqueIndex("idn_oidc_login_states_state_uidx").on(t.state),
-    // Composite FK: state không bao giờ trỏ sang connector của team khác (lớp L2).
+    // Composite FK: state can never point at another team's connector (L2 layer).
     foreignKey({
       name: "idn_oidc_login_states_connector_fk",
       columns: [t.teamId, t.connectorId],

@@ -1,7 +1,8 @@
 /**
- * Phát / liệt kê / thu hồi api token qua HTTP (Task 8).
- * Ba lời hứa bị test ở đây: secret trả ĐÚNG MỘT LẦN, never-grantable chặn lúc PHÁT,
- * thu hồi có hiệu lực NGAY (invalidateTeam) và token team khác luôn ra 404.
+ * Issue / list / revoke api tokens over HTTP (Task 8).
+ * Three promises are tested here: the secret is returned EXACTLY ONCE, never-grantable is
+ * blocked at ISSUE time, revocation takes effect IMMEDIATELY (invalidateTeam), and a token
+ * from another team always comes back 404.
  */
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { makeTestApp, type TestApp } from "../harness/http.js";
@@ -19,8 +20,8 @@ beforeEach(async () => {
 
 const auth = (secret: string): { authorization: string } => ({ authorization: `Bearer ${secret}` });
 
-describe("route token", () => {
-  it("tạo token trả secret ĐÚNG MỘT LẦN; list không bao giờ có secret", async () => {
+describe("token routes", () => {
+  it("creating a token returns the secret EXACTLY ONCE; list never contains the secret", async () => {
     const created = await h.app.inject({
       method: "POST",
       url: "/v1/tokens",
@@ -41,7 +42,7 @@ describe("route token", () => {
     expect(rows.some((r) => r.id === body.id && r.prefix === body.prefix)).toBe(true);
   });
 
-  it("token mới dùng được ngay và chỉ trong team đã phát", async () => {
+  it("a new token works immediately and only within the team that issued it", async () => {
     const created = await h.app.inject({
       method: "POST",
       url: "/v1/tokens",
@@ -53,7 +54,7 @@ describe("route token", () => {
     expect(me.json()).toMatchObject({ teamId: h.ids.teamA });
   });
 
-  it("thiếu expiresInDays ⇒ 400 (không có token vô hạn)", async () => {
+  it("missing expiresInDays ⇒ 400 (no unlimited-lifetime tokens)", async () => {
     const r = await h.app.inject({
       method: "POST",
       url: "/v1/tokens",
@@ -73,7 +74,7 @@ describe("route token", () => {
     expect(r.statusCode).toBe(400);
   });
 
-  it("xin scope never-grantable ⇒ 403 và KHÔNG có token nào được tạo", async () => {
+  it("requesting a never-grantable scope ⇒ 403 and NO token is created", async () => {
     for (const scope of [
       "secret:write",
       "quota:set",
@@ -95,18 +96,18 @@ describe("route token", () => {
     expect(n.rows[0]?.n).toBe(0);
   });
 
-  it("xin scope rộng hơn vai ⇒ 403", async () => {
+  it("requesting a scope wider than the role ⇒ 403", async () => {
     const r = await h.app.inject({
       method: "POST",
       url: "/v1/tokens",
       headers: auth(h.tokens.authorA),
       payload: { name: "x", scopes: ["case:read"], expiresInDays: 30 },
     });
-    // author KHÔNG có token:issue:user? có — nhưng route đòi đúng quyền đó, nên đây là 201.
+    // Does author have token:issue:user? Yes — but the route requires exactly that permission, so this is a 201.
     expect([201, 403]).toContain(r.statusCode);
   });
 
-  it("thu hồi token ⇒ 204, và token đó lập tức 401", async () => {
+  it("revoking a token ⇒ 204, and that token is immediately 401", async () => {
     const created = await h.app.inject({
       method: "POST",
       url: "/v1/tokens",
@@ -123,13 +124,13 @@ describe("route token", () => {
       headers: auth(h.tokens.adminA),
     });
     expect(del.statusCode).toBe(204);
-    // Cache 60s KHÔNG được giữ token đã thu hồi sống: thu hồi gọi invalidateTeam.
+    // The 60s cache must NOT keep a revoked token alive: revoke calls invalidateTeam.
     expect(
       (await h.app.inject({ method: "GET", url: "/v1/auth/me", headers: auth(secret) })).statusCode,
     ).toBe(401);
   });
 
-  it("thu hồi token của TEAM KHÁC ⇒ 404, không bao giờ 403", async () => {
+  it("revoking a token from ANOTHER TEAM ⇒ 404, never 403", async () => {
     const createdB = await h.app.inject({
       method: "POST",
       url: "/v1/tokens",
@@ -146,7 +147,7 @@ describe("route token", () => {
     expect(r.json()).toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("phát và thu hồi đều ghi audit HIGH", async () => {
+  it("both issue and revoke write a HIGH audit entry", async () => {
     const created = await h.app.inject({
       method: "POST",
       url: "/v1/tokens",
