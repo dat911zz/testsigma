@@ -46,6 +46,7 @@ export {
   loginWithPassword,
   SESSION_TTL_DAYS,
   LOGIN_FAILED_MESSAGE,
+  type DeferPort,
   type LoginDeps,
   type LoginResult,
 } from "./auth/login.js";

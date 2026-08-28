@@ -8,7 +8,7 @@ import { withTenant, type TkDb } from "../kernel/index.js";
 import { publicRoute, route, type RouteRegistration } from "../../http/types.js";
 import type { AuditPort } from "./audit-port.js";
 import { issueApiToken, revokeApiToken } from "./auth/issue.js";
-import { loginWithPassword } from "./auth/login.js";
+import { loginWithPassword, type DeferPort } from "./auth/login.js";
 import { apiTokens, memberships, users } from "./db/schema.js";
 import type { AuthzCache } from "./rbac/cache.js";
 
@@ -25,6 +25,8 @@ export type IdentityRouteDeps = {
   readonly audit: AuditPort;
   readonly cache: AuthzCache;
   readonly now?: () => Date;
+  /** Xem `DeferPort`: audit của lần đăng nhập HỎNG chạy ngoài đường phản hồi. */
+  readonly defer?: DeferPort;
 };
 
 const byId = (operationId: string): (typeof identityRoutes)[number] => {
@@ -35,7 +37,12 @@ const byId = (operationId: string): (typeof identityRoutes)[number] => {
 
 export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly RouteRegistration[] {
   const clock = deps.now ?? ((): Date => new Date());
-  const loginDeps = { db: deps.db, audit: deps.audit, ...(deps.now ? { now: deps.now } : {}) };
+  const loginDeps = {
+    db: deps.db,
+    audit: deps.audit,
+    ...(deps.now ? { now: deps.now } : {}),
+    ...(deps.defer ? { defer: deps.defer } : {}),
+  };
 
   return [
     publicRoute(byId("loginPassword"), async ({ body }) => {

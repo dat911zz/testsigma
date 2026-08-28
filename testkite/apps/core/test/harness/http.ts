@@ -35,6 +35,8 @@ export type TestApp = {
     adminB: string;
   };
   readonly counters: { authLookups: number; reset: () => void };
+  /** Đợi mọi việc `defer` (audit đăng nhập hỏng) chạy xong — xem ghi chú ở dưới. */
+  readonly settleDeferred: () => Promise<void>;
   readonly seed: () => Promise<void>;
   readonly demoteAdminToViewer: () => Promise<void>;
   readonly close: () => Promise<void>;
@@ -62,6 +64,34 @@ export async function makeTestApp(): Promise<TestApp> {
       counters.authLookups = 0;
     },
   };
+  /**
+   * Cổng `defer` của login: sản phẩm bắn task bằng setImmediate rồi quên (audit của
+   * lần đăng nhập HỎNG không được nằm trên đường phản hồi — kênh dò tài khoản qua
+   * timing). Harness giữ y hệt cách bắn ấy nhưng nhớ promise lại, vì "quên" trong
+   * test nghĩa là dòng audit rơi vào giữa một test khác.
+   */
+  let deferred: Promise<void>[] = [];
+  const defer = (task: () => Promise<void>): void => {
+    deferred.push(
+      new Promise<void>((resolve) => {
+        setImmediate(() => {
+          void task()
+            .catch(() => undefined)
+            .then(() => {
+              resolve();
+            });
+        });
+      }),
+    );
+  };
+  const settleDeferred = async (): Promise<void> => {
+    while (deferred.length > 0) {
+      const batch = deferred;
+      deferred = [];
+      await Promise.all(batch);
+    }
+  };
+
   const cache = createAuthzCache({});
   const authenticator = createAuthenticator({
     db: db.db,
@@ -77,7 +107,7 @@ export async function makeTestApp(): Promise<TestApp> {
     registrations: [
       // Cổng audit tiêm từ tầng shell — y hệt composition-root thật, để test đi qua
       // đúng đường dây sản xuất chứ không phải một biến thể riêng của harness.
-      ...identityRouteRegistrations({ db: db.db, cache, audit: writeAuditEvent }),
+      ...identityRouteRegistrations({ db: db.db, cache, audit: writeAuditEvent, defer }),
       ...governanceRouteRegistrations({ db: db.db }),
     ],
   });
@@ -125,6 +155,9 @@ export async function makeTestApp(): Promise<TestApp> {
   }
 
   async function seed(): Promise<void> {
+    // Việc hoãn của test TRƯỚC phải xong trước khi TRUNCATE, nếu không nó ghi lén một
+    // dòng audit vào giữa test sau.
+    await settleDeferred();
     await db.reset();
     cache.invalidateTeam(ids.teamA);
     cache.invalidateTeam(ids.teamB);
@@ -194,6 +227,7 @@ export async function makeTestApp(): Promise<TestApp> {
     ids,
     tokens,
     counters,
+    settleDeferred,
     seed,
     demoteAdminToViewer: async () => {
       await db.raw.query(`UPDATE memberships SET role='viewer' WHERE team_id=$1 AND user_id=$2`, [

@@ -38,6 +38,28 @@ export const LOGIN_FAILED_MESSAGE = "email hoặc mật khẩu không đúng";
 const DUMMY_HASH =
   "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
+/** uuid mồi cho truy vấn membership của nhánh "không có user" — luôn 0 row. */
+const DUMMY_USER_ID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * Cổng chạy việc NGOÀI đường phản hồi. Lý do tồn tại là chống dò tài khoản bằng
+ * đồng hồ, không phải hiệu năng: xem ghi chú ở nhánh sai mật khẩu bên dưới.
+ */
+export type DeferPort = (task: () => Promise<void>) => void;
+
+/**
+ * Mặc định: xếp task vào pha `check` của vòng lặp sự kiện — nó chỉ chạy SAU khi
+ * phản hồi 401 đã được tuần tự hoá xong, nên không một mili-giây nào của nó rơi vào
+ * thời gian phản hồi. Lỗi bị NUỐT có chủ đích: một dòng audit hỏng không được biến
+ * thành unhandled rejection giết tiến trình API. Tầng shell muốn log thì tiêm
+ * `defer` của riêng nó (khi có cổng log ở M4).
+ */
+const deferAfterResponse: DeferPort = (task) => {
+  setImmediate(() => {
+    void task().catch(() => undefined);
+  });
+};
+
 export type LoginResult = {
   readonly secret: string;
   readonly expiresAt: Date;
@@ -51,6 +73,7 @@ export type LoginDeps = {
   readonly db: TkDb;
   readonly audit: AuditPort;
   readonly now?: () => Date;
+  readonly defer?: DeferPort;
 };
 
 export async function loginWithPassword(
@@ -58,6 +81,7 @@ export async function loginWithPassword(
   input: { readonly email: string; readonly password: string; readonly teamId?: string },
 ): Promise<LoginResult> {
   const clock = deps.now ?? ((): Date => new Date());
+  const defer = deps.defer ?? deferAfterResponse;
   const fail = new UnauthorizedError(LOGIN_FAILED_MESSAGE);
 
   // Pha 1 chạy bằng role testkite_auth: lúc này CHƯA biết tenant, mà đó chính là
@@ -70,8 +94,13 @@ export async function loginWithPassword(
       .limit(1);
     const u = rows[0];
     // password_hash NULL = tài khoản chỉ đăng nhập bằng OIDC ⇒ 401, không 500.
-    if (u === undefined || u.hash === null || u.status !== "active") return null;
-    const hash = u.hash;
+    const usable =
+      u !== undefined && u.hash !== null && u.status === "active"
+        ? { id: u.id, hash: u.hash }
+        : null;
+    // Câu membership chạy KỂ CẢ khi không có user dùng được — bằng một uuid mồi (0 row).
+    // Cùng lý do với DUMMY_HASH: chỉ riêng việc "có chạy câu này hay không" đã là một
+    // chênh lệch thời gian tố cáo email nào có thật.
     const mem = await tx
       .select({
         teamId: memberships.teamId,
@@ -79,9 +108,10 @@ export async function loginWithPassword(
         createdAt: memberships.createdAt,
       })
       .from(memberships)
-      .where(eq(memberships.userId, u.id))
+      .where(eq(memberships.userId, usable?.id ?? DUMMY_USER_ID))
       .orderBy(memberships.createdAt);
-    return { userId: u.id, hash, memberships: mem };
+    if (usable === null) return null;
+    return { userId: usable.id, hash: usable.hash, memberships: mem };
   });
 
   if (found === null) {
@@ -89,7 +119,16 @@ export async function loginWithPassword(
     throw fail;
   }
   if (!(await verifyPassword(found.hash, input.password))) {
-    await auditFailure(deps, found.memberships[0]?.teamId, input.email, clock());
+    // Audit ghi NGOÀI đường phản hồi. Ghi đồng bộ ở đây là mở thêm MỘT transaction
+    // Postgres (BEGIN → SET LOCAL ROLE → set_config → INSERT → COMMIT) mà nhánh
+    // "email không tồn tại / OIDC-only / suspended" không tốn — đo thật khi review:
+    // ~5,1–5,9ms trên nền ~23–29ms (20–25%), đủ để đếm email nào có thật dù response
+    // giống hệt nhau. Nó vô hiệu hoá đúng cái DUMMY_HASH đang bảo vệ.
+    // Outbox không cứu được: `enqueueOutbox` cũng là một transaction trên chính
+    // đường ấy — thứ phải bỏ là việc ĐỒNG BỘ, không phải cái bảng được ghi.
+    const at = clock();
+    const teamId = found.memberships[0]?.teamId;
+    defer(() => auditFailure(deps, teamId, input.email, at));
     throw fail;
   }
 
@@ -152,6 +191,10 @@ export async function loginWithPassword(
  * Đăng nhập hỏng vẫn phải để lại dấu vết — nhưng audit_events là bảng TENANT-SCOPED:
  * không biết tenant thì không có chỗ ghi. Người không tồn tại vì thế không sinh audit
  * (và cũng không được sinh: đó sẽ là kênh dò tài khoản qua chính bảng audit).
+ *
+ * CHỈ được gọi qua `defer` — đây là việc chạy sau khi 401 đã rời tiến trình. Đánh đổi
+ * đã cân nhắc: một dòng audit của lần đăng nhập HỎNG có thể mất nếu tiến trình chết
+ * giữa chừng; đổi lại thời gian phản hồi không còn phụ thuộc vào việc email có thật.
  */
 async function auditFailure(
   deps: LoginDeps,

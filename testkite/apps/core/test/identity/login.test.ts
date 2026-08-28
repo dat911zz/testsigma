@@ -6,7 +6,12 @@
  */
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { makeTestApp, type TestApp } from "../harness/http.js";
-import { hashPassword } from "../../src/modules/identity/index.js";
+import {
+  hashPassword,
+  loginWithPassword,
+  LOGIN_FAILED_MESSAGE,
+} from "../../src/modules/identity/index.js";
+import { writeAuditEvent } from "../../src/modules/governance/index.js";
 
 let h: TestApp;
 beforeAll(async () => {
@@ -25,6 +30,11 @@ beforeEach(async () => {
 
 const login = (payload: unknown): ReturnType<TestApp["app"]["inject"]> =>
   h.app.inject({ method: "POST", url: "/v1/auth/login", payload });
+
+const auditCount = async (): Promise<number> => {
+  const r = await h.db.raw.query<{ n: number }>(`SELECT count(*)::int AS n FROM audit_events`);
+  return r.rows[0]?.n ?? -1;
+};
 
 describe("đăng nhập mật khẩu nội bộ", () => {
   it("đúng mật khẩu ⇒ 200 + secret dùng được ngay", async () => {
@@ -117,6 +127,9 @@ describe("đăng nhập mật khẩu nội bộ", () => {
   it("đăng nhập thành công ghi audit LOW, thất bại ghi audit MEDIUM", async () => {
     await login({ email: "author@acme.test", password: "mat-khau-dai-hon-12" });
     await login({ email: "author@acme.test", password: "sai-mat-khau-12" });
+    // Dòng audit của lần thất bại được ghi NGOÀI đường phản hồi (xem test kế tiếp),
+    // nên phải đợi nó đọng lại trước khi đếm — không phải nới lỏng luật "vẫn phải ghi".
+    await h.settleDeferred();
     const r = await h.db.raw.query<{ action: string; severity: string }>(
       `SELECT action, severity FROM audit_events ORDER BY occurred_at`,
     );
@@ -124,6 +137,50 @@ describe("đăng nhập mật khẩu nội bộ", () => {
       "auth.login/LOW",
       "auth.login_failed/MEDIUM",
     ]);
+  });
+
+  /**
+   * Kênh dò tài khoản qua THỜI GIAN, không qua nội dung phản hồi. Hai nhánh thất bại
+   * trả cùng 401 + cùng message, nhưng nếu nhánh "email có thật + sai mật khẩu" còn
+   * mở thêm một transaction Postgres (BEGIN → SET LOCAL ROLE → INSERT audit → COMMIT)
+   * trước khi ném, còn nhánh "email lạ" thì không, thì chênh lệch thời gian ĐỦ để đếm
+   * xem email nào tồn tại (đo thật khi review: ~5,1–5,9ms trên nền ~23–29ms, tức
+   * 20–25%, lặp lại hai lần vẫn nhất quán). Đây chính là lý do DUMMY_HASH tồn tại —
+   * và audit đồng bộ đã vô hiệu hoá nó.
+   *
+   * Vì vậy: audit thất bại chạy qua cổng `defer` (ngoài đường phản hồi). Test giữ
+   * task lại không chạy, nên khẳng định được "lỗi đã ném xong mà DB chưa bị chạm".
+   */
+  it("thất bại vì sai mật khẩu KHÔNG ghi audit trên đường phản hồi (đối xứng với nhánh email lạ)", async () => {
+    const tasks: Array<() => Promise<void>> = [];
+    const deps = {
+      db: h.db.db,
+      audit: writeAuditEvent,
+      defer: (task: () => Promise<void>): void => {
+        tasks.push(task);
+      },
+    };
+
+    await expect(
+      loginWithPassword(deps, { email: "author@acme.test", password: "sai-mat-khau-12" }),
+    ).rejects.toThrow(LOGIN_FAILED_MESSAGE);
+    expect(await auditCount()).toBe(0);
+    expect(tasks).toHaveLength(1);
+
+    // Nhánh email không tồn tại: không có tenant để ghi ⇒ không hoãn việc nào. Cả hai
+    // nhánh vì thế tốn đúng chừng ấy việc trước khi ném.
+    await expect(
+      loginWithPassword(deps, { email: "khong-ton-tai@acme.test", password: "sai-mat-khau-12" }),
+    ).rejects.toThrow(LOGIN_FAILED_MESSAGE);
+    expect(await auditCount()).toBe(0);
+    expect(tasks).toHaveLength(1);
+
+    // Hoãn KHÔNG phải bỏ: chạy task rồi thì dòng MEDIUM vẫn phải nằm trong audit_events.
+    await tasks[0]?.();
+    const r = await h.db.raw.query<{ action: string; severity: string }>(
+      `SELECT action, severity FROM audit_events`,
+    );
+    expect(r.rows.map((x) => `${x.action}/${x.severity}`)).toEqual(["auth.login_failed/MEDIUM"]);
   });
 
   it("mật khẩu hash bằng tham số cũ được rehash im lặng khi đăng nhập đúng", async () => {
