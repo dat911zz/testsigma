@@ -1,12 +1,13 @@
 /**
- * Codec revision — zstd NATIVE của Node (node:zlib), không thư viện ngoài.
+ * Revision codec — Node's NATIVE zstd (node:zlib), no third-party library.
  *
- * Spike 2026-08-28 (node v22.22.2), payload case 120 step:
- *   raw 34.019 B | zstd-3 2.278 B 0,53ms | zstd-10 1.868 B 0,83ms | zstd-19 1.824 B 28,50ms
- * ⇒ level 10: gần trần tỉ lệ nén, rẻ hơn level 19 tới 34 lần. Đây là đường ghi
- * ĐỒNG BỘ nằm trong transaction, mili-giây ở đây là mili-giây giữ khoá row.
+ * Spike 2026-08-28 (node v22.22.2), a 120-step case payload:
+ *   raw 34,019 B | zstd-3 2,278 B 0.53ms | zstd-10 1,868 B 0.83ms | zstd-19 1,824 B 28.50ms
+ * ⇒ level 10: close to the compression-ratio ceiling, up to 34x cheaper than level 19. This
+ * is a SYNCHRONOUS write path inside a transaction, so a millisecond here is a millisecond
+ * holding the row lock.
  *
- * Payload bé PHÌNH RA khi nén (đo thật: 69 B -> 78 B) nên phải có nhánh 'raw'.
+ * A small payload GROWS when compressed (measured: 69 B -> 78 B), so a 'raw' branch is required.
  */
 import { createHash } from "node:crypto";
 import zlib from "node:zlib";
@@ -20,16 +21,16 @@ export const ZSTD_LEVEL = 10;
 export type EncodedRevision = {
   readonly codec: RevisionCodec;
   readonly bytes: Buffer;
-  /** Độ dài JSON canonical (byte) TRƯỚC nén — cột payload_size của bảng revision. */
+  /** Length of the canonical JSON (bytes) BEFORE compression — the revision table's payload_size column. */
   readonly rawSize: number;
-  /** sha256 hex của JSON canonical, KHÔNG phải của blob nén. */
+  /** sha256 hex of the canonical JSON, NOT of the compressed blob. */
   readonly sha256: string;
 };
 
 function assertZstd(): void {
   if (typeof zlib.zstdCompressSync !== "function") {
     throw new Error(
-      "Node runtime thiếu zstd native trong node:zlib — cần Node >= 22.15.0 (xem engines.node)",
+      "Node runtime is missing native zstd in node:zlib — requires Node >= 22.15.0 (see engines.node)",
     );
   }
 }
@@ -49,9 +50,9 @@ export function encodeRevision(payload: unknown): EncodedRevision {
 }
 
 /**
- * `bytes` nhận Uint8Array chứ không riêng Buffer: PGlite trả cột bytea về dạng
- * Uint8Array còn node-postgres trả Buffer (spike 2026-08-28). Không bao giờ
- * `instanceof Buffer` ở tầng này.
+ * `bytes` accepts a Uint8Array, not just a Buffer: PGlite returns the bytea column as a
+ * Uint8Array while node-postgres returns a Buffer (spike 2026-08-28). Never
+ * `instanceof Buffer` at this layer.
  */
 export function decodeRevision(codec: RevisionCodec, bytes: Uint8Array): unknown {
   assertZstd();

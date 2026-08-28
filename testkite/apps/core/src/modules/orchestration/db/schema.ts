@@ -1,15 +1,15 @@
 /**
- * Module orchestration — egress_policies (bản M2 tối thiểu cho onboarding).
- * blueprint §5: hardening tier 0 = egress default-deny per-tenant, nhưng bật ở chế độ
- * OBSERVE 14 ngày trước khi enforce (S8) — seed nằm trong chính transaction onboard.
+ * Module orchestration — egress_policies (the minimal M2 build for onboarding).
+ * blueprint §5: hardening tier 0 = per-tenant default-deny egress, but turned on in
+ * OBSERVE mode for 14 days before enforcing (S8) — the seed lives inside onboarding's own transaction.
  *
- * LỆCH CÓ CHỦ ĐÍCH so với block schema trong plan (Task 10, Step 3): thêm
- * `unique(team_id)`. Plan viết seed là `ON CONFLICT (team_id, id) DO NOTHING`, nhưng
- * `id` là `gen_random_uuid()` nên cặp ấy KHÔNG BAO GIỜ đụng — gọi onboard lần hai sẽ
- * lặng lẽ thêm policy egress thứ hai cho cùng một team, đúng thứ mà task này (và test
- * "KHÔNG nhân đôi gì") cấm. M2 mỗi tenant đúng MỘT chính sách egress, nên để DB canh
- * điều đó thay vì trông vào việc người gọi nhớ kiểm tra trước. Khi M5 cần nhiều
- * policy mỗi team, bỏ ràng buộc này cùng lúc với việc thêm khoá phân biệt thật.
+ * DELIBERATE DEVIATION from the schema block in the plan (Task 10, Step 3): adds
+ * `unique(team_id)`. The plan wrote the seed as `ON CONFLICT (team_id, id) DO NOTHING`, but
+ * `id` is `gen_random_uuid()` so that pair NEVER collides — calling onboard a second time
+ * would silently add a second egress policy for the same team, exactly what this task (and
+ * the "does NOT duplicate anything" test) forbids. In M2 each tenant gets exactly ONE egress
+ * policy, so let the DB guard that instead of relying on the caller remembering to check
+ * first. When M5 needs multiple policies per team, drop this constraint at the same time a real distinguishing key is added.
  */
 import { sql } from "drizzle-orm";
 import { index, pgEnum, pgPolicy, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { StepInputDto } from "@testkite/contract";
 import { buildRevisionPayload, flattenStepInputs } from "./steps-flatten.js";
 
-/** id sinh tuần tự để test so được từng byte. */
+/** Sequentially generated ids so the test can compare byte-for-byte. */
 function seqIds(): () => string {
   let n = 0;
   return () => `new-${++n}`;
@@ -27,7 +27,7 @@ const TREE: StepInputDto[] = [
 ];
 
 describe("flattenStepInputs", () => {
-  it("làm phẳng cây theo thứ tự duyệt trước, ordinal đếm lại trong từng nhóm anh em", () => {
+  it("flattens the tree in pre-order, ordinal recounted within each sibling group", () => {
     const r = flattenStepInputs({
       caseId: "c1",
       steps: TREE,
@@ -43,17 +43,17 @@ describe("flattenStepInputs", () => {
     ]);
   });
 
-  it("GIỮ id client gửi khi id đó đã thuộc case; cấp id mới khi id lạ", () => {
+  it("KEEPS the client-sent id when it already belongs to the case; issues a new id when the id is unknown", () => {
     const r = flattenStepInputs({
       caseId: "c1",
-      steps: [{ id: "khong-thuoc-case-nay", kind: "action", renderedSentence: "x", verbOpKey: "click" }],
+      steps: [{ id: "not-in-this-case", kind: "action", renderedSentence: "x", verbOpKey: "click" }],
       existingIds: new Set(["s1"]),
       newId: seqIds(),
     });
     expect(r.steps[0]?.id).toBe("new-1");
   });
 
-  it("tách chi tiết vòng lặp sang LoopRow, chi tiết REST sang RestRow", () => {
+  it("splits loop details into LoopRow, REST details into RestRow", () => {
     const r = flattenStepInputs({ caseId: "c1", steps: TREE, existingIds: new Set(["s1", "s2"]), newId: seqIds() });
     expect(r.loops).toEqual([{ stepId: "new-2", dataProfileId: "d1", maxIterations: null }]);
     expect(r.rests).toEqual([
@@ -61,7 +61,7 @@ describe("flattenStepInputs", () => {
     ]);
   });
 
-  it("cột của kind khác luôn NULL — khớp CHECK aut_steps_kind_shape", () => {
+  it("columns for other kinds are always NULL — matches CHECK aut_steps_kind_shape", () => {
     const r = flattenStepInputs({ caseId: "c1", steps: TREE, existingIds: new Set(), newId: seqIds() });
     const ifRow = r.steps.find((s) => s.kind === "if");
     expect(ifRow?.verbOpKey).toBeNull();
@@ -72,7 +72,7 @@ describe("flattenStepInputs", () => {
     expect(forRow?.conditionExpected).toBeNull();
   });
 
-  it("while không maxIterations vẫn phẳng hoá được — compiler mới là nơi phán", () => {
+  it("while without maxIterations still flattens fine — the compiler is the one that judges it", () => {
     const r = flattenStepInputs({
       caseId: "c1",
       steps: [{ kind: "while", renderedSentence: "while spinner", children: [] }],
@@ -84,7 +84,7 @@ describe("flattenStepInputs", () => {
 });
 
 describe("buildRevisionPayload", () => {
-  it("mã hoá vị trí bằng `after` (id anh liền trước), KHÔNG có ordinal", () => {
+  it("encodes position via `after` (the preceding sibling's id), with NO ordinal", () => {
     const flat = flattenStepInputs({ caseId: "c1", steps: TREE, existingIds: new Set(["s1", "s2"]), newId: seqIds() });
     const payload = buildRevisionPayload({
       case: { name: "C", isStepGroup: false },
@@ -102,7 +102,7 @@ describe("buildRevisionPayload", () => {
     expect(JSON.stringify(payload)).not.toContain("ordinal");
   });
 
-  it("gắn loop/rest vào đúng step", () => {
+  it("attaches loop/rest to the correct step", () => {
     const flat = flattenStepInputs({ caseId: "c1", steps: TREE, existingIds: new Set(), newId: seqIds() });
     const payload = buildRevisionPayload({
       case: { name: "C", isStepGroup: false },
@@ -116,7 +116,7 @@ describe("buildRevisionPayload", () => {
     expect(restStep?.rest).toEqual({ method: "POST", url: "https://x.test/o" });
   });
 
-  it("bỏ hẳn field undefined — hash canonical không được phụ thuộc cách dựng object", () => {
+  it("omits undefined fields entirely — the canonical hash must not depend on how the object was built", () => {
     const flat = flattenStepInputs({
       caseId: "c1",
       steps: [{ kind: "action", renderedSentence: "click", verbOpKey: "click" }],

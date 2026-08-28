@@ -1,8 +1,8 @@
 /**
- * Handler của governance. Descriptor `listAuditEvents` sống trong
- * `@testkite/contract` (routes/identity.ts) vì đó là file hợp đồng của bề mặt /v1 do
- * identity sở hữu; handler nằm ở ĐÂY vì **bảng** `audit_events` thuộc governance
- * (ownership.json). Không mâu thuẫn: descriptor nói về HTTP, ownership nói về bảng.
+ * Governance's handler. The `listAuditEvents` descriptor lives in
+ * `@testkite/contract` (routes/identity.ts) because that's the contract file for the /v1
+ * surface owned by identity; the handler lives HERE because the `audit_events` **table**
+ * belongs to governance (ownership.json). No contradiction: the descriptor is about HTTP, ownership is about the table.
  */
 import { and, desc, gte, lte } from "drizzle-orm";
 import { identityRoutes } from "@testkite/contract";
@@ -14,7 +14,7 @@ export function governanceRouteRegistrations(deps: {
   readonly db: TkDb;
 }): readonly RouteRegistration[] {
   const descriptor = identityRoutes.find((r) => r.operationId === "listAuditEvents");
-  if (descriptor === undefined) throw new Error("descriptor thiếu: listAuditEvents");
+  if (descriptor === undefined) throw new Error("missing descriptor: listAuditEvents");
   return [
     route(descriptor, async ({ ctx, query }) =>
       withTenant(deps.db, { teamId: ctx.teamId }, async (tx) => {

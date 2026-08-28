@@ -1,24 +1,24 @@
 /**
- * Diff 3 chiều cho payload revision. THUẦN — không I/O, không Date.now().
+ * Three-way diff for a revision payload. PURE — no I/O, no Date.now().
  *
- * Vì sao TỰ VIẾT thay vì lấy thư viện (khảo sát 2026-08-28):
- *   - Không thư viện npm nào cho diff 3 chiều dạng BÁO CÁO; `json-diff3` (thư viện
- *     merge 3 chiều duy nhất) băm phần tử mảng bằng String(obj) nên ném cứng
- *     "Duplicate array key '[object Object]'" trên đúng hình dạng steps của ta.
- *   - Mọi thư viện 2 chiều (jsondiffpatch, rfc6902, fast-json-patch, deep-object-diff)
- *     báo 4 thay đổi cho 1 lần chèn step; phần chuẩn hoá triệt tiêu nhiễu vẫn phải
- *     tự làm, sau đó thư viện chỉ còn làm vòng for.
- *   - Body 409 phải là DTO có zod schema (gate drift OpenAPI) — định dạng delta
- *     ma thuật của jsondiffpatch không diễn đạt được thành schema tử tế.
+ * Why WRITTEN BY HAND instead of a library (surveyed 2026-08-28):
+ *   - No npm library does a REPORTING-style three-way diff; `json-diff3` (the only
+ *     three-way merge library) hashes array elements with String(obj), so it hard-throws
+ *     "Duplicate array key '[object Object]'" on exactly our steps shape.
+ *   - Every two-way library (jsondiffpatch, rfc6902, fast-json-patch, deep-object-diff)
+ *     reports 4 changes for a single step insertion; the noise-canceling normalization
+ *     still has to be written by hand, after which the library is just a for-loop.
+ *   - The 409 body must be a DTO with a zod schema (drift gate against OpenAPI) — the
+ *     magic delta format of jsondiffpatch can't be expressed as a decent schema.
  */
 import type { CaseChangeDto, ThreeWayDiffDto } from "@testkite/contract";
 import { canonicalJson } from "./canonical.js";
 import type { RevisionPayload } from "./payload.js";
 
 export interface FlatRevision {
-  /** path -> JSON canonical của giá trị. Ví dụ "/name" -> "\"Checkout\"". */
+  /** path -> canonical JSON of the value. E.g. "/name" -> "\"Checkout\"". */
   readonly scalars: ReadonlyMap<string, string>;
-  /** stepId -> (field -> JSON canonical). */
+  /** stepId -> (field -> canonical JSON). */
   readonly steps: ReadonlyMap<string, ReadonlyMap<string, string>>;
 }
 
@@ -57,7 +57,7 @@ export function flattenRevision(payload: RevisionPayload): FlatRevision {
   return { scalars, steps };
 }
 
-/** Chỉ dùng cho `base`/`value` của DTO — trả về giá trị đã parse, không phải chuỗi JSON. */
+/** Only used for the DTO's `base`/`value` — returns the parsed value, not the JSON string. */
 function parse(json: string | undefined): unknown {
   return json === undefined ? undefined : (JSON.parse(json) as unknown);
 }
@@ -66,7 +66,7 @@ function change(path: string, kind: CaseChangeDto["kind"], base?: string, value?
   const out: CaseChangeDto = { path, kind };
   const b = parse(base);
   const v = parse(value);
-  // exactOptionalPropertyTypes: gán undefined tường minh là lỗi kiểu — chỉ gán khi có.
+  // exactOptionalPropertyTypes: explicitly assigning undefined is a type error — only assign when present.
   return {
     ...out,
     ...(b === undefined ? {} : { base: b }),
@@ -74,7 +74,7 @@ function change(path: string, kind: CaseChangeDto["kind"], base?: string, value?
   };
 }
 
-/** So hai bản phẳng. Thêm/xoá báo ở CẤP STEP; sửa báo ở cấp FIELD. */
+/** Compares two flat revisions. Add/remove is reported at STEP level; edits at FIELD level. */
 export function diffFlat(a: FlatRevision, b: FlatRevision): CaseChangeDto[] {
   const out: CaseChangeDto[] = [];
 
@@ -110,11 +110,11 @@ export function diffFlat(a: FlatRevision, b: FlatRevision): CaseChangeDto[] {
     }
   }
 
-  // Thứ tự ổn định: body 409 phải giống nhau giữa hai lần chạy (test + client cache).
+  // Stable order: the 409 body must be identical across two runs (test + client cache).
   return out.sort((p, q) => (p.path < q.path ? -1 : p.path > q.path ? 1 : 0));
 }
 
-/** Dựng lại object step từ bản phẳng để đưa vào `base`/`value` của mục added/removed. */
+/** Rebuilds a step object from the flat form to place in `base`/`value` for an added/removed entry. */
 function rebuild(fields: ReadonlyMap<string, string>, id?: string): unknown {
   const out: Record<string, unknown> = {};
   if (id !== undefined) out["id"] = id;
@@ -133,10 +133,11 @@ export interface ThreeWayDiffInput {
 }
 
 /**
- * Conflict = path bị CẢ HAI nhánh chạm tới VÀ đi tới hai giá trị khác nhau.
- * Hai bên sửa giống hệt nhau thì không có gì phải quyết ⇒ không tính conflict.
- * Xoá một bên + sửa bên kia rơi vào cùng path cấp step `/steps/<id>` ở nhánh xoá và
- * path cấp field ở nhánh sửa — nên so cả hai chiều bằng tiền tố.
+ * Conflict = a path touched by BOTH branches AND ending up with two different values.
+ * If both sides made the identical edit there's nothing to decide ⇒ not a conflict.
+ * A delete on one side + an edit on the other land on the same step-level path
+ * `/steps/<id>` for the delete branch and a field-level path for the edit branch —
+ * so compare both directions by prefix.
  */
 export function threeWayDiff(input: ThreeWayDiffInput): ThreeWayDiffDto {
   const base = flattenRevision(input.base);
@@ -151,7 +152,7 @@ export function threeWayDiff(input: ThreeWayDiffInput): ThreeWayDiffDto {
       if (canonicalJson(m.value) !== canonicalJson(t.value)) conflicts.push(m.path);
       continue;
     }
-    // Nhánh này xoá cả step, nhánh kia sửa field bên trong nó (hoặc ngược lại).
+    // This branch deletes the whole step, the other branch edits a field inside it (or vice versa).
     if (m.kind === "removed" && theirs.some((c) => c.path.startsWith(`${m.path}/`))) {
       conflicts.push(m.path);
     }

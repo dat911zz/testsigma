@@ -71,7 +71,7 @@ async function caseWithSteps(name: string, prereqCaseId?: string): Promise<strin
 }
 
 describe("buildCompileSnapshot", () => {
-  it("sinh snapshot THOẢ compileSnapshotSchema của contract", async () => {
+  it("generates a snapshot that SATISFIES the contract's compileSnapshotSchema", async () => {
     const caseId = await caseWithSteps("Checkout");
     const snap = await withTenant(t.db, ctx(), (tx) =>
       buildCompileSnapshot(tx, ctx(), { projectId, targetCaseIds: [caseId], pin: "latest" }, DEPS),
@@ -82,7 +82,7 @@ describe("buildCompileSnapshot", () => {
     expect(snap.targetCaseIds).toEqual([caseId]);
   });
 
-  it("dựng lại CÂY step từ payload phẳng: `if` có children đúng, ordinal đánh lại từ 1", async () => {
+  it("rebuilds the step TREE from the flat payload: `if` has correct children, ordinals renumbered from 1", async () => {
     const caseId = await caseWithSteps("Checkout");
     const snap = await withTenant(t.db, ctx(), (tx) =>
       buildCompileSnapshot(tx, ctx(), { projectId, targetCaseIds: [caseId], pin: "latest" }, DEPS),
@@ -96,7 +96,7 @@ describe("buildCompileSnapshot", () => {
     expect(branch?.kind === "if" ? branch.children.map((c) => [c.ordinal, c.kind]) : []).toEqual([[1, "action"]]);
   });
 
-  it("đóng bao chuỗi prereq — case phụ thuộc có mặt trong `cases` dù không nằm trong target", async () => {
+  it("closes over the prereq chain — the dependency case is present in `cases` even though it isn't in the target", async () => {
     const loginId = await caseWithSteps("Login");
     const checkoutId = await caseWithSteps("Checkout", loginId);
     const snap = await withTenant(t.db, ctx(), (tx) =>
@@ -107,7 +107,7 @@ describe("buildCompileSnapshot", () => {
     expect(snap.targetCaseIds).toEqual([checkoutId]);
   });
 
-  it("pin='ready' đọc BẢN ĐÃ PROMOTE, không phải bản nháp đang sửa", async () => {
+  it("pin='ready' reads the PROMOTED version, not the draft currently being edited", async () => {
     const caseId = await caseWithSteps("Checkout");
     const cur = await t.db.execute(sql`SELECT version FROM aut_cases WHERE id = ${caseId}`);
     const v = Number(cur.rows[0]?.["version"]);
@@ -120,7 +120,7 @@ describe("buildCompileSnapshot", () => {
     const promoted = await withTenant(t.db, ctx(), (tx) =>
       promoteCase(tx, ctx(), bob, { caseId, expectedVersion: decided.version }),
     );
-    // Sau khi promote, Alice sửa tiếp — bản 'ready' KHÔNG được đổi theo.
+    // After promoting, Alice keeps editing — the 'ready' version must NOT change along with it.
     await withTenant(t.db, ctx(), (tx) =>
       replaceSteps(tx, ctx(), alice, {
         caseId,
@@ -143,16 +143,16 @@ describe("buildCompileSnapshot", () => {
     expect(ready.cases[caseId]?.revisionId).not.toBe(latest.cases[caseId]?.revisionId);
   });
 
-  it("pin='ready' trên case CHƯA từng promote ⇒ ném lỗi rõ ràng, không âm thầm lấy latest", async () => {
+  it("pin='ready' on a case that has NEVER been promoted ⇒ throws a clear error, does not silently fall back to latest", async () => {
     const caseId = await caseWithSteps("Checkout");
     await expect(
       withTenant(t.db, ctx(), (tx) =>
         buildCompileSnapshot(tx, ctx(), { projectId, targetCaseIds: [caseId], pin: "ready" }, DEPS),
       ),
-    ).rejects.toThrow(/chưa có bản ready|ready/i);
+    ).rejects.toThrow(/ready/i);
   });
 
-  it("gom element id + data profile id rồi gọi ĐÚNG MỘT lần cho mỗi cổng", async () => {
+  it("collects element ids + data profile ids then calls EXACTLY ONCE per port", async () => {
     const caseId = await caseWithSteps("Checkout");
     const calls = { elements: 0, profiles: 0 };
     const snap = await withTenant(t.db, ctx(), (tx) =>
@@ -179,7 +179,7 @@ describe("buildCompileSnapshot", () => {
     expect(snap.env).toEqual(ENV);
   });
 
-  it("case của tenant khác trong targetCaseIds ⇒ CaseNotFoundError (404), không rò rỉ", async () => {
+  it("a case belonging to another tenant in targetCaseIds ⇒ CaseNotFoundError (404), no leak", async () => {
     const caseId = await caseWithSteps("Checkout");
     const org = await t.db.execute(sql`SELECT id FROM organizations LIMIT 1`);
     const other = await t.db.execute(

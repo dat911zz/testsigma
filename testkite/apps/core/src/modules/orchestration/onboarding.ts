@@ -1,6 +1,6 @@
 /**
- * Phần orchestration của onboarding: chính sách egress ở chế độ OBSERVE.
- * Chạy trong TRANSACTION của onboarding (nhận `TkTx`).
+ * The orchestration part of onboarding: an egress policy in OBSERVE mode.
+ * Runs inside onboarding's TRANSACTION (takes a `TkTx`).
  */
 import { assertTenantContext, type TenantContext, type TkTx } from "../kernel/index.js";
 import { egressPolicies } from "./db/schema.js";
@@ -8,8 +8,8 @@ import { egressPolicies } from "./db/schema.js";
 export const EGRESS_OBSERVE_DAYS = 14;
 
 /**
- * Seed allowlist từ chính base_url của team, chế độ observe 14 ngày (blueprint S8).
- * Idempotent nhờ `unique(team_id)` — xem ghi chú lệch-plan ở db/schema.ts.
+ * Seeds the allowlist from the team's own base_url, 14-day observe mode (blueprint S8).
+ * Idempotent thanks to `unique(team_id)` — see the deviation-from-plan note in db/schema.ts.
  */
 export async function seedEgressObserve(
   tx: TkTx,

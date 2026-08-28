@@ -1,7 +1,7 @@
 /**
- * Cầu nối giữa hình dạng API (cây step lồng nhau, không ordinal) và hình dạng DB
- * (bảng phẳng có parent_step_id + ordinal) — và giữa DB với payload revision
- * (phẳng, vị trí bằng `after`). THUẦN: mọi thứ bất định (id mới) được tiêm vào.
+ * Bridges the API shape (a nested step tree, no ordinals) and the DB shape (a flat table
+ * with parent_step_id + ordinal) — and between the DB and the revision payload (flat,
+ * position via `after`). PURE: anything non-deterministic (new ids) is injected in.
  */
 import type { StepInputDto, StepKindDto } from "@testkite/contract";
 import type { RevisionCase, RevisionPayload, RevisionStep } from "./revision/payload.js";
@@ -38,7 +38,7 @@ export interface RestRow {
 export interface FlattenInput {
   readonly caseId: string;
   readonly steps: readonly StepInputDto[];
-  /** id step ĐANG thuộc case này — chỉ những id trong tập này mới được tái dùng. */
+  /** step ids CURRENTLY belonging to this case — only ids in this set may be reused. */
   readonly existingIds: ReadonlySet<string>;
   readonly newId: () => string;
 }
@@ -56,8 +56,8 @@ export function flattenStepInputs(input: FlattenInput): FlattenResult {
   const used = new Set<string>();
 
   const resolveId = (candidate: string | undefined): string => {
-    // Id lạ (của case khác / tenant khác / bịa) KHÔNG được tái dùng: nó vừa là lỗ
-    // tenant vừa làm diff nói dối về danh tính step.
+    // A foreign id (from another case / tenant / made up) may NOT be reused: it's both a
+    // tenant hole and a way for the diff to lie about the step's identity.
     if (candidate !== undefined && input.existingIds.has(candidate) && !used.has(candidate)) {
       used.add(candidate);
       return candidate;
@@ -137,16 +137,16 @@ export interface BuildPayloadInput {
 }
 
 /**
- * Dựng payload revision. Hai luật:
- *   1. Vị trí = `after` (id anh liền trước cùng cha), KHÔNG phải ordinal — xem
- *      diff.ts để biết vì sao (spike đo nhiễu 2026-08-28).
- *   2. Field không có giá trị thì BỎ HẲN khỏi object, không set null: hash canonical
- *      phải chỉ phụ thuộc dữ liệu, không phụ thuộc cách dựng object.
+ * Builds the revision payload. Two rules:
+ *   1. Position = `after` (the id of the immediately preceding sibling), NOT ordinal — see
+ *      diff.ts for why (noise-measurement spike, 2026-08-28).
+ *   2. A field with no value is OMITTED entirely from the object, never set to null: the
+ *      canonical hash must depend only on the data, never on how the object was built.
  *
- * KHÔNG sắp xếp lại `input.steps`: nó đã theo thứ tự duyệt trước từ
- * `flattenStepInputs`, và trong mỗi nhóm anh em thì ordinal tăng dần — nên "anh
- * liền trước" chính là step gần nhất có cùng cha. Sắp lại theo ordinal TOÀN CỤC sẽ
- * trộn lẫn các nhóm anh em và làm hỏng `after` của step con.
+ * Does NOT re-sort `input.steps`: it already arrives in pre-order from
+ * `flattenStepInputs`, and within each sibling group the ordinal increases — so "the
+ * preceding sibling" is simply the nearest step with the same parent. Re-sorting by a
+ * GLOBAL ordinal would interleave sibling groups and corrupt a child step's `after`.
  */
 export function buildRevisionPayload(input: BuildPayloadInput): RevisionPayload {
   const loopByStep = new Map(input.loops.map((l) => [l.stepId, l]));

@@ -1,14 +1,14 @@
 /**
- * Composition root TƯỜNG MINH (~150 dòng khi hoàn thiện) — không DI container.
+ * An EXPLICIT composition root (~150 lines once finished) — no DI container.
  *
- * Wiring theo DAG một chiều:
+ * Wiring follows a one-way DAG:
  *   kernel → identity, governance → verbs | elements | testdata
  *          → authoring → planning → orchestration → results
- *   edge (integrations, ai, mcp-gateway) chỉ phụ thuộc vào trong.
+ *   the edge modules (integrations, ai, mcp-gateway) only depend inward.
  *
- * Gọi ngược/ngang = domain event qua transactional outbox (krn_outbox,
- * ghi cùng transaction Postgres) → relay → BullMQ events → handler idempotent.
- * `import ... from "bullmq"` bị lint CẤM ngoài kernel/relay/dispatcher.
+ * Backward/sideways calls = a domain event through the transactional outbox (krn_outbox,
+ * written in the same Postgres transaction) → relay → BullMQ events → an idempotent handler.
+ * `import ... from "bullmq"` is lint-FORBIDDEN outside kernel/relay/dispatcher.
  */
 import { createDb, type KernelEnv } from "./modules/kernel/index.js";
 import { createAuthenticator, createAuthzCache } from "./modules/identity/index.js";
@@ -29,12 +29,12 @@ export async function buildApp(env: KernelEnv): Promise<TkApp> {
     db,
     authenticator,
     registrations: [
-      // `audit`: identity KHÔNG được import governance (cùng tầng DAG) — tầng shell
-      // là nơi duy nhất biết cả hai, nên phép nối hai module xảy ra ở ĐÂY.
+      // `audit`: identity is NOT allowed to import governance (same DAG tier) — the shell
+      // tier is the only place that knows about both, so the two modules get wired together HERE.
       ...identityRouteRegistrations({ db, cache, audit: writeAuditEvent }),
       ...governanceRouteRegistrations({ db }),
-      // Onboarding chạm bảng của BỐN module trong một transaction ⇒ use case (và cả
-      // registration của nó) sống ở tầng shell, không ở module identity.
+      // Onboarding touches tables from FOUR modules in one transaction ⇒ the use case (and
+      // its registration) lives at the shell tier, not inside the identity module.
       onboardRouteRegistration({ db }),
     ],
     // authoring registers as a FastifyPluginAsync (its own routes carry `config.tk`);

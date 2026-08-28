@@ -45,11 +45,12 @@ const PAYLOAD = {
 };
 
 /**
- * drizzle bọc lỗi driver trong `DrizzleQueryError` có message = "Failed query: <SQL>"
- * — NGUYÊN VĂN câu SQL nằm trong message. Hệ quả: `rejects.toThrow(/codec/i)` XANH
- * kể cả khi bảng chưa tồn tại (quan sát thật ở bước ĐỎ của task này: 2/9 test xanh
- * trước khi có migration). Muốn khẳng định đúng ràng buộc nào đã bắn thì phải bóc
- * `cause` ra đọc `code` + `constraint` của Postgres.
+ * drizzle wraps the driver error in a `DrizzleQueryError` whose message = "Failed query: <SQL>"
+ * — the SQL statement VERBATIM sits inside the message. Consequence:
+ * `rejects.toThrow(/codec/i)` goes GREEN even when the table doesn't exist yet (observed
+ * for real at this task's RED step: 2/9 tests green before the migration existed). To
+ * assert which constraint actually fired, you have to unwrap `cause` and read Postgres's
+ * `code` + `constraint`.
  */
 type PgError = { readonly code: string; readonly constraint?: string; readonly message: string };
 
@@ -64,17 +65,17 @@ async function pgErrorOf(run: () => Promise<unknown>): Promise<PgError> {
   } catch (e) {
     thrown = e;
   }
-  if (thrown === undefined) throw new Error("Câu lệnh đáng lẽ bị từ chối nhưng đã chạy thành công");
+  if (thrown === undefined) throw new Error("Statement should have been rejected but succeeded instead");
   let cur: unknown = thrown;
   for (let depth = 0; depth < 5 && cur !== undefined && cur !== null; depth += 1) {
     if (isPgError(cur)) return cur;
     cur = (cur as { cause?: unknown }).cause;
   }
-  throw new Error(`Không bóc được lỗi Postgres từ: ${String(thrown)}`);
+  throw new Error(`Could not unwrap a Postgres error from: ${String(thrown)}`);
 }
 
-describe("aut_case_revisions — lưu trữ", () => {
-  it("round-trip blob zstd qua bytea", async () => {
+describe("aut_case_revisions — storage", () => {
+  it("round-trips a zstd blob through bytea", async () => {
     const enc = encodeRevision(PAYLOAD);
     await t.db.execute(sql`
       INSERT INTO aut_case_revisions
@@ -86,11 +87,11 @@ describe("aut_case_revisions — lưu trữ", () => {
     expect(row?.["codec"]).toBe("zstd");
     expect(Number(row?.["payload_size"])).toBe(enc.rawSize);
     expect(row?.["payload_sha256"]).toBe(enc.sha256);
-    // PGlite trả bytea về Uint8Array — decode phải chịu được kiểu đó.
+    // PGlite returns bytea as a Uint8Array — decode must tolerate that type.
     expect(decodeRevision("zstd", row?.["payload"] as Uint8Array)).toEqual(PAYLOAD);
   });
 
-  it("blob nhỏ hơn payload gốc ít nhất 5 lần (bằng chứng nén thật sự có tác dụng)", async () => {
+  it("the blob is at least 5x smaller than the original payload (proof compression actually works)", async () => {
     const enc = encodeRevision(PAYLOAD);
     await t.db.execute(sql`
       INSERT INTO aut_case_revisions
@@ -102,7 +103,7 @@ describe("aut_case_revisions — lưu trữ", () => {
     expect(blob * 5).toBeLessThan(Number(r.rows[0]?.["payload_size"]));
   });
 
-  it("UNIQUE (team_id, case_id, revision_no) — không có hai revision cùng số", async () => {
+  it("UNIQUE (team_id, case_id, revision_no) — no two revisions share a number", async () => {
     const enc = encodeRevision(PAYLOAD);
     const ins = sql`
       INSERT INTO aut_case_revisions
@@ -114,7 +115,7 @@ describe("aut_case_revisions — lưu trữ", () => {
     expect(err.constraint).toBe("aut_case_revisions_no_unique");
   });
 
-  it("CHECK chặn codec lạ", async () => {
+  it("CHECK blocks an unknown codec", async () => {
     const err = await pgErrorOf(() =>
       t.db.execute(sql`
         INSERT INTO aut_case_revisions
@@ -125,7 +126,7 @@ describe("aut_case_revisions — lưu trữ", () => {
     expect(err.constraint).toBe("aut_case_revisions_codec_known");
   });
 
-  it("CHECK chặn sha256 không phải 64 hex", async () => {
+  it("CHECK blocks a sha256 that isn't 64 hex chars", async () => {
     const err = await pgErrorOf(() =>
       t.db.execute(sql`
         INSERT INTO aut_case_revisions
@@ -137,7 +138,7 @@ describe("aut_case_revisions — lưu trữ", () => {
   });
 });
 
-describe("APPEND-ONLY — cưỡng chế bằng quyền Postgres, không bằng quy ước", () => {
+describe("APPEND-ONLY — enforced by Postgres permissions, not by convention", () => {
   async function seedRevision(): Promise<void> {
     const enc = encodeRevision(PAYLOAD);
     await t.db.execute(sql`
@@ -146,7 +147,7 @@ describe("APPEND-ONLY — cưỡng chế bằng quyền Postgres, không bằng 
       VALUES (${teamId},${caseId},1,1,${enc.codec},${enc.bytes},${enc.rawSize},${enc.sha256})`);
   }
 
-  it("role app KHÔNG có grant UPDATE trên aut_case_revisions", async () => {
+  it("the app role has NO UPDATE grant on aut_case_revisions", async () => {
     const r = await t.db.execute(sql`
       SELECT privilege_type FROM information_schema.role_table_grants
       WHERE grantee = 'testkite_app' AND table_name = 'aut_case_revisions'
@@ -154,7 +155,7 @@ describe("APPEND-ONLY — cưỡng chế bằng quyền Postgres, không bằng 
     expect(r.rows.map((x) => x["privilege_type"])).toEqual(["INSERT", "SELECT"]);
   });
 
-  it("UPDATE dưới role app bị Postgres từ chối", async () => {
+  it("UPDATE under the app role is rejected by Postgres", async () => {
     await seedRevision();
     await t.raw.exec(`SET ROLE testkite_app`);
     await t.raw.query(`SELECT set_config('app.team_id', $1, false)`, [teamId]);
@@ -165,7 +166,7 @@ describe("APPEND-ONLY — cưỡng chế bằng quyền Postgres, không bằng 
     await t.raw.exec(`RESET app.team_id`);
   });
 
-  it("DELETE dưới role app bị Postgres từ chối", async () => {
+  it("DELETE under the app role is rejected by Postgres", async () => {
     await seedRevision();
     await t.raw.exec(`SET ROLE testkite_app`);
     await t.raw.query(`SELECT set_config('app.team_id', $1, false)`, [teamId]);
@@ -174,7 +175,7 @@ describe("APPEND-ONLY — cưỡng chế bằng quyền Postgres, không bằng 
     await t.raw.exec(`RESET app.team_id`);
   });
 
-  it("INSERT + SELECT dưới role app vẫn chạy (append-only, không phải read-only)", async () => {
+  it("INSERT + SELECT under the app role still work (append-only, not read-only)", async () => {
     const enc = encodeRevision(PAYLOAD);
     await t.raw.exec(`SET ROLE testkite_app`);
     await t.raw.query(`SELECT set_config('app.team_id', $1, false)`, [teamId]);

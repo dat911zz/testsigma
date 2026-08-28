@@ -1,10 +1,10 @@
 /**
  * Module: mcp-gateway
- * Owned tables: (khong so huu bang — di qua authorize() cua identity + cac facade)
+ * Owned tables: (owns no tables — goes through identity's authorize() + the facades)
  *
- * Quy tắc (docs/SYSTEM_DESIGN.md §4):
- *  - Gọi XUÔI theo DAG = import facade (file này). Gọi NGƯỢC/NGANG = domain event qua transactional outbox.
- *  - Không module nào khác được đụng bảng của module này (ownership.json + eslint-boundaries cưỡng chế).
- *  - Repository phải khởi tạo với TenantContext (fail-closed) — xem lớp cách ly L1.
+ * Rules (docs/SYSTEM_DESIGN.md §4):
+ *  - FORWARD calls along the DAG = import the facade (this file). BACKWARD/SIDEWAYS calls = domain event via transactional outbox.
+ *  - No other module may touch this module's tables (enforced by ownership.json + eslint-boundaries).
+ *  - Repositories must be constructed with TenantContext (fail-closed) — see isolation layer L1.
  */
 export const MODULE = "mcp-gateway" as const;

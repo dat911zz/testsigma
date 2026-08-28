@@ -1,7 +1,7 @@
 /**
- * Vòng đời phần "sửa" của case. Mọi hàm ở đây NHẬN TkTx: chúng phải chạy trong
- * transaction do `withTenant` mở (role app + app.team_id đã set), nên không thể
- * tồn tại một đường ghi authoring nào không mang tenant.
+ * The "edit" half of a case's lifecycle. Every function here TAKES a TkTx: they must run
+ * inside a transaction opened by `withTenant` (app role + app.team_id already set), so
+ * there can never be an authoring write path that doesn't carry a tenant.
  */
 import { randomUUID } from "node:crypto";
 import type { CaseSummaryDto, StepInputDto } from "@testkite/contract";
@@ -45,8 +45,8 @@ export function toCaseSummary(row: CaseRow): CaseSummaryDto {
     ...(row.lastEditedBy === null ? {} : { lastEditedBy: row.lastEditedBy }),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-    // Ba mốc workflow: kiểm tra null NGAY tại chỗ dùng nên không cần `!` — TS thu
-    // hẹp kiểu trong chính biểu thức, khác với việc đi qua một hàm trợ giúp.
+    // Three workflow milestones: the null check happens RIGHT at the use site so no `!`
+    // is needed — TS narrows the type within the expression itself, unlike going through a helper function.
     ...(row.submittedAt === null ? {} : { submittedAt: row.submittedAt.toISOString() }),
     ...(row.reviewedAt === null ? {} : { reviewedAt: row.reviewedAt.toISOString() }),
     ...(row.promotedAt === null ? {} : { promotedAt: row.promotedAt.toISOString() }),
@@ -76,8 +76,8 @@ export async function createCase(
     ...(input.prereqCaseId === undefined ? {} : { prereqCaseId: input.prereqCaseId }),
     actorUserId: actor.userId,
   });
-  // Revision #1 ghi NGAY cả khi case chưa có step: `latest` không bao giờ NULL sau
-  // khi tạo, nên compiler luôn có bản để ghim (blueprint §4 phase 1).
+  // Revision #1 is written IMMEDIATELY even when the case has no steps yet: `latest` is
+  // never NULL after creation, so the compiler always has a version to pin (blueprint §4 phase 1).
   const revisionId = await revisions.insert({
     caseId: row.id,
     revisionNo: 1,
@@ -99,22 +99,23 @@ export async function replaceSteps(
   const cases = new CaseRepo(tx, ctx);
   const revisions = new RevisionRepo(tx, ctx);
 
-  // KHOÁ TRƯỚC MỌI ĐỌC. So `version` với `expectedVersion` rồi mới ghi là check-then-act:
-  // không có khoá, hai request cùng `expectedVersion` trên hai connection thật đều đọc
-  // trúng version CŨ (chưa bên nào commit) nên CẢ HAI qua được nhánh so sánh và cùng ghi
-  // — bên thua đâm vào unique `aut_steps_position_unique` (mọi lần replace đều đánh ordinal
-  // lại từ 1) và ném DrizzleQueryError/23505 thô thay vì hợp đồng 409 + diff 3 chiều.
-  // Bằng chứng ĐỎ→XANH: test/concurrency/case-edit-race.test.ts trên Postgres thật.
-  // Khoá đứng trước cả kiểm tra tồn tại: nó chỉ khoá một số, không đọc row nào, nên
-  // không đổi được luật "cross-tenant ⇒ 404".
+  // LOCK BEFORE ANY READ. Comparing `version` to `expectedVersion` and then writing is
+  // check-then-act: without a lock, two requests sharing the same `expectedVersion` on two
+  // real connections both read the SAME stale version (neither has committed yet), so BOTH
+  // pass the comparison branch and both write — the loser hits the `aut_steps_position_unique`
+  // constraint (every replace renumbers ordinals from 1) and throws a raw
+  // DrizzleQueryError/23505 instead of the 409 + three-way-diff contract.
+  // RED→GREEN evidence: test/concurrency/case-edit-race.test.ts against real Postgres.
+  // The lock is acquired before the existence check itself: it only locks a number, reads
+  // no row, so it can't change the "cross-tenant ⇒ 404" rule.
   await cases.lockCase(input.caseId);
 
   const row = await cases.findById(input.caseId);
-  // Tenant khác ⇒ RLS đã lọc mất row ⇒ 404. KHÔNG BAO GIỜ 403 (blueprint §3 L3).
+  // Another tenant ⇒ RLS already filtered the row out ⇒ 404. NEVER 403 (blueprint §3 L3).
   if (row === undefined) throw new CaseNotFoundError(input.caseId);
   if (row.status === "in_review") {
     throw new CaseStateError(
-      `Case ${input.caseId} đang in_review — rút review trước khi sửa (POST /cases/:id/withdraw-review)`,
+      `Case ${input.caseId} is in_review — withdraw the review before editing (POST /cases/:id/withdraw-review)`,
     );
   }
 
@@ -136,12 +137,13 @@ export async function replaceSteps(
   if (row.version !== input.expectedVersion) {
     const currentRevisionId = row.latestRevisionId;
     if (currentRevisionId === null) {
-      throw new CaseStateError(`Case ${input.caseId} chưa có revision — dữ liệu không nhất quán`);
+      throw new CaseStateError(`Case ${input.caseId} has no revision — inconsistent data`);
     }
     const base = await revisions.findByCaseVersion(input.caseId, input.expectedVersion);
     const theirs = await revisions.loadPayload(currentRevisionId);
-    // Không tìm được revision của version client cầm (chỉ xảy ra sau can thiệp dữ
-    // liệu thủ công): lấy bản hiện tại làm base — diff vẫn đúng chiều, chỉ kém tinh.
+    // Can't find the revision for the version the client is holding (only happens after
+    // manual data intervention): fall back to the current version as base — the diff still
+    // points the right direction, just less precise.
     const basePayload: RevisionPayload = base?.payload ?? theirs;
     throw new VersionConflictError(
       threeWayDiff({

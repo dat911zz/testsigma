@@ -14,7 +14,7 @@ export interface InsertCaseInput {
   readonly actorUserId: string;
 }
 
-/** L1: mọi truy vấn đều mang `teamId` của TenantContext, không tin RLS một mình. */
+/** L1: every query carries the TenantContext's `teamId`, never trusting RLS alone. */
 export class CaseRepo extends TenantRepo {
   constructor(tx: TkTx, ctx: TenantContext) {
     super(tx, ctx);
@@ -33,21 +33,23 @@ export class CaseRepo extends TenantRepo {
       })
       .returning();
     const row = rows[0];
-    if (row === undefined) throw new Error("aut_cases: INSERT không trả row");
+    if (row === undefined) throw new Error("aut_cases: INSERT returned no row");
     return row;
   }
 
   /**
-   * Khoá ghi theo (team, case) — phải gọi TRƯỚC MỌI ĐỌC của một mutation kiểu
-   * check-then-act, nếu không hai transaction cùng đọc trạng thái cũ rồi cùng ghi.
+   * Write lock keyed by (team, case) — must be called BEFORE ANY READ in a
+   * check-then-act mutation, otherwise two transactions both read the stale state and
+   * both write.
    *
-   * `pg_advisory_xact_lock` tự nhả khi transaction kết thúc (COMMIT hoặc ROLLBACK)
-   * nên không có `unlock` nào để quên; không bao giờ dùng bản session-scope trong
-   * request path. Khoá là MỘT bigint `hashtextextended(team||':'||case, 0)` — dạng
-   * 2×int4 chỉ có 32 bit mỗi vế nên đụng độ nhiều hơn. Đụng độ hash bigint vẫn có
-   * thể xảy ra; hậu quả duy nhất là hai case không liên quan xếp hàng nhau, đúng
-   * bản chất "advisory". Khoá mang `teamId` nên id của tenant khác không chặn được
-   * ai — và vì chỉ khoá số, nó không hé lộ case có tồn tại hay không.
+   * `pg_advisory_xact_lock` releases automatically when the transaction ends (COMMIT or
+   * ROLLBACK), so there's no `unlock` to forget; never use the session-scoped variant on
+   * the request path. The lock is a SINGLE bigint `hashtextextended(team||':'||case, 0)` —
+   * the 2×int4 form only has 32 bits per side, so it collides more. A bigint hash collision
+   * can still happen; the only consequence is two unrelated cases queuing behind each other,
+   * which is exactly what "advisory" means. The lock key carries `teamId`, so another
+   * tenant's id can't block anyone — and since it only locks a number, it never reveals
+   * whether a case exists.
    */
   async lockCase(caseId: string): Promise<void> {
     const key = `${this.teamId}:${caseId}`;
@@ -84,7 +86,7 @@ export class CaseRepo extends TenantRepo {
     }));
   }
 
-  /** Xoá theo case: FK ON DELETE CASCADE dọn luôn step con, loop và rest. */
+  /** Delete by case: FK ON DELETE CASCADE also cleans up child steps, loops, and rests. */
   async deleteSteps(caseId: string): Promise<void> {
     await this.tx
       .delete(autSteps)
@@ -97,7 +99,7 @@ export class CaseRepo extends TenantRepo {
     rests: readonly RestRow[],
   ): Promise<void> {
     if (steps.length === 0) return;
-    // Cha phải có trước con (self-FK) — flattenStepInputs đã trả theo thứ tự duyệt trước.
+    // Parent must exist before child (self-FK) — flattenStepInputs already returns them in pre-order.
     for (const s of steps) {
       await this.tx.insert(autSteps).values({
         teamId: this.teamId,
@@ -135,7 +137,7 @@ export class CaseRepo extends TenantRepo {
     }
   }
 
-  /** Bump version + đóng dấu người sửa. Sửa case `ready` đưa nó về `draft`. */
+  /** Bump version + stamp the editor. Editing a `ready` case sends it back to `draft`. */
   async applyEdit(
     caseId: string,
     nextVersion: number,
@@ -154,11 +156,11 @@ export class CaseRepo extends TenantRepo {
       .where(and(eq(autCases.teamId, this.teamId), eq(autCases.id, caseId)))
       .returning();
     const row = rows[0];
-    if (row === undefined) throw new Error("aut_cases: UPDATE không trả row");
+    if (row === undefined) throw new Error("aut_cases: UPDATE returned no row");
     return row;
   }
 
-  /** draft -> in_review. Bump version vì trạng thái đổi cũng là một thay đổi. */
+  /** draft -> in_review. Bump version because a status change is a change too. */
   async applySubmit(
     caseId: string,
     nextVersion: number,
@@ -178,13 +180,13 @@ export class CaseRepo extends TenantRepo {
       .where(and(eq(autCases.teamId, this.teamId), eq(autCases.id, caseId)))
       .returning();
     const row = rows[0];
-    if (row === undefined) throw new Error("aut_cases: UPDATE không trả row");
+    if (row === undefined) throw new Error("aut_cases: UPDATE returned no row");
     return row;
   }
 
   /**
-   * Kết quả review. `approved` GIỮ in_review (promote là bước riêng);
-   * `changes_requested` và `withdraw` đưa về draft.
+   * Review outcome. `approved` KEEPS in_review (promote is a separate step);
+   * `changes_requested` and `withdraw` send it back to draft.
    */
   async applyDecision(
     caseId: string,
@@ -203,14 +205,14 @@ export class CaseRepo extends TenantRepo {
       .where(and(eq(autCases.teamId, this.teamId), eq(autCases.id, caseId)))
       .returning();
     const row = rows[0];
-    if (row === undefined) throw new Error("aut_cases: UPDATE không trả row");
+    if (row === undefined) throw new Error("aut_cases: UPDATE returned no row");
     return row;
   }
 
   /**
-   * in_review (đã approved) -> ready. GHIM `ready_revision_id` = bản đang latest:
-   * từ đây schedule/CI compile ĐÚNG bản này kể cả khi tác giả sửa tiếp (blueprint §4
-   * phase 1) — `applyEdit` cố tình KHÔNG đụng cột này.
+   * in_review (approved) -> ready. PINS `ready_revision_id` = the current latest:
+   * from here on, schedule/CI compiles EXACTLY this version even if the author keeps
+   * editing (blueprint §4 phase 1) — `applyEdit` deliberately does NOT touch this column.
    */
   async applyPromote(
     caseId: string,
@@ -231,7 +233,7 @@ export class CaseRepo extends TenantRepo {
       .where(and(eq(autCases.teamId, this.teamId), eq(autCases.id, caseId)))
       .returning();
     const row = rows[0];
-    if (row === undefined) throw new Error("aut_cases: UPDATE không trả row");
+    if (row === undefined) throw new Error("aut_cases: UPDATE returned no row");
     return row;
   }
 
@@ -242,7 +244,7 @@ export class CaseRepo extends TenantRepo {
       .where(and(eq(autCases.teamId, this.teamId), eq(autCases.id, caseId)))
       .returning();
     const row = rows[0];
-    if (row === undefined) throw new Error("aut_cases: UPDATE không trả row");
+    if (row === undefined) throw new Error("aut_cases: UPDATE returned no row");
     return row;
   }
 }

@@ -1,4 +1,4 @@
-/** VI PHẠM CÓ CHỦ ĐÍCH: kernel là gốc DAG, không được import module nào. */
+/** DELIBERATE VIOLATION: kernel is the DAG's root, it may not import any module. */
 import { MODULE } from "../identity/index.js";
 
 export const backward = MODULE;

@@ -51,7 +51,7 @@ const TWO_STEPS: StepInputDto[] = [
 ];
 
 describe("createCase", () => {
-  it("tạo case draft version 1 và ghi revision #1 ngay lập tức", async () => {
+  it("creates a draft case at version 1 and writes revision #1 immediately", async () => {
     const summary = await withTenant(t.db, ctx(), (tx) =>
       createCase(tx, ctx(), alice, { projectId, name: "Checkout", isStepGroup: false }),
     );
@@ -77,7 +77,7 @@ describe("replaceSteps", () => {
     return { id: s.id, version: s.version };
   }
 
-  it("ghi steps, bump version, ghi revision mới, cập nhật last_edited_by", async () => {
+  it("writes steps, bumps version, writes a new revision, updates last_edited_by", async () => {
     const c = await seedCase();
     const after = await withTenant(t.db, ctx(), (tx) =>
       replaceSteps(tx, ctx(), bob, { caseId: c.id, expectedVersion: c.version, steps: TWO_STEPS }),
@@ -97,7 +97,7 @@ describe("replaceSteps", () => {
     expect(revs.rows.map((x) => Number(x["case_version"]))).toEqual([1, 2]);
   });
 
-  it("payload revision giải nén ra đúng cây step vừa ghi", async () => {
+  it("the revision payload decompresses to exactly the step tree just written", async () => {
     const c = await seedCase();
     const after = await withTenant(t.db, ctx(), (tx) =>
       replaceSteps(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version, steps: TWO_STEPS }),
@@ -114,7 +114,7 @@ describe("replaceSteps", () => {
     expect(payload.steps[1]?.after).toBe(payload.steps[0]?.id);
   });
 
-  it("giữ nguyên id của step client echo về — danh tính step sống qua nhiều lần lưu", async () => {
+  it("keeps the id of a step the client echoes back — step identity survives across multiple saves", async () => {
     const c = await seedCase();
     const v2 = await withTenant(t.db, ctx(), (tx) =>
       replaceSteps(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version, steps: TWO_STEPS }),
@@ -139,13 +139,13 @@ describe("replaceSteps", () => {
     expect(String(after.rows[0]?.["id"])).toBe(firstId);
   });
 
-  it("version lệch ⇒ VersionConflictError mang diff 3 chiều đúng", async () => {
+  it("version mismatch ⇒ VersionConflictError carries the correct three-way diff", async () => {
     const c = await seedCase();
-    // Alice lưu trước, đẩy server lên version 2.
+    // Alice saves first, pushing the server to version 2.
     await withTenant(t.db, ctx(), (tx) =>
       replaceSteps(tx, ctx(), alice, { caseId: c.id, expectedVersion: 1, steps: TWO_STEPS }),
     );
-    // Bob vẫn cầm version 1 và lưu bản khác.
+    // Bob is still holding version 1 and saves a different version.
     const err = await withTenant(t.db, ctx(), (tx) =>
       replaceSteps(tx, ctx(), bob, {
         caseId: c.id,
@@ -163,7 +163,7 @@ describe("replaceSteps", () => {
     expect(conflict.diff.theirs.length).toBeGreaterThan(0);
   });
 
-  it("KHÔNG ghi gì khi conflict — số revision không tăng", async () => {
+  it("writes NOTHING on conflict — the revision count doesn't increase", async () => {
     const c = await seedCase();
     await withTenant(t.db, ctx(), (tx) =>
       replaceSteps(tx, ctx(), alice, { caseId: c.id, expectedVersion: 1, steps: TWO_STEPS }),
@@ -180,7 +180,7 @@ describe("replaceSteps", () => {
     expect(after.rows[0]?.["n"]).toBe(before.rows[0]?.["n"]);
   });
 
-  it("case của tenant khác ⇒ CaseNotFoundError (404), KHÔNG phải 403", async () => {
+  it("a case belonging to another tenant ⇒ CaseNotFoundError (404), NOT 403", async () => {
     const c = await seedCase();
     const org = await t.db.execute(sql`SELECT id FROM organizations LIMIT 1`);
     const other = await t.db.execute(
@@ -197,7 +197,7 @@ describe("replaceSteps", () => {
     expect((err as { httpStatus?: number }).httpStatus).toBe(404);
   });
 
-  it("sửa case đang in_review ⇒ CaseStateError", async () => {
+  it("editing a case that is in_review ⇒ CaseStateError", async () => {
     const c = await seedCase();
     await t.db.execute(sql`
       UPDATE aut_cases SET status='in_review', submitted_at=now(), submitted_by=${alice.userId}

@@ -1,4 +1,4 @@
-/** VI PHẠM CÓ CHỦ ĐÍCH: nạp động BullMQ ngoài kernel vẫn là tự cầm queue client. */
+/** DELIBERATE VIOLATION: dynamically loading BullMQ outside kernel is still holding a queue client directly. */
 export async function makeQueue(): Promise<unknown> {
   const { Queue } = await import("bullmq");
   return Queue;

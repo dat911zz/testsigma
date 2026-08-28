@@ -1,11 +1,11 @@
 /**
- * Máy trạng thái review. Mọi hàm nhận TkTx (chạy trong withTenant) và đòi
- * `expectedVersion` — đổi trạng thái cũng là mutation, cũng phải mang If-Match.
+ * Review state machine. Every function takes a TkTx (running inside withTenant) and
+ * requires `expectedVersion` — a state change is a mutation too, so it must carry If-Match.
  */
 import { eq } from "drizzle-orm";
 import type { CaseSummaryDto, ReviewDecisionDto } from "@testkite/contract";
-// Xuôi DAG: cờ four-eyes nằm ở `teams` của identity — đọc qua FACADE, không chạm
-// `identity/db/schema.js`.
+// Forward along the DAG: the four-eyes flag lives on identity's `teams` — read it through the
+// FACADE, don't touch `identity/db/schema.js`.
 import { teams } from "../identity/index.js";
 import type { TenantContext, TkTx } from "../kernel/index.js";
 import { CaseRepo, type CaseRow } from "./db/case-repo.js";
@@ -31,9 +31,9 @@ export interface DecideReviewInput extends CaseMutationInput {
 }
 
 /**
- * 409 cho mutation KHÔNG mang payload (submit/withdraw/decide/promote): `mine` là
- * chính base nên nhánh "mine" rỗng — client không đề xuất thay đổi nội dung nào,
- * nó chỉ đang đứng trên một bản cũ. Nhánh `theirs` vẫn cho thấy đã có gì đổi.
+ * 409 for mutations that carry NO payload (submit/withdraw/decide/promote): `mine` is
+ * base itself, so the "mine" side is empty — the client isn't proposing any content
+ * change, it's just standing on a stale version. The `theirs` side still shows what changed.
  */
 async function conflictFor(
   tx: TkTx,
@@ -44,7 +44,7 @@ async function conflictFor(
   const revisions = new RevisionRepo(tx, ctx);
   const currentRevisionId = row.latestRevisionId;
   if (currentRevisionId === null) {
-    throw new CaseStateError(`Case ${row.id} chưa có revision — dữ liệu không nhất quán`);
+    throw new CaseStateError(`Case ${row.id} has no revision — inconsistent data`);
   }
   const theirs = await revisions.loadPayload(currentRevisionId);
   const base = await revisions.findByCaseVersion(row.id, expectedVersion);
@@ -63,19 +63,22 @@ async function conflictFor(
 }
 
 /**
- * Cửa vào DUY NHẤT của mọi mutation trạng thái (submit/withdraw/decide) — nên khoá
- * đứng ở đây, không rải ở ba chỗ gọi.
+ * The ONE entry point for every state mutation (submit/withdraw/decide) — so the lock
+ * lives here, not scattered across three call sites.
  *
- * KHOÁ TRƯỚC MỌI ĐỌC. So `version` với `expectedVersion` rồi mới ghi là check-then-act
- * y hệt `replaceSteps`: không có khoá, hai transaction trên hai connection thật đều đọc
- * trúng version CŨ (chưa bên nào commit) nên CẢ HAI qua được nhánh so sánh và cùng ghi.
- * Đo thật trên Postgres (test/concurrency/review-state-race.test.ts):
- *  - `decide('approved')` song song `withdraw` ⇒ cả hai trả THÀNH CÔNG, DB chỉ giữ được
- *    một quyết định — lost update im lặng, response bên thua mô tả trạng thái không có thật;
- *  - hai `submitForReview` ⇒ bên thua đâm unique (revision_no / `aut_case_reviews_one_open`)
- *    và ném DrizzleQueryError/23505 THÔ thay vì hợp đồng 409 + diff 3 chiều.
- * Khoá đứng trước cả kiểm tra tồn tại: nó chỉ khoá một số, không đọc row nào, nên không
- * đổi được luật "cross-tenant ⇒ 404".
+ * LOCK BEFORE ANY READ. Comparing `version` to `expectedVersion` and then writing is
+ * check-then-act exactly like `replaceSteps`: without a lock, two transactions on two real
+ * connections both read the SAME stale version (neither has committed yet), so BOTH pass
+ * the comparison branch and both write.
+ * Measured for real on Postgres (test/concurrency/review-state-race.test.ts):
+ *  - `decide('approved')` racing `withdraw` ⇒ both return SUCCESS, but the DB can only keep
+ *    one decision — a silent lost update, and the losing side's response describes a state that
+ *    never existed;
+ *  - two `submitForReview` calls ⇒ the loser hits a unique constraint (revision_no /
+ *    `aut_case_reviews_one_open`) and throws a RAW DrizzleQueryError/23505 instead of the
+ *    409 + three-way-diff contract.
+ * The lock is acquired before the existence check itself: it only locks a number, reads no
+ * row, so it can't change the "cross-tenant ⇒ 404" rule.
  */
 async function loadForMutation(
   tx: TkTx,
@@ -100,15 +103,15 @@ export async function submitForReview(
 ): Promise<CaseSummaryDto> {
   const row = await loadForMutation(tx, ctx, input);
   if (row.status !== "draft") {
-    throw new CaseStateError(`Chỉ case draft mới submit được; case ${row.id} đang ${row.status}`);
+    throw new CaseStateError(`Only a draft case can be submitted; case ${row.id} is currently ${row.status}`);
   }
   const revisionId = row.latestRevisionId;
-  if (revisionId === null) throw new CaseStateError(`Case ${row.id} chưa có revision để đưa ra review`);
+  if (revisionId === null) throw new CaseStateError(`Case ${row.id} has no revision to submit for review`);
 
   const nextVersion = row.version + 1;
   const revisions = new RevisionRepo(tx, ctx);
-  // Ghi một revision mốc cho chính lần submit: bản được review là một điểm cố định
-  // trong lịch sử, không phải "bản mới nhất lúc ai đó mở trang".
+  // Write a milestone revision for this submit itself: the reviewed version is a fixed point
+  // in history, not "whatever was latest when someone opened the page".
   const submittedRevisionId = await revisions.insert({
     caseId: row.id,
     revisionNo: nextVersion,
@@ -135,11 +138,11 @@ export async function withdrawReview(
 ): Promise<CaseSummaryDto> {
   const row = await loadForMutation(tx, ctx, input);
   if (row.status !== "in_review") {
-    throw new CaseStateError(`Không có review để rút; case ${row.id} đang ${row.status}`);
+    throw new CaseStateError(`No review to withdraw; case ${row.id} is currently ${row.status}`);
   }
   const reviews = new ReviewRepo(tx, ctx);
   const open = await reviews.findOpen(row.id);
-  if (open === undefined) throw new CaseStateError(`Case ${row.id} không có review đang mở`);
+  if (open === undefined) throw new CaseStateError(`Case ${row.id} has no open review`);
   await reviews.close(open.id, "withdrawn", actor.userId);
   const updated = await new CaseRepo(tx, ctx).applyDecision(row.id, row.version + 1, "draft", {
     userId: actor.userId,
@@ -156,11 +159,11 @@ export async function decideReview(
 ): Promise<CaseSummaryDto> {
   const row = await loadForMutation(tx, ctx, input);
   if (row.status !== "in_review") {
-    throw new CaseStateError(`Chỉ case in_review mới review được; case ${row.id} đang ${row.status}`);
+    throw new CaseStateError(`Only an in_review case can be reviewed; case ${row.id} is currently ${row.status}`);
   }
   const reviews = new ReviewRepo(tx, ctx);
   const open = await reviews.findOpen(row.id);
-  if (open === undefined) throw new CaseStateError(`Case ${row.id} không có review đang mở`);
+  if (open === undefined) throw new CaseStateError(`Case ${row.id} has no open review`);
 
   await reviews.close(open.id, input.decision, actor.userId, input.comment);
   const approved = input.decision === "approved";
@@ -174,17 +177,17 @@ export async function decideReview(
 }
 
 /**
- * in_review (đã approved) -> ready. THỨ TỰ DƯỚI ĐÂY LÀ MỘT PHẦN CỦA TÍNH ĐÚNG ĐẮN:
- *   1. advisory lock TRƯỚC khi đọc bất cứ thứ gì — lấy sau khi đọc thì hai promote
- *      song song cùng thấy `in_review` rồi cùng đi tiếp;
- *   2. rồi mới đọc case (404) / kiểm version (409) / kiểm trạng thái (409) /
- *      kiểm review đã approved (409) / kiểm four-eyes (403) / ghi.
- * Ba bước đầu là `loadForMutation` — cùng một cửa với submit/withdraw/decide, nên
- * khoá không bao giờ bị bỏ quên ở một nhánh gọi nào.
+ * in_review (approved) -> ready. THE ORDER BELOW IS PART OF CORRECTNESS:
+ *   1. advisory lock BEFORE reading anything — taken after the read, two concurrent
+ *      promotes would both see `in_review` and both proceed;
+ *   2. only then read the case (404) / check version (409) / check status (409) /
+ *      check the review is approved (409) / check four-eyes (403) / write.
+ * The first three steps are `loadForMutation` — the same entry point as submit/withdraw/
+ * decide, so the lock can never be forgotten on some call path.
  *
- * KHÔNG ghi revision mới: nội dung case không đổi, chỉ con trỏ `ready_revision_id`
- * dịch chuyển — ghi thêm một bản y hệt chỉ làm phình lịch sử. `version` vẫn bump vì
- * ETag của case đã đổi.
+ * Does NOT write a new revision: the case content doesn't change, only the
+ * `ready_revision_id` pointer moves — writing an identical revision would just bloat
+ * history. `version` still bumps because the case's ETag has changed.
  */
 export async function promoteCase(
   tx: TkTx,
@@ -194,16 +197,16 @@ export async function promoteCase(
 ): Promise<CaseSummaryDto> {
   const row = await loadForMutation(tx, ctx, input);
   if (row.status !== "in_review") {
-    throw new CaseStateError(`Chỉ case in_review mới promote được; case ${row.id} đang ${row.status}`);
+    throw new CaseStateError(`Only an in_review case can be promoted; case ${row.id} is currently ${row.status}`);
   }
 
   const latestReview = await new ReviewRepo(tx, ctx).findLatest(row.id);
   if (latestReview === undefined || latestReview.state !== "approved") {
-    throw new CaseStateError(`Case ${row.id} chưa được duyệt — promote cần một review 'approved'`);
+    throw new CaseStateError(`Case ${row.id} has not been approved — promote requires an 'approved' review`);
   }
 
-  // FOUR-EYES (blueprint §3): người-sửa-cuối-không-tự-promote. CHỈ áp ở promote,
-  // không áp ở review — người sửa duyệt bản của người khác vẫn hợp lệ.
+  // FOUR-EYES (blueprint §3): the last editor cannot self-promote. Applies ONLY to promote,
+  // not to review — an editor approving someone else's version is still valid.
   if (row.lastEditedBy === actor.userId) {
     const teamRows = await tx
       .select({ allowSelfPromote: teams.allowSelfPromote })
@@ -215,7 +218,7 @@ export async function promoteCase(
   }
 
   const readyRevisionId = row.latestRevisionId;
-  if (readyRevisionId === null) throw new CaseStateError(`Case ${row.id} chưa có revision để ghim`);
+  if (readyRevisionId === null) throw new CaseStateError(`Case ${row.id} has no revision to pin`);
 
   const nextVersion = row.version + 1;
   const updated = await new CaseRepo(tx, ctx).applyPromote(

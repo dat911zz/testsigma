@@ -51,7 +51,7 @@ beforeEach(async () => {
 
 const ctx = (): { teamId: string } => ({ teamId });
 
-/** Alice sửa, Alice submit, Bob duyệt. Trả về (caseId, version sau khi duyệt). */
+/** Alice edits, Alice submits, Bob approves. Returns (caseId, version after approval). */
 async function approvedCase(): Promise<{ id: string; version: number }> {
   const created = await withTenant(t.db, ctx(), (tx) =>
     createCase(tx, ctx(), alice, { projectId, name: "Checkout", isStepGroup: false }),
@@ -77,7 +77,7 @@ async function approvedCase(): Promise<{ id: string; version: number }> {
 }
 
 describe("promoteCase", () => {
-  it("người KHÁC người sửa cuối promote được: status ready, ready_revision_id được ghim", async () => {
+  it("someone OTHER than the last editor can promote: status ready, ready_revision_id is pinned", async () => {
     const c = await approvedCase();
     const after = await withTenant(t.db, ctx(), (tx) =>
       promoteCase(tx, ctx(), bob, { caseId: c.id, expectedVersion: c.version }),
@@ -88,7 +88,7 @@ describe("promoteCase", () => {
     expect(after.readyRevisionId).toBe(after.latestRevisionId);
   });
 
-  it("FOUR-EYES: người sửa cuối tự promote ⇒ 403 FourEyesViolationError", async () => {
+  it("FOUR-EYES: the last editor self-promoting ⇒ 403 FourEyesViolationError", async () => {
     const c = await approvedCase();
     const err = await withTenant(t.db, ctx(), (tx) =>
       promoteCase(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version }),
@@ -97,7 +97,7 @@ describe("promoteCase", () => {
     expect((err as FourEyesViolationError).httpStatus).toBe(403);
   });
 
-  it("teams.allow_self_promote = true ⇒ người sửa cuối tự promote ĐƯỢC", async () => {
+  it("teams.allow_self_promote = true ⇒ the last editor CAN self-promote", async () => {
     const c = await approvedCase();
     await t.db.execute(sql`UPDATE teams SET allow_self_promote = true WHERE id = ${teamId}`);
     const after = await withTenant(t.db, ctx(), (tx) =>
@@ -106,7 +106,7 @@ describe("promoteCase", () => {
     expect(after.status).toBe("ready");
   });
 
-  it("promote khi chưa được duyệt ⇒ CaseStateError", async () => {
+  it("promoting before it's been approved ⇒ CaseStateError", async () => {
     const created = await withTenant(t.db, ctx(), (tx) =>
       createCase(tx, ctx(), alice, { projectId, name: "C", isStepGroup: false }),
     );
@@ -119,7 +119,7 @@ describe("promoteCase", () => {
     expect(err).toBeInstanceOf(CaseStateError);
   });
 
-  it("promote khi review bị changes_requested ⇒ CaseStateError", async () => {
+  it("promoting when the review was changes_requested ⇒ CaseStateError", async () => {
     const created = await withTenant(t.db, ctx(), (tx) =>
       createCase(tx, ctx(), alice, { projectId, name: "C", isStepGroup: false }),
     );
@@ -139,7 +139,7 @@ describe("promoteCase", () => {
     expect(err).toBeInstanceOf(CaseStateError);
   });
 
-  it("sửa case đã ready đưa về draft NHƯNG GIỮ ready_revision_id (lịch đêm vẫn chạy bản cũ)", async () => {
+  it("editing a ready case sends it to draft BUT KEEPS ready_revision_id (the nightly schedule still runs the old version)", async () => {
     const c = await approvedCase();
     const promoted = await withTenant(t.db, ctx(), (tx) =>
       promoteCase(tx, ctx(), bob, { caseId: c.id, expectedVersion: c.version }),
@@ -156,13 +156,13 @@ describe("promoteCase", () => {
     expect(edited.latestRevisionId).not.toBe(promoted.readyRevisionId);
   });
 
-  it("advisory lock NHẢ SẠCH sau khi transaction đóng — không rò khoá qua pool", async () => {
+  it("the advisory lock is FULLY RELEASED after the transaction closes — no lock leaks through the pool", async () => {
     const c = await approvedCase();
     await withTenant(t.db, ctx(), (tx) =>
       promoteCase(tx, ctx(), bob, { caseId: c.id, expectedVersion: c.version }),
     );
-    // pg_advisory_xact_lock tự nhả khi COMMIT (spike 2026-08-28). Nếu ai đó đổi sang
-    // pg_advisory_lock (session-scope) thì test này ĐỎ ngay — đó là mục đích của nó.
+    // pg_advisory_xact_lock releases automatically on COMMIT (spike 2026-08-28). If someone
+    // switches to pg_advisory_lock (session-scope), this test goes RED immediately — that's its purpose.
     const after = await t.db.execute(
       sql`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory'`,
     );

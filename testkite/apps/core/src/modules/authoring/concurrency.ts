@@ -1,6 +1,6 @@
 /**
- * ETag/If-Match cho case (blueprint §4: version + ETag/If-Match, 428 nếu thiếu).
- * ETag = version dạng entity-tag RFC 9110. Thuần — không I/O.
+ * ETag/If-Match for a case (blueprint §4: version + ETag/If-Match, 428 if missing).
+ * ETag = version as an RFC 9110 entity-tag. Pure — no I/O.
  */
 import { IfMatchRequiredError } from "./errors.js";
 
@@ -11,23 +11,23 @@ export function formatETag(version: number): string {
 const ETAG_RE = /^(?:W\/)?"?(\d+)"?$/;
 
 /**
- * Trả về version client đang dựa trên. Ném IfMatchRequiredError (428) cho MỌI
- * đầu vào không phải một version cụ thể — kể cả `*`: `*` nghĩa là "khớp bản nào
- * cũng được", tức tắt kiểm tra đồng thời, đúng thứ cột version sinh ra để chặn.
+ * Returns the version the client is basing its edit on. Throws IfMatchRequiredError (428)
+ * for ANY input that isn't a concrete version — including `*`: `*` means "match any
+ * version", i.e. turning off the concurrency check, exactly what the version column exists to prevent.
  */
 export function parseIfMatch(header: string | undefined): number {
-  if (header === undefined) throw new IfMatchRequiredError("header vắng mặt");
+  if (header === undefined) throw new IfMatchRequiredError("header is missing");
   const raw = header.trim();
-  if (raw.length === 0) throw new IfMatchRequiredError("header rỗng");
+  if (raw.length === 0) throw new IfMatchRequiredError("header is empty");
   if (raw === "*") {
-    throw new IfMatchRequiredError("`*` không được chấp nhận — gửi version cụ thể của bản bạn đang sửa");
+    throw new IfMatchRequiredError("`*` is not accepted — send the specific version you're editing");
   }
   const m = ETAG_RE.exec(raw);
   const captured = m?.[1];
-  if (captured === undefined) throw new IfMatchRequiredError(`không đọc được entity-tag: ${raw}`);
+  if (captured === undefined) throw new IfMatchRequiredError(`could not parse entity-tag: ${raw}`);
   const version = Number(captured);
   if (!Number.isInteger(version) || version <= 0) {
-    throw new IfMatchRequiredError(`version phải là số nguyên dương, nhận: ${raw}`);
+    throw new IfMatchRequiredError(`version must be a positive integer, got: ${raw}`);
   }
   return version;
 }

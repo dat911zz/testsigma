@@ -23,7 +23,7 @@ const BASE: RevisionPayload = {
   ],
 };
 
-/** Chèn s9 vào giữa: chỉ s2 đổi `after`, không step nào khác động đậy. */
+/** Inserts s9 in the middle: only s2's `after` changes, no other step is touched. */
 const MINE: RevisionPayload = {
   case: { name: "Checkout", isStepGroup: false },
   steps: [
@@ -46,7 +46,7 @@ const THEIRS: RevisionPayload = {
 };
 
 describe("flattenRevision", () => {
-  it("gom scalar của case và bản đồ field theo id step", () => {
+  it("collects the case's scalars and maps fields by step id", () => {
     const f = flattenRevision(BASE);
     expect(f.scalars.get("/name")).toBe('"Checkout"');
     expect(f.steps.size).toBe(4);
@@ -54,14 +54,14 @@ describe("flattenRevision", () => {
     expect(f.steps.get("s1")?.get("after")).toBe("null");
   });
 
-  it("KHÔNG đưa ordinal vào bản phẳng — vị trí chỉ tồn tại dưới dạng `after`", () => {
+  it("does NOT put ordinal into the flat form — position only exists as `after`", () => {
     const f = flattenRevision(BASE);
     for (const fields of f.steps.values()) expect(fields.has("ordinal")).toBe(false);
   });
 });
 
-describe("diffFlat — nhiễu bằng 0 khi chèn step", () => {
-  it("chèn ĐÚNG 1 step sinh ĐÚNG 2 mục (spike: thư viện ngoài sinh 4)", () => {
+describe("diffFlat — zero noise when inserting a step", () => {
+  it("inserting EXACTLY 1 step produces EXACTLY 2 entries (spike: third-party libraries produce 4)", () => {
     const d = diffFlat(flattenRevision(BASE), flattenRevision(MINE));
     expect(d).toEqual([
       { path: "/steps/s2/after", kind: "modified", base: "s1", value: "s9" },
@@ -69,13 +69,13 @@ describe("diffFlat — nhiễu bằng 0 khi chèn step", () => {
     ]);
   });
 
-  it("sửa tên case + câu của 1 step sinh đúng 2 mục", () => {
+  it("editing the case name + one step's sentence produces exactly 2 entries", () => {
     const d = diffFlat(flattenRevision(BASE), flattenRevision(THEIRS));
     expect(d.map((c) => c.path)).toEqual(["/name", "/steps/s4/renderedSentence"]);
     expect(d.every((c) => c.kind === "modified")).toBe(true);
   });
 
-  it("xoá step báo removed ở CẤP STEP, không vỡ thành từng field", () => {
+  it("deleting a step reports removed at STEP LEVEL, not broken down field by field", () => {
     const shorter: RevisionPayload = {
       case: BASE.case,
       steps: [step("s1", null, "open login page"), step("s3", "s1", "type password"), step("s4", "s3", "click submit")],
@@ -84,11 +84,11 @@ describe("diffFlat — nhiễu bằng 0 khi chèn step", () => {
     expect(d.filter((c) => c.kind === "removed").map((c) => c.path)).toEqual(["/steps/s2"]);
   });
 
-  it("payload y hệt ⇒ diff rỗng", () => {
+  it("identical payloads ⇒ empty diff", () => {
     expect(diffFlat(flattenRevision(BASE), flattenRevision(BASE))).toEqual([]);
   });
 
-  it("kết quả sắp theo path — body 409 ổn định giữa hai lần chạy", () => {
+  it("results are sorted by path — the 409 body is stable across two runs", () => {
     const d = diffFlat(flattenRevision(BASE), flattenRevision(MINE));
     expect([...d].sort((a, b) => (a.path < b.path ? -1 : 1))).toEqual(d);
   });
@@ -97,7 +97,7 @@ describe("diffFlat — nhiễu bằng 0 khi chèn step", () => {
 describe("threeWayDiff", () => {
   const meta = { baseVersion: 7, baseRevisionId: "r7", currentVersion: 9, currentRevisionId: "r9" };
 
-  it("hai bên sửa chỗ khác nhau ⇒ conflicts rỗng", () => {
+  it("both sides edit different spots ⇒ conflicts is empty", () => {
     const r = threeWayDiff({ base: BASE, mine: MINE, theirs: THEIRS, ...meta });
     expect(r.mine).toHaveLength(2);
     expect(r.theirs).toHaveLength(2);
@@ -106,7 +106,7 @@ describe("threeWayDiff", () => {
     expect(r.currentRevisionId).toBe("r9");
   });
 
-  it("hai bên cùng sửa MỘT field ⇒ path đó nằm trong conflicts", () => {
+  it("both sides edit the SAME field ⇒ that path is in conflicts", () => {
     const mine2: RevisionPayload = {
       case: BASE.case,
       steps: [...BASE.steps.slice(0, 3), step("s4", "s3", "tap submit")],
@@ -119,7 +119,7 @@ describe("threeWayDiff", () => {
     expect(r.conflicts).toEqual(["/steps/s4/renderedSentence"]);
   });
 
-  it("hai bên sửa GIỐNG HỆT nhau ⇒ KHÔNG phải conflict (cùng đích đến)", () => {
+  it("both sides make an IDENTICAL edit ⇒ NOT a conflict (same end result)", () => {
     const same: RevisionPayload = {
       case: BASE.case,
       steps: [...BASE.steps.slice(0, 3), step("s4", "s3", "tap submit")],
@@ -128,7 +128,7 @@ describe("threeWayDiff", () => {
     expect(r.conflicts).toEqual([]);
   });
 
-  it("xoá ở một bên và sửa ở bên kia CÙNG step ⇒ conflict ở cấp step", () => {
+  it("a delete on one side and an edit on the other for the SAME step ⇒ a step-level conflict", () => {
     const deleted: RevisionPayload = { case: BASE.case, steps: [...BASE.steps.slice(0, 3)] };
     const edited: RevisionPayload = {
       case: BASE.case,

@@ -1,10 +1,10 @@
 /**
- * Module authoring — bảng asset ĐẦU TIÊN, dựng làm MẪU cho ~50 bảng còn lại.
- * Ba thứ mọi bảng tenant-scoped phải sao chép y nguyên từ đây:
- *   1. team_id là cột ĐẦU TIÊN + index dẫn đầu team_id
- *   2. UNIQUE(team_id, id) làm mỏ neo cho bảng con
- *   3. FK là COMPOSITE (team_id, parent_id) — không bao giờ FK cột đơn
- * Cộng thêm policy tenant_isolation (L2.5).
+ * Module authoring — the FIRST asset table, built as the TEMPLATE for the ~50 tables
+ * still to come. Three things every tenant-scoped table must copy verbatim from here:
+ *   1. team_id is the FIRST column + a leading team_id index
+ *   2. UNIQUE(team_id, id) serves as the anchor for child tables
+ *   3. FKs are COMPOSITE (team_id, parent_id) — never a single-column FK
+ * Plus the tenant_isolation policy (L2.5).
  */
 import { sql } from "drizzle-orm";
 import {
@@ -25,17 +25,17 @@ import {
   uuid,
   type PgTableExtraConfigValue,
 } from "drizzle-orm/pg-core";
-// Xuôi DAG: authoring đọc dữ liệu identity qua FACADE, không chạm file nội bộ của module đó.
+// Forward along the DAG: authoring reads identity data through the FACADE, never touching that module's internal files.
 import { projects } from "../../identity/index.js";
-// `appRole` là role DB của kernel — lấy từ facade kernel, cũng là cạnh xuôi DAG.
+// `appRole` is kernel's DB role — pulled from the kernel facade, also a forward DAG edge.
 import { appRole } from "../../kernel/index.js";
 
 const tenantPredicate = sql`team_id = NULLIF(current_setting('app.team_id', true), '')::uuid`;
 
 /**
- * drizzle-orm 0.45.2 KHÔNG có kiểu `bytea` (kiểm chứng 2026-08-28) — tự khai.
- * fromDriver phải chịu được CẢ HAI driver: node-postgres trả Buffer, PGlite trả
- * Uint8Array. `Buffer.from` xử lý cả hai và luôn trả Buffer.
+ * drizzle-orm 0.45.2 does NOT have a `bytea` type (verified 2026-08-28) — declared by hand.
+ * fromDriver must tolerate BOTH drivers: node-postgres returns a Buffer, PGlite returns
+ * a Uint8Array. `Buffer.from` handles both and always returns a Buffer.
  */
 export const bytea = customType<{ data: Buffer; driverData: Uint8Array }>({
   dataType() {
@@ -49,7 +49,7 @@ export const bytea = customType<{ data: Buffer; driverData: Uint8Array }>({
   },
 });
 
-/** Máy trạng thái review: draft -> in_review -> ready. Không có đường tắt. */
+/** Review state machine: draft -> in_review -> ready. No shortcuts. */
 export const autCaseStatus = pgEnum("aut_case_status", ["draft", "in_review", "ready"]);
 
 export const autCases = pgTable(
@@ -64,16 +64,16 @@ export const autCases = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     status: autCaseStatus("status").notNull().default("draft"),
-    /** Optimistic concurrency: nguồn của ETag. Mọi mutation +1, không bao giờ lùi. */
+    /** Optimistic concurrency: the source of the ETag. Every mutation +1, never goes backward. */
     version: integer("version").notNull().default(1),
     /**
-     * Ghim revision (blueprint §4 phase 1): schedule/CI compile bản `ready`,
-     * ad-hoc của tác giả compile bản `latest`. FK composite được thêm ở Task 4
-     * (bảng aut_case_revisions chưa tồn tại ở migration này).
+     * Revision pin (blueprint §4 phase 1): schedule/CI compiles the `ready` version,
+     * the author's ad-hoc runs compile `latest`. The composite FK is added in Task 4
+     * (the aut_case_revisions table doesn't exist yet at this migration).
      */
     latestRevisionId: uuid("latest_revision_id"),
     readyRevisionId: uuid("ready_revision_id"),
-    /** Four-eyes so người promote với CHÍNH cột này. */
+    /** Four-eyes compares the promoter against THIS EXACT column. */
     lastEditedBy: uuid("last_edited_by"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     submittedBy: uuid("submitted_by"),
@@ -83,9 +83,9 @@ export const autCases = pgTable(
     promotedBy: uuid("promoted_by"),
   },
   /**
-   * Kiểu trả về ghi TƯỜNG MINH: hai FK dưới đây trỏ tới `autCaseRevisions` — bảng
-   * khai SAU và tự nó lại trỏ ngược về `autCases`. Không có annotation này, suy
-   * luận kiểu của TS đi vòng và ném TS7022/TS7024 ("implicitly has type any ...
+   * Return type spelled out EXPLICITLY: the two FKs below point to `autCaseRevisions` — a
+   * table declared LATER that itself points back to `autCases`. Without this annotation,
+   * TS's type inference goes in a circle and throws TS7022/TS7024 ("implicitly has type any ...
    * referenced directly or indirectly in its own initializer").
    */
   (t): PgTableExtraConfigValue[] => [
@@ -96,7 +96,7 @@ export const autCases = pgTable(
       columns: [t.teamId, t.projectId],
       foreignColumns: [projects.teamId, projects.id],
     }),
-    // Self-FK composite: prereq KHÔNG BAO GIỜ trỏ được sang tenant khác.
+    // Self-FK composite: a prereq can NEVER point at another tenant.
     foreignKey({
       name: "aut_cases_prereq_fk",
       columns: [t.teamId, t.prereqCaseId],
@@ -104,9 +104,10 @@ export const autCases = pgTable(
     }),
     check("aut_cases_version_positive", sql`version > 0`),
     /**
-     * Timeline không thể giả mạo: mỗi trạng thái đòi đúng bộ dấu thời gian của nó.
-     * Hệ cũ để lọt case "ready" mà review_submitted_at chưa từng được ghi
-     * (blueprint §8 #10) — CHECK này làm lớp lỗi đó không viết ra được.
+     * The timeline can't be forged: each status requires exactly its own set of
+     * timestamps. The legacy system let a "ready" case slip through with
+     * review_submitted_at never written (blueprint §8 #10) — this CHECK makes that
+     * class of bug unwritable.
      */
     check(
       "aut_cases_status_timeline",
@@ -116,9 +117,9 @@ export const autCases = pgTable(
            AND promoted_at IS NOT NULL AND ready_revision_id IS NOT NULL)`,
     ),
     /**
-     * Vòng FK hai chiều aut_cases ⇄ aut_case_revisions là hợp lệ: composite FK
-     * sinh ra dạng ALTER TABLE ... ADD CONSTRAINT sau khi cả hai bảng đã tồn tại,
-     * và thứ tự ghi lúc chạy là case trước (revision id NULL) → revision → UPDATE case.
+     * The bidirectional FK cycle aut_cases ⇄ aut_case_revisions is valid: the composite
+     * FK generates an ALTER TABLE ... ADD CONSTRAINT that runs after both tables already
+     * exist, and the runtime write order is case first (revision id NULL) → revision → UPDATE case.
      */
     foreignKey({
       name: "aut_cases_latest_revision_fk",
@@ -141,8 +142,8 @@ export const autCases = pgTable(
 ).enableRLS();
 
 /**
- * 6 kind KHỚP CHÍNH XÁC `STEP_KINDS` của packages/contract/src/schemas/step.ts.
- * Lệch một nhãn là hợp đồng API nói dối về thứ DB chấp nhận.
+ * 6 kinds that MATCH EXACTLY the `STEP_KINDS` in packages/contract/src/schemas/step.ts.
+ * One label off and the API contract lies about what the DB accepts.
  */
 export const autStepKind = pgEnum("aut_step_kind", [
   "action",
@@ -159,20 +160,20 @@ export const autSteps = pgTable(
     teamId: uuid("team_id").notNull(),
     id: uuid("id").primaryKey().defaultRandom(),
     caseId: uuid("case_id").notNull(),
-    /** if/for/while lồng cây: con trỏ về step cha, NULL = step gốc của case. */
+    /** if/for/while nest as a tree: points back at the parent step, NULL = the case's root step. */
     parentStepId: uuid("parent_step_id"),
     ordinal: integer("ordinal").notNull(),
     kind: autStepKind("kind").notNull(),
     renderedSentence: text("rendered_sentence").notNull(),
     /** kind=action */
     verbOpKey: text("verb_op_key"),
-    /** kind=action — FK sang elm_elements thêm ở M4 (bảng chưa tồn tại). */
+    /** kind=action — FK to elm_elements added in M4 (table doesn't exist yet). */
     elementId: uuid("element_id"),
-    /** kind=action|rest — bản đồ chuỗi→chuỗi; secret đi dạng `$secret:<name>`. */
+    /** kind=action|rest — a string→string map; secrets go as `$secret:<name>`. */
     args: jsonb("args"),
-    /** kind=step_group — case có is_step_group = true. */
+    /** kind=step_group — a case with is_step_group = true. */
     stepGroupCaseId: uuid("step_group_case_id"),
-    /** kind=if — ví dụ {SUCCESS}. */
+    /** kind=if — e.g. {SUCCESS}. */
     conditionExpected: text("condition_expected").array(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -180,9 +181,9 @@ export const autSteps = pgTable(
   (t) => [
     unique("aut_steps_team_id_unique").on(t.teamId, t.id),
     /**
-     * NULLS NOT DISTINCT: parent_step_id NULL nghĩa là "step gốc" — với ngữ nghĩa
-     * NULL mặc định của Postgres thì hai step gốc cùng ordinal LỌT qua unique.
-     * (drizzle 0.45.2 có .nullsNotDistinct() — đã kiểm chứng 2026-08-28.)
+     * NULLS NOT DISTINCT: parent_step_id NULL means "root step" — with Postgres's default
+     * NULL semantics, two root steps sharing the same ordinal would SLIP past unique.
+     * (drizzle 0.45.2 has .nullsNotDistinct() — verified 2026-08-28.)
      */
     unique("aut_steps_position_unique")
       .on(t.teamId, t.caseId, t.parentStepId, t.ordinal)
@@ -205,9 +206,10 @@ export const autSteps = pgTable(
     }),
     check("aut_steps_ordinal_positive", sql`ordinal > 0`),
     /**
-     * DB cưỡng chế union rẽ nhánh theo `kind` — đúng cái discriminatedUnion của
-     * zod cưỡng chế ở biên API. Hai đầu cùng luật thì không có đường nào lọt.
-     * for/while/rest KHÔNG có cột riêng ở đây: chi tiết nằm ở bảng 1:1.
+     * The DB enforces the union branching on `kind` — the exact same thing zod's
+     * discriminatedUnion enforces at the API boundary. Both ends sharing one rule leaves
+     * no path through. for/while/rest have NO dedicated columns here: their details live
+     * in the 1:1 tables.
      */
     check(
       "aut_steps_kind_shape",
@@ -228,9 +230,9 @@ export const autSteps = pgTable(
 ).enableRLS();
 
 /**
- * 1:1 với step kind for/while — hậu duệ của `for_step_conditions` hệ cũ
- * (blueprint §2: engine loop THẬT, không phải 3 cột vestigial trên aut_steps).
- * FK sang tdt_profiles thêm ở M4.
+ * 1:1 with step kind for/while — the successor to the legacy system's
+ * `for_step_conditions` (blueprint §2: a REAL loop engine, not 3 vestigial columns
+ * on aut_steps). FK to tdt_profiles added in M4.
  */
 export const autStepLoops = pgTable(
   "aut_step_loops",
@@ -239,7 +241,7 @@ export const autStepLoops = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     stepId: uuid("step_id").notNull(),
     dataProfileId: uuid("data_profile_id"),
-    /** kind=while: NULL là dữ liệu hợp lệ — COMPILER phán (diagnostic while_without_max_iterations). */
+    /** kind=while: NULL is valid data — the COMPILER is the judge (diagnostic while_without_max_iterations). */
     maxIterations: integer("max_iterations"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -263,7 +265,7 @@ export const autStepLoops = pgTable(
   ],
 ).enableRLS();
 
-/** 1:1 với step kind rest. */
+/** 1:1 with step kind rest. */
 export const autRestSteps = pgTable(
   "aut_rest_steps",
   {
@@ -274,7 +276,7 @@ export const autRestSteps = pgTable(
     url: text("url").notNull(),
     headers: jsonb("headers"),
     body: text("body"),
-    /** Tên biến hứng kết quả, ví dụ `orderId` → dùng lại bằng @{orderId}. */
+    /** Name of the variable that captures the result, e.g. `orderId` → reused via @{orderId}. */
     storeAs: text("store_as"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -302,9 +304,9 @@ export const autRestSteps = pgTable(
 ).enableRLS();
 
 /**
- * Ảnh chụp BẤT BIẾN của case. APPEND-ONLY: role app chỉ có GRANT SELECT + INSERT
- * (migration *_aut_case_revisions_grants.sql) — Postgres từ chối UPDATE/DELETE,
- * nên "lịch sử không sửa được" là một quyền, không phải một lời hứa.
+ * An IMMUTABLE snapshot of a case. APPEND-ONLY: the app role only has GRANT SELECT + INSERT
+ * (migration *_aut_case_revisions_grants.sql) — Postgres refuses UPDATE/DELETE,
+ * so "history can't be edited" is a permission, not a promise.
  */
 export const autCaseRevisions = pgTable(
   "aut_case_revisions",
@@ -312,18 +314,18 @@ export const autCaseRevisions = pgTable(
     teamId: uuid("team_id").notNull(),
     id: uuid("id").primaryKey().defaultRandom(),
     caseId: uuid("case_id").notNull(),
-    /** Đếm từ 1 trong phạm vi từng case. */
+    /** Counts from 1 within each case. */
     revisionNo: integer("revision_no").notNull(),
     /**
-     * Giá trị aut_cases.version TẠI thời điểm chụp. Đây là móc để dựng BASE của
-     * diff 3 chiều: `If-Match: "7"` ⇒ tìm revision có case_version = 7.
+     * The value of aut_cases.version AT the moment of the snapshot. This is the hook used
+     * to build the BASE of the three-way diff: `If-Match: "7"` ⇒ find the revision with case_version = 7.
      */
     caseVersion: integer("case_version").notNull(),
     codec: text("codec").notNull(),
     payload: bytea("payload").notNull(),
-    /** Độ dài JSON canonical TRƯỚC nén. */
+    /** Length of the canonical JSON BEFORE compression. */
     payloadSize: integer("payload_size").notNull(),
-    /** sha256 hex của JSON canonical (không phải của blob) — dedup + toàn vẹn. */
+    /** sha256 hex of the canonical JSON (not of the blob) — dedup + integrity. */
     payloadSha256: text("payload_sha256").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: uuid("created_by"),
@@ -359,8 +361,8 @@ export const autReviewState = pgEnum("aut_review_state", [
 ]);
 
 /**
- * Bản ghi review, một dòng cho mỗi lần đưa case ra xét. Lịch sử giữ lại (không
- * xoá dòng cũ) nên UI thấy được case đã bị trả về sửa mấy lần.
+ * Review record, one row per time a case is put up for review. History is kept (old
+ * rows are never deleted) so the UI can see how many times a case was sent back for changes.
  */
 export const autCaseReviews = pgTable(
   "aut_case_reviews",
@@ -368,7 +370,7 @@ export const autCaseReviews = pgTable(
     teamId: uuid("team_id").notNull(),
     id: uuid("id").primaryKey().defaultRandom(),
     caseId: uuid("case_id").notNull(),
-    /** Bản CỤ THỂ được đưa ra xét — review một bản, không phải review "cái case". */
+    /** The SPECIFIC version put up for review — reviewing a version, not reviewing "the case". */
     revisionId: uuid("revision_id").notNull(),
     state: autReviewState("state").notNull().default("open"),
     requestedBy: uuid("requested_by").notNull(),
@@ -381,10 +383,10 @@ export const autCaseReviews = pgTable(
     unique("aut_case_reviews_team_id_unique").on(t.teamId, t.id),
     index("aut_case_reviews_case_idx").on(t.teamId, t.caseId, t.requestedAt),
     /**
-     * Tối đa MỘT review đang mở cho mỗi case — ràng buộc ở DB chứ không ở service,
-     * vì hai request submit song song sẽ cùng đọc "chưa có review nào" rồi cùng ghi.
-     * Partial index (WHERE state='open') là cách duy nhất diễn đạt "unique có điều
-     * kiện" trong Postgres. Đã kiểm chứng chạy trên PGlite 18.3 (spike 2026-08-28).
+     * At most ONE open review per case — enforced at the DB, not the service, because
+     * two concurrent submit requests would both read "no review yet" and both write.
+     * A partial index (WHERE state='open') is the only way to express "conditional
+     * unique" in Postgres. Verified running on PGlite 18.3 (spike 2026-08-28).
      */
     uniqueIndex("aut_case_reviews_one_open")
       .on(t.teamId, t.caseId)

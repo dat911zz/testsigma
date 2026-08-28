@@ -11,12 +11,11 @@ import { CaseStateError, VersionConflictError } from "../../src/modules/authorin
 import { makeTestDb, type TestDb } from "../harness/pglite.js";
 
 /**
- * drizzle-orm 0.45 BỌC lỗi driver: `message` chỉ là "Failed query: <sql>\nparams: …"
- * nên `rejects.toThrow(/duplicate key|unique/i)` KHÔNG BAO GIỜ xanh (đã dựng lại:
- * message không chứa chữ nào trong hai chữ đó). Khẳng định thẳng vào `cause` —
- * đúng pattern đã chốt ở M1 (test/schema/tenancy.test.ts) và T3 (step-schema.test.ts),
- * và chặt hơn regex: nó chỉ đích danh `aut_case_reviews_one_open` chứ không nhận
- * nhầm một unique khác.
+ * drizzle-orm 0.45 WRAPS the driver error: `message` is just "Failed query: <sql>\nparams: …"
+ * so `rejects.toThrow(/duplicate key|unique/i)` NEVER goes green (reproduced: the message
+ * contains neither word). Assert directly on `cause` instead — the same pattern settled on
+ * in M1 (test/schema/tenancy.test.ts) and T3 (step-schema.test.ts), and stricter than a
+ * regex: it names `aut_case_reviews_one_open` specifically instead of mistaking it for some other unique constraint.
  */
 type PgFailure = { readonly code?: string; readonly constraint?: string };
 
@@ -83,8 +82,8 @@ async function seedDraftWithSteps(): Promise<{ id: string; version: number }> {
   return { id: edited.id, version: edited.version };
 }
 
-describe("aut_case_reviews — hình dạng", () => {
-  it("enum aut_review_state đúng 4 trạng thái", async () => {
+describe("aut_case_reviews — shape", () => {
+  it("enum aut_review_state has exactly 4 states", async () => {
     const r = await t.db.execute(sql`
       SELECT e.enumlabel FROM pg_enum e JOIN pg_type ty ON ty.oid = e.enumtypid
       WHERE ty.typname = 'aut_review_state' ORDER BY e.enumsortorder`);
@@ -96,7 +95,7 @@ describe("aut_case_reviews — hình dạng", () => {
     ]);
   });
 
-  it("partial unique index chặn HAI review open trên cùng case", async () => {
+  it("the partial unique index blocks TWO open reviews on the same case", async () => {
     const c = await seedDraftWithSteps();
     const revId = await t.db.execute(
       sql`SELECT latest_revision_id AS r FROM aut_cases WHERE id = ${c.id}`,
@@ -111,7 +110,7 @@ describe("aut_case_reviews — hình dạng", () => {
     expect(cause?.constraint).toBe("aut_case_reviews_one_open");
   });
 
-  it("hai review ĐÃ ĐÓNG trên cùng case thì được — index chỉ ràng buộc state='open'", async () => {
+  it("two CLOSED reviews on the same case are fine — the index only constrains state='open'", async () => {
     const c = await seedDraftWithSteps();
     const revId = await t.db.execute(
       sql`SELECT latest_revision_id AS r FROM aut_cases WHERE id = ${c.id}`,
@@ -130,7 +129,7 @@ describe("aut_case_reviews — hình dạng", () => {
 });
 
 describe("submitForReview", () => {
-  it("draft -> in_review, đóng dấu submitted_at/submitted_by, mở review, bump version", async () => {
+  it("draft -> in_review, stamps submitted_at/submitted_by, opens a review, bumps version", async () => {
     const c = await seedDraftWithSteps();
     const after = await withTenant(t.db, ctx(), (tx) =>
       submitForReview(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version }),
@@ -146,7 +145,7 @@ describe("submitForReview", () => {
     expect(r.rows[0]?.["requested_by"]).toBe(alice.userId);
   });
 
-  it("submit lần hai khi đang in_review ⇒ CaseStateError", async () => {
+  it("submitting a second time while in_review ⇒ CaseStateError", async () => {
     const c = await seedDraftWithSteps();
     const s = await withTenant(t.db, ctx(), (tx) =>
       submitForReview(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version }),
@@ -157,7 +156,7 @@ describe("submitForReview", () => {
     expect(err).toBeInstanceOf(CaseStateError);
   });
 
-  it("version lệch ⇒ VersionConflictError, mine RỖNG (submit không gửi payload)", async () => {
+  it("version mismatch ⇒ VersionConflictError, mine is EMPTY (submit carries no payload)", async () => {
     const c = await seedDraftWithSteps();
     const err = await withTenant(t.db, ctx(), (tx) =>
       submitForReview(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version - 1 }),
@@ -169,7 +168,7 @@ describe("submitForReview", () => {
 });
 
 describe("decideReview", () => {
-  it("approved: đóng dấu reviewed_at/reviewed_by, GIỮ status in_review (promote là bước riêng)", async () => {
+  it("approved: stamps reviewed_at/reviewed_by, KEEPS status in_review (promote is a separate step)", async () => {
     const c = await seedDraftWithSteps();
     const s = await withTenant(t.db, ctx(), (tx) =>
       submitForReview(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version }),
@@ -186,7 +185,7 @@ describe("decideReview", () => {
     expect(r.rows[0]?.["decided_by"]).toBe(bob.userId);
   });
 
-  it("changes_requested: quay về draft, review đóng, comment được lưu", async () => {
+  it("changes_requested: goes back to draft, review closes, comment is saved", async () => {
     const c = await seedDraftWithSteps();
     const s = await withTenant(t.db, ctx(), (tx) =>
       submitForReview(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version }),
@@ -207,7 +206,7 @@ describe("decideReview", () => {
     expect(r.rows[0]?.["comment"]).toBe("thiếu bước xác nhận đơn");
   });
 
-  it("decide khi case đang draft (không có review mở) ⇒ CaseStateError", async () => {
+  it("deciding while the case is draft (no open review) ⇒ CaseStateError", async () => {
     const c = await seedDraftWithSteps();
     const err = await withTenant(t.db, ctx(), (tx) =>
       decideReview(tx, ctx(), bob, { caseId: c.id, expectedVersion: c.version, decision: "approved" }),
@@ -217,7 +216,7 @@ describe("decideReview", () => {
 });
 
 describe("withdrawReview", () => {
-  it("in_review -> draft và review chuyển withdrawn, mở đường sửa tiếp", async () => {
+  it("in_review -> draft and the review turns withdrawn, reopening the path to edit", async () => {
     const c = await seedDraftWithSteps();
     const s = await withTenant(t.db, ctx(), (tx) =>
       submitForReview(tx, ctx(), alice, { caseId: c.id, expectedVersion: c.version }),
@@ -228,7 +227,7 @@ describe("withdrawReview", () => {
     expect(after.status).toBe("draft");
     const r = await t.db.execute(sql`SELECT state FROM aut_case_reviews WHERE case_id = ${c.id}`);
     expect(r.rows[0]?.["state"]).toBe("withdrawn");
-    // và sau khi rút thì sửa được ngay (Task 9 chặn khi in_review)
+    // and once withdrawn, editing works immediately (Task 9 blocks it while in_review)
     const edited = await withTenant(t.db, ctx(), (tx) =>
       replaceSteps(tx, ctx(), alice, {
         caseId: c.id,

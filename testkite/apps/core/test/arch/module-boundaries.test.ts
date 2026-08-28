@@ -1,14 +1,14 @@
 /**
- * Guard kiến trúc — Global Constraint của plan M1 kernel-db:
- * "Bảng thuộc đúng 1 module theo ownership.json. Module khác muốn dữ liệu:
- *  gọi facade (xuôi DAG) hoặc nghe domain event."
+ * Architecture guard — the Global Constraint from the M1 kernel-db plan:
+ * "A table belongs to exactly 1 module per ownership.json. Another module wanting
+ *  that data: calls the facade (forward along the DAG) or listens for a domain event."
  *
- * Cụ thể: import chéo module PHẢI trỏ vào facade `<module>/index.js`, KHÔNG BAO GIỜ
- * với tay thẳng vào file nội bộ (`db/schema.js`, `db/repo.js`, ...).
+ * Specifically: a cross-module import MUST point at the facade `<module>/index.js`,
+ * NEVER reach directly into an internal file (`db/schema.js`, `db/repo.js`, ...).
  *
- * Vì sao guard bằng test: `aut_cases` (Task 5) là MẪU cho ~50 bảng con lai còn lại.
- * Nếu anti-pattern reach-into-internal-file lọt một lần, nó sẽ được sao chép sang
- * toàn bộ authoring/planning/orchestration/... trước khi eslint-boundaries kịp có mặt.
+ * Why guard this with a test: `aut_cases` (Task 5) is the TEMPLATE for the ~50 sibling
+ * tables still to come. If the reach-into-internal-file anti-pattern slips through even
+ * once, it will get copied across all of authoring/planning/orchestration/... before eslint-boundaries is even in place.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -27,28 +27,28 @@ function listTsFiles(dir: string): string[] {
   return out;
 }
 
-/** Chỉ quan tâm specifier tương đối (`./` hoặc `../`) — package ngoài không phải ranh giới module. */
+/** Only relative specifiers (`./` or `../`) matter — external packages aren't a module boundary concern. */
 function relativeSpecifiers(source: string): string[] {
   return [...source.matchAll(/from\s*["'](\.[^"']+)["']/g)]
     .map((m) => m[1])
     .filter((s): s is string => s !== undefined);
 }
 
-/** Tên module sở hữu file, tức segment đầu tiên dưới `src/modules/`. */
+/** The name of the module that owns a file, i.e. the first segment under `src/modules/`. */
 function moduleOf(absPath: string): string | undefined {
   const rel = path.relative(MODULES_DIR, absPath);
   if (rel.startsWith("..") || path.isAbsolute(rel)) return undefined;
   return rel.split(path.sep)[0];
 }
 
-describe("ranh giới module", () => {
+describe("module boundaries", () => {
   const files = listTsFiles(MODULES_DIR);
 
-  it("quét được source của các module", () => {
+  it("scans the modules' source", () => {
     expect(files.length).toBeGreaterThan(0);
   });
 
-  it("mọi import chéo module đều đi qua facade index.js, không chạm file nội bộ", () => {
+  it("every cross-module import goes through the index.js facade, never touching an internal file", () => {
     const violations: string[] = [];
 
     for (const file of files) {

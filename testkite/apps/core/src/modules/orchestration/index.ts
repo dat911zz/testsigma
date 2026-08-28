@@ -2,13 +2,13 @@
  * Module: orchestration
  * Owned tables: orc_ (runs, run_plans, workers, compile_diagnostics), job_runs (QUEUE OF RECORD + lease authority), egress_policies, migration_state
  *
- * Quy tắc (docs/SYSTEM_DESIGN.md §4):
- *  - Gọi XUÔI theo DAG = import facade (file này). Gọi NGƯỢC/NGANG = domain event qua transactional outbox.
- *  - Không module nào khác được đụng bảng của module này (ownership.json + eslint-boundaries cưỡng chế).
- *  - Repository phải khởi tạo với TenantContext (fail-closed) — xem lớp cách ly L1.
+ * Rules (docs/SYSTEM_DESIGN.md §4):
+ *  - FORWARD calls along the DAG = import the facade (this file). BACKWARD/SIDEWAYS calls = domain event via transactional outbox.
+ *  - No other module may touch this module's tables (enforced by ownership.json + eslint-boundaries).
+ *  - Repositories must be constructed with TenantContext (fail-closed) — see isolation layer L1.
  */
 export const MODULE = "orchestration" as const;
 
-// Facade công khai của orchestration. Bản M2 chỉ có phần tối thiểu cho onboarding.
+// Public facade of orchestration. The M2 build only has the minimum needed for onboarding.
 export { egressPolicies, egressMode } from "./db/schema.js";
 export { seedEgressObserve, EGRESS_OBSERVE_DAYS } from "./onboarding.js";

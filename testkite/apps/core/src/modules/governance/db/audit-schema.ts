@@ -1,12 +1,12 @@
 /**
- * Kiểu drizzle cho audit_events. DDL KHÔNG sinh từ file này.
+ * The drizzle types for audit_events. DDL is NOT generated from this file.
  *
- * File đặt tên `audit-schema.ts` (không phải `schema.ts`) CÓ CHỦ ĐÍCH: glob của
- * drizzle.config.ts là `./src/modules/<module>/db/schema.ts` (viết `<module>` thay
- * cho dấu sao vì `*` + `/` đóng sớm chính block comment này), nên bảng này nằm
- * ngoài tầm drizzle-kit — nếu không, drizzle-kit sẽ sinh một CREATE TABLE phẳng
- * đè lên thiết kế partition trong drizzle/0017_audit_events.sql.
- * Test `audit-partition.test.ts` so cột hai bên để chúng không trôi khỏi nhau.
+ * The file is named `audit-schema.ts` (not `schema.ts`) ON PURPOSE: drizzle.config.ts's
+ * glob is `./src/modules/<module>/db/schema.ts` (spelling out `<module>` instead of a
+ * star, since `*` + `/` would close this very comment block early), so this table stays
+ * outside drizzle-kit's reach — otherwise drizzle-kit would generate a flat CREATE TABLE
+ * that overwrites the partitioned design in drizzle/0017_audit_events.sql.
+ * The `audit-partition.test.ts` test compares columns on both sides so they can't drift apart.
  */
 import { jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 

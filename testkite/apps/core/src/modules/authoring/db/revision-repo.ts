@@ -6,7 +6,7 @@ import { autCaseRevisions } from "./schema.js";
 
 export interface InsertRevisionInput {
   readonly caseId: string;
-  /** Bất biến: bằng `caseVersion` tại thời điểm ghi. */
+  /** Invariant: equals `caseVersion` at the moment of writing. */
   readonly revisionNo: number;
   readonly caseVersion: number;
   readonly payload: RevisionPayload;
@@ -15,9 +15,9 @@ export interface InsertRevisionInput {
 }
 
 /**
- * APPEND-ONLY: lớp này CỐ TÌNH không có update/delete. Không phải kỷ luật — role
- * `testkite_app` không có grant UPDATE/DELETE trên bảng này, nên thêm phương thức
- * đó vào cũng chỉ nhận `permission denied` lúc chạy.
+ * APPEND-ONLY: this class DELIBERATELY has no update/delete. It's not just discipline —
+ * the `testkite_app` role has no UPDATE/DELETE grant on this table, so adding such a
+ * method would only get a `permission denied` at runtime.
  */
 export class RevisionRepo extends TenantRepo {
   constructor(tx: TkTx, ctx: TenantContext) {
@@ -42,7 +42,7 @@ export class RevisionRepo extends TenantRepo {
       })
       .returning({ id: autCaseRevisions.id });
     const row = rows[0];
-    if (row === undefined) throw new Error("aut_case_revisions: INSERT không trả id");
+    if (row === undefined) throw new Error("aut_case_revisions: INSERT returned no id");
     return row.id;
   }
 
@@ -73,7 +73,7 @@ export class RevisionRepo extends TenantRepo {
       .where(and(eq(autCaseRevisions.teamId, this.teamId), eq(autCaseRevisions.id, revisionId)))
       .limit(1);
     const row = rows[0];
-    if (row === undefined) throw new Error(`aut_case_revisions: không thấy revision ${revisionId}`);
+    if (row === undefined) throw new Error(`aut_case_revisions: revision ${revisionId} not found`);
     return decodeRevision(row.codec as RevisionCodec, row.payload) as RevisionPayload;
   }
 }

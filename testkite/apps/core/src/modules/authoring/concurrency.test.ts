@@ -3,26 +3,26 @@ import { formatETag, parseIfMatch } from "./concurrency.js";
 import { IfMatchRequiredError, VersionConflictError } from "./errors.js";
 
 describe("formatETag", () => {
-  it("bọc version trong dấu nháy kép — entity-tag của RFC 9110", () => {
+  it("wraps the version in double quotes — the RFC 9110 entity-tag", () => {
     expect(formatETag(1)).toBe('"1"');
     expect(formatETag(42)).toBe('"42"');
   });
 });
 
 describe("parseIfMatch", () => {
-  it("đọc được entity-tag có nháy", () => {
+  it("parses a quoted entity-tag", () => {
     expect(parseIfMatch('"7"')).toBe(7);
   });
 
-  it("chấp nhận dạng trần (client viết tay hay quên nháy)", () => {
+  it("accepts the bare form (a hand-written client forgetting the quotes)", () => {
     expect(parseIfMatch("7")).toBe(7);
   });
 
-  it("chấp nhận weak tag W/\"7\"", () => {
+  it("accepts a weak tag W/\"7\"", () => {
     expect(parseIfMatch('W/"7"')).toBe(7);
   });
 
-  it("THIẾU header ⇒ IfMatchRequiredError (HTTP 428)", () => {
+  it("MISSING header ⇒ IfMatchRequiredError (HTTP 428)", () => {
     expect(() => parseIfMatch(undefined)).toThrow(IfMatchRequiredError);
     try {
       parseIfMatch(undefined);
@@ -32,16 +32,16 @@ describe("parseIfMatch", () => {
     }
   });
 
-  it("header rỗng hoặc toàn khoảng trắng ⇒ 428", () => {
+  it("empty header or whitespace-only ⇒ 428", () => {
     expect(() => parseIfMatch("")).toThrow(IfMatchRequiredError);
     expect(() => parseIfMatch("   ")).toThrow(IfMatchRequiredError);
   });
 
-  it("`*` bị TỪ CHỐI — nó nghĩa là tắt kiểm tra đồng thời", () => {
+  it("`*` is REJECTED — it means turning off the concurrency check", () => {
     expect(() => parseIfMatch("*")).toThrow(IfMatchRequiredError);
   });
 
-  it("giá trị không phải số nguyên dương ⇒ 428", () => {
+  it("a value that isn't a positive integer ⇒ 428", () => {
     for (const bad of ['"abc"', '"0"', '"-1"', '"1.5"', '"1,2"']) {
       expect(() => parseIfMatch(bad)).toThrow(IfMatchRequiredError);
     }
@@ -49,7 +49,7 @@ describe("parseIfMatch", () => {
 });
 
 describe("VersionConflictError", () => {
-  it("mang nguyên diff 3 chiều để route trả thẳng vào body 409", () => {
+  it("carries the full three-way diff so the route can return it straight into the 409 body", () => {
     const diff = {
       baseVersion: 7,
       baseRevisionId: "r7",

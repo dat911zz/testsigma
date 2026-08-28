@@ -1,14 +1,15 @@
 /**
- * JSON canonical: khoá object sắp tăng dần, thứ tự MẢNG giữ nguyên.
+ * Canonical JSON: object keys sorted ascending, ARRAY order left untouched.
  *
- * Vì sao cần: sha256 của revision phải ổn định giữa các lần chạy và giữa các
- * đường dựng payload khác nhau (đọc từ DB vs nhận từ HTTP). `JSON.stringify`
- * thường giữ thứ tự chèn khoá ⇒ cùng dữ liệu, khác hash. Thứ tự mảng thì
- * NGƯỢC LẠI: nó là dữ liệu nghiệp vụ (thứ tự step), sắp lại là làm hỏng case.
+ * Why this is needed: a revision's sha256 must be stable across runs and across the
+ * different paths that build the payload (read from the DB vs. received over HTTP).
+ * `JSON.stringify` normally keeps key insertion order ⇒ same data, different hash. Array
+ * order is the OPPOSITE case: it's business data (step order), so re-sorting it would
+ * corrupt the case.
  */
 function canonicalize(value: unknown): unknown {
   if (typeof value === "number" && !Number.isFinite(value)) {
-    throw new Error("canonicalJson: số không hữu hạn (NaN/Infinity) làm hash bất định");
+    throw new Error("canonicalJson: non-finite number (NaN/Infinity) makes the hash non-deterministic");
   }
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -16,8 +17,8 @@ function canonicalize(value: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(src).sort()) {
     const v = src[key];
-    // exactOptionalPropertyTypes: DTO optional cho ra `undefined` thật —
-    // bỏ hẳn khoá thay vì để JSON.stringify âm thầm bỏ, để hash khớp cả hai đường.
+    // exactOptionalPropertyTypes: an optional DTO field yields a real `undefined` —
+    // drop the key entirely instead of letting JSON.stringify silently skip it, so the hash matches on both paths.
     if (v === undefined) continue;
     out[key] = canonicalize(v);
   }

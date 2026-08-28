@@ -1,12 +1,12 @@
 /**
- * Dựng `CompileSnapshot` — đầu vào DUY NHẤT của @testkite/run-compiler.
- * Compiler là hàm THUẦN, không I/O: mọi thứ nó cần phải được fetch sẵn ở đây.
+ * Builds the `CompileSnapshot` — the ONLY input to @testkite/run-compiler.
+ * The compiler is a PURE function, no I/O: everything it needs must already be fetched here.
  *
- * RANH GIỚI MODULE (blueprint §4 DAG một chiều):
- *   - elements/testdata đứng TRƯỚC authoring ⇒ được phép gọi, nhưng M2 chưa có
- *     hai module đó nên chúng vào qua CỔNG TIÊM (SnapshotDeps). M4 nối facade thật.
- *   - planning (pln_environments) đứng SAU authoring ⇒ CẤM import. Vì vậy `env` là
- *     THAM SỐ do orchestration (phase 0) nạp và truyền xuống.
+ * MODULE BOUNDARY (blueprint §4, one-way DAG):
+ *   - elements/testdata sit BEFORE authoring ⇒ calling them is allowed, but M2 doesn't
+ *     have those two modules yet so they come in through an INJECTION PORT (SnapshotDeps). M4 wires up the real facade.
+ *   - planning (pln_environments) sits AFTER authoring ⇒ import is FORBIDDEN. So `env` is a
+ *     PARAMETER loaded by orchestration (phase 0) and passed down.
  */
 import type {
   AuthoredCaseDto,
@@ -36,13 +36,13 @@ export interface SnapshotInput {
   readonly pin: SnapshotPin;
 }
 
-/** Trần cứng khi đóng bao prereq + step group. Vượt = dữ liệu sai, không phải case to. */
+/** Hard cap when closing over prereqs + step groups. Exceeding it = bad data, not just a big case. */
 export const MAX_SNAPSHOT_CASES = 200;
 
-/** Dựng lại CÂY step từ danh sách phẳng (parentId + after) và đánh lại ordinal từ 1. */
+/** Rebuilds the step TREE from the flat list (parentId + after) and renumbers ordinals from 1. */
 function toAuthoredSteps(steps: readonly RevisionStep[], parentId: string | null): AuthoredStepDto[] {
   const siblings = steps.filter((s) => s.parentId === parentId);
-  // `after` là danh sách liên kết đơn: bắt đầu từ phần tử có after = null.
+  // `after` is a singly-linked list: start from the element whose after = null.
   const byAfter = new Map<string | null, RevisionStep>();
   for (const s of siblings) byAfter.set(s.after, s);
 
@@ -53,7 +53,7 @@ function toAuthoredSteps(steps: readonly RevisionStep[], parentId: string | null
     ordered.push(cursor);
     cursor = byAfter.get(cursor.id);
   }
-  // Payload hỏng (vòng lặp / mất mắt xích): giữ phần dựng được, nối phần còn lại.
+  // Corrupt payload (cycle / broken link): keep what we could rebuild, append the rest.
   for (const s of siblings) if (!ordered.includes(s)) ordered.push(s);
 
   return ordered.map((s, i): AuthoredStepDto => {
@@ -104,8 +104,8 @@ function toAuthoredSteps(steps: readonly RevisionStep[], parentId: string | null
           kind: "rest",
           ordinal,
           renderedSentence: s.renderedSentence,
-          // REST của DB (method/url/headers/body/storeAs) dẹt thành `args` của hợp
-          // đồng — headers đi dạng JSON string vì args là Record<string,string>.
+          // The DB's REST fields (method/url/headers/body/storeAs) flatten into the contract's
+          // `args` — headers travel as a JSON string because args is Record<string,string>.
           args: {
             ...(s.rest === undefined
               ? {}
@@ -157,19 +157,19 @@ export async function buildCompileSnapshot(
     if (caseId === undefined || caseId in collected) continue;
     if (Object.keys(collected).length >= MAX_SNAPSHOT_CASES) {
       throw new CaseStateError(
-        `Chuỗi case vượt trần ${MAX_SNAPSHOT_CASES} — nghi đồ thị prereq/step group dựng sai`,
+        `Case chain exceeds the cap of ${MAX_SNAPSHOT_CASES} — suspect a malformed prereq/step group graph`,
       );
     }
     const row = await cases.findById(caseId);
-    // RLS đã lọc tenant khác ⇒ 404, không bao giờ 403 (blueprint §3 L3).
+    // RLS already filtered out other tenants ⇒ 404, never 403 (blueprint §3 L3).
     if (row === undefined) throw new CaseNotFoundError(caseId);
 
     const revisionId = input.pin === "ready" ? row.readyRevisionId : row.latestRevisionId;
     if (revisionId === null) {
       throw new CaseStateError(
         input.pin === "ready"
-          ? `Case ${caseId} chưa có bản ready — promote nó trước khi chạy theo lịch/CI`
-          : `Case ${caseId} chưa có revision nào`,
+          ? `Case ${caseId} does not have a ready revision yet — promote it before running on schedule/CI`
+          : `Case ${caseId} has no revision yet`,
       );
     }
     const payload = await revisions.loadPayload(revisionId);
@@ -185,7 +185,7 @@ export async function buildCompileSnapshot(
     }
   }
 
-  // Gọi ĐÚNG MỘT lần cho mỗi cổng: N+1 query ở phase 0 là đúng lớp lỗi hệ cũ chết vì nó.
+  // Called EXACTLY ONCE per port: an N+1 query at phase 0 is the exact class of bug that killed the legacy system.
   const elements = await deps.loadElements([...elementIds].sort());
   const dataProfiles = await deps.loadDataProfiles([...dataProfileIds].sort());
 

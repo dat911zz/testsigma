@@ -1,13 +1,13 @@
 /**
- * Phần planning của onboarding: 3 environment stub. Chạy trong TRANSACTION của
- * onboarding (nhận `TkTx`) nên env không bao giờ tồn tại mà thiếu team/project.
+ * The planning part of onboarding: 3 environment stubs. Runs inside onboarding's
+ * TRANSACTION (takes a `TkTx`), so an env can never exist without its team/project.
  */
 import { assertTenantContext, type TenantContext, type TkTx } from "../kernel/index.js";
 import { plnEnvironments } from "./db/schema.js";
 
 export const ONBOARD_ENV_NAMES = ["dev", "staging", "prod"] as const;
 
-/** 3 env stub, base_url thật của team; idempotent theo (team, project, name). */
+/** 3 env stubs, using the team's real base_url; idempotent on (team, project, name). */
 export async function seedEnvironmentStubs(
   tx: TkTx,
   ctx: TenantContext,
@@ -30,8 +30,8 @@ export async function seedEnvironmentStubs(
     })
     .returning({ id: plnEnvironments.id });
   if (rows.length > 0) return rows.map((r) => r.id);
-  // Chạy lại idempotent: không INSERT thêm gì, nhưng người gọi vẫn cần id của 3 env
-  // đang có. RLS đã ghim truy vấn này vào đúng team trong ctx.
+  // Idempotent re-run: nothing new is INSERTed, but the caller still needs the ids of
+  // the 3 existing envs. RLS already pins this query to the right team in ctx.
   const existing = await tx.select({ id: plnEnvironments.id }).from(plnEnvironments);
   return existing.map((r) => r.id);
 }

@@ -1,7 +1,8 @@
 /**
- * Ghi audit. Chỉ nhận `TkTx` (không nhận `TkDb`) — đúng khuôn `enqueueOutbox` của M1:
- * kiểu ép người gọi phải đang ở trong transaction của hành động, nên không tồn tại
- * "audit ma" (audit có mà hành động rollback) lẫn "hành động câm" (làm mà không ghi).
+ * Writes an audit entry. Only takes a `TkTx` (never a `TkDb`) — the same mold as M1's
+ * `enqueueOutbox`: the type forces the caller to already be inside the action's own
+ * transaction, so there's no such thing as a "ghost audit" (an audit entry surviving an
+ * action's rollback) or a "silent action" (something happens but nothing gets recorded).
  */
 import { assertTenantContext, type TenantContext, type TkTx } from "../../kernel/index.js";
 import { auditEvents } from "../db/audit-schema.js";
@@ -29,10 +30,10 @@ export async function writeAuditEvent(
   event: AuditEventInput,
 ): Promise<void> {
   const teamId = assertTenantContext(ctx);
-  if (event.action.trim().length === 0) throw new Error("audit: action không được rỗng");
+  if (event.action.trim().length === 0) throw new Error("audit: action must not be empty");
   const meta = event.meta ?? {};
   if (Buffer.byteLength(JSON.stringify(meta), "utf8") > MAX_META_BYTES) {
-    throw new Error(`audit: meta vượt ${MAX_META_BYTES} byte — audit không phải chỗ đổ log`);
+    throw new Error(`audit: meta exceeds ${MAX_META_BYTES} bytes — audit is not a log dump`);
   }
   await tx.insert(auditEvents).values({
     teamId,
@@ -47,7 +48,7 @@ export async function writeAuditEvent(
   });
 }
 
-/** SQL cho job hằng tháng (M6): đảm bảo có sẵn partition cho N tháng tới. */
+/** SQL for the monthly job (M6): ensures a partition exists for the next N months. */
 export function ensureAuditPartitionsSql(monthsAhead: number): string {
   return `DO $$ DECLARE i int; BEGIN FOR i IN 0..${monthsAhead} LOOP
     PERFORM ensure_audit_partition((date_trunc('month', now()) + (i || ' months')::interval)::date);

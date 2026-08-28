@@ -4,11 +4,11 @@ import { STEP_KINDS } from "@testkite/contract";
 import { makeTestDb, type TestDb } from "../harness/pglite.js";
 
 /**
- * drizzle-orm 0.45 BỌC lỗi driver: `message` chỉ là "Failed query: <sql>\nparams: …",
- * tên constraint KHÔNG nằm trong đó — nên `rejects.toThrow(/aut_steps_kind_shape/i)`
- * không bao giờ xanh, còn `rejects.toThrow(/unique/i)` thì xanh GIẢ (khớp chữ trong
- * chính câu SQL). Khẳng định thẳng vào `cause` (SQLSTATE + tên constraint) — đúng
- * pattern đã chốt ở M1 (test/schema/tenancy.test.ts) và T2 (case-schema.test.ts).
+ * drizzle-orm 0.45 WRAPS the driver error: `message` is just "Failed query: <sql>\nparams: …",
+ * the constraint name is NOT in there — so `rejects.toThrow(/aut_steps_kind_shape/i)`
+ * never goes green, while `rejects.toThrow(/unique/i)` goes FALSELY green (it matches text
+ * in the SQL statement itself). Assert directly on `cause` (SQLSTATE + constraint name) —
+ * the same pattern settled on in M1 (test/schema/tenancy.test.ts) and T2 (case-schema.test.ts).
  */
 type PgFailure = { readonly code?: string; readonly constraint?: string };
 
@@ -53,22 +53,22 @@ beforeEach(async () => {
   caseId = String(c.rows[0]?.["id"]);
 });
 
-describe("aut_steps — hình dạng", () => {
-  it("enum aut_step_kind khớp CHÍNH XÁC STEP_KINDS của contract", async () => {
+describe("aut_steps — shape", () => {
+  it("enum aut_step_kind matches STEP_KINDS from the contract EXACTLY", async () => {
     const r = await t.db.execute(sql`
       SELECT e.enumlabel FROM pg_enum e JOIN pg_type ty ON ty.oid = e.enumtypid
       WHERE ty.typname = 'aut_step_kind' ORDER BY e.enumsortorder`);
     expect(r.rows.map((x) => x["enumlabel"])).toEqual([...STEP_KINDS]);
   });
 
-  it("nhận step action hợp lệ", async () => {
+  it("accepts a valid action step", async () => {
     const r = await t.db.execute(sql`
       INSERT INTO aut_steps (team_id, case_id, ordinal, kind, rendered_sentence, verb_op_key)
       VALUES (${teamId},${caseId},1,'action','Click on login','click') RETURNING id`);
     expect(String(r.rows[0]?.["id"])).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  it("CHECK chặn action KHÔNG có verb_op_key", async () => {
+  it("CHECK blocks an action WITHOUT a verb_op_key", async () => {
     const cause = await violationOf(
       t.db.execute(sql`
         INSERT INTO aut_steps (team_id, case_id, ordinal, kind, rendered_sentence)
@@ -78,7 +78,7 @@ describe("aut_steps — hình dạng", () => {
     expect(cause?.constraint).toBe("aut_steps_kind_shape");
   });
 
-  it("CHECK chặn step_group mang verb_op_key (lẫn cột của kind khác)", async () => {
+  it("CHECK blocks a step_group carrying verb_op_key (columns from another kind bleeding in)", async () => {
     const cause = await violationOf(
       t.db.execute(sql`
         INSERT INTO aut_steps (team_id, case_id, ordinal, kind, rendered_sentence, step_group_case_id, verb_op_key)
@@ -88,7 +88,7 @@ describe("aut_steps — hình dạng", () => {
     expect(cause?.constraint).toBe("aut_steps_kind_shape");
   });
 
-  it("CHECK chặn if KHÔNG có condition_expected", async () => {
+  it("CHECK blocks an if WITHOUT condition_expected", async () => {
     const cause = await violationOf(
       t.db.execute(sql`
         INSERT INTO aut_steps (team_id, case_id, ordinal, kind, rendered_sentence)
@@ -98,7 +98,7 @@ describe("aut_steps — hình dạng", () => {
     expect(cause?.constraint).toBe("aut_steps_kind_shape");
   });
 
-  it("nhận for/while/rest — chi tiết nằm ở bảng 1:1, aut_steps chỉ giữ phần chung", async () => {
+  it("accepts for/while/rest — details live in the 1:1 tables, aut_steps only keeps the common part", async () => {
     for (const [i, kind] of (["for", "while", "rest"] as const).entries()) {
       await t.db.execute(sql`
         INSERT INTO aut_steps (team_id, case_id, ordinal, kind, rendered_sentence)
@@ -108,7 +108,7 @@ describe("aut_steps — hình dạng", () => {
     expect(r.rows[0]?.["n"]).toBe(3);
   });
 
-  it("UNIQUE (team_id, case_id, parent_step_id, ordinal) NULLS NOT DISTINCT — hai step gốc cùng ordinal bị chặn", async () => {
+  it("UNIQUE (team_id, case_id, parent_step_id, ordinal) NULLS NOT DISTINCT — two root steps sharing an ordinal are blocked", async () => {
     await t.db.execute(sql`
       INSERT INTO aut_steps (team_id, case_id, ordinal, kind, rendered_sentence, verb_op_key)
       VALUES (${teamId},${caseId},1,'action','s1','click')`);
@@ -121,7 +121,7 @@ describe("aut_steps — hình dạng", () => {
     expect(cause?.constraint).toBe("aut_steps_position_unique");
   });
 
-  it("composite FK chặn step trỏ case của tenant khác", async () => {
+  it("the composite FK blocks a step pointing at another tenant's case", async () => {
     const cause = await violationOf(
       t.db.execute(sql`
         INSERT INTO aut_steps (team_id, case_id, ordinal, kind, rendered_sentence, verb_op_key)
@@ -131,7 +131,7 @@ describe("aut_steps — hình dạng", () => {
     expect(cause?.constraint).toBe("aut_steps_case_fk");
   });
 
-  it("xoá case CASCADE xuống steps", async () => {
+  it("deleting a case CASCADEs down to its steps", async () => {
     await t.db.execute(sql`
       INSERT INTO aut_steps (team_id, case_id, ordinal, kind, rendered_sentence, verb_op_key)
       VALUES (${teamId},${caseId},1,'action','s','click')`);
@@ -149,7 +149,7 @@ describe("aut_step_loops / aut_rest_steps — 1:1", () => {
     return String(r.rows[0]?.["id"]);
   }
 
-  it("aut_step_loops UNIQUE theo step — không thể gắn 2 cấu hình vòng lặp cho 1 step", async () => {
+  it("aut_step_loops is UNIQUE per step — you can't attach 2 loop configs to 1 step", async () => {
     const stepId = await mkStep("for");
     await t.db.execute(sql`
       INSERT INTO aut_step_loops (team_id, step_id, data_profile_id)
@@ -163,7 +163,7 @@ describe("aut_step_loops / aut_rest_steps — 1:1", () => {
     expect(cause?.constraint).toBe("aut_step_loops_step_unique");
   });
 
-  it("aut_rest_steps UNIQUE theo step + CASCADE khi xoá step", async () => {
+  it("aut_rest_steps is UNIQUE per step + CASCADEs when the step is deleted", async () => {
     const stepId = await mkStep("rest");
     await t.db.execute(sql`
       INSERT INTO aut_rest_steps (team_id, step_id, method, url)
@@ -174,8 +174,8 @@ describe("aut_step_loops / aut_rest_steps — 1:1", () => {
   });
 });
 
-describe("RLS + GRANT cho 3 bảng step", () => {
-  it("cả 3 bảng bật row security", async () => {
+describe("RLS + GRANT for the 3 step tables", () => {
+  it("all 3 tables have row security enabled", async () => {
     const r = await t.db.execute(sql`
       SELECT relname, relrowsecurity FROM pg_class
       WHERE relname IN ('aut_steps','aut_step_loops','aut_rest_steps') AND relkind='r'`);
@@ -183,7 +183,7 @@ describe("RLS + GRANT cho 3 bảng step", () => {
     for (const row of r.rows) expect(row["relrowsecurity"]).toBe(true);
   });
 
-  it("role app đọc được step của team mình và KHÔNG thấy team khác", async () => {
+  it("the app role reads its own team's steps and CANNOT see another team's", async () => {
     await t.db.execute(sql`
       INSERT INTO aut_steps (team_id, case_id, ordinal, kind, rendered_sentence, verb_op_key)
       VALUES (${teamId},${caseId},1,'action','mine','click')`);

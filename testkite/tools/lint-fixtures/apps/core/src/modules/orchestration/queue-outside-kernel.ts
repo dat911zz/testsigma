@@ -1,4 +1,4 @@
-/** VI PHẠM CÓ CHỦ ĐÍCH: BullMQ chỉ được xuất hiện trong kernel. */
+/** DELIBERATE VIOLATION: BullMQ is only allowed to appear inside kernel. */
 import { Queue } from "bullmq";
 
 export const q = Queue;

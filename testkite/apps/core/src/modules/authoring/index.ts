@@ -2,15 +2,15 @@
  * Module: authoring
  * Owned tables: aut_ (cases, steps, loops, rest_steps, revisions, reviews, locks, tags, priorities, types) + published_step_groups/subscriptions
  *
- * Quy tắc (docs/SYSTEM_DESIGN.md §4):
- *  - Gọi XUÔI theo DAG = import facade (file này). Gọi NGƯỢC/NGANG = domain event qua transactional outbox.
- *  - Không module nào khác được đụng bảng của module này (ownership.json + eslint-boundaries cưỡng chế).
- *  - Repository phải khởi tạo với TenantContext (fail-closed) — xem lớp cách ly L1.
+ * Rules (docs/SYSTEM_DESIGN.md §4):
+ *  - FORWARD calls along the DAG = import the facade (this file). BACKWARD/SIDEWAYS calls = domain event via transactional outbox.
+ *  - No other module may touch this module's tables (enforced by ownership.json + eslint-boundaries).
+ *  - Repositories must be constructed with TenantContext (fail-closed) — see isolation layer L1.
  */
 export const MODULE = "authoring" as const;
 
-// Facade công khai của authoring. Orchestration gọi buildCompileSnapshot ở phase 0;
-// route/HTTP gọi service; KHÔNG module nào được với tay vào ./db/*.js.
+// Public facade of authoring. Orchestration calls buildCompileSnapshot at phase 0;
+// routes/HTTP call the service; NO module is allowed to reach into ./db/*.js directly.
 export { createCase, replaceSteps, toCaseSummary, type Actor } from "./case-service.js";
 export {
   decideReview,

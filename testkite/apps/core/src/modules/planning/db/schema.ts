@@ -1,8 +1,8 @@
 /**
- * Module planning — pln_environments (bản M2 tối thiểu cho onboarding).
- * blueprint §2: environment là PROJECT-SCOPED và base_url BẮT BUỘC.
- * Stub sinh lúc onboard mang status='stub' + base_url thật của team; chuyển 'active'
- * khi operator xác nhận (M4 bổ sung secret_refs, health probe).
+ * Module planning — pln_environments (the minimal M2 build for onboarding).
+ * blueprint §2: an environment is PROJECT-SCOPED and base_url is REQUIRED.
+ * The stub created at onboarding carries status='stub' + the team's real base_url; it turns
+ * 'active' once an operator confirms it (M4 adds secret_refs, health probe).
  */
 import { sql } from "drizzle-orm";
 import {
@@ -39,7 +39,7 @@ export const plnEnvironments = pgTable(
     unique("pln_environments_team_id_unique").on(t.teamId, t.id),
     unique("pln_environments_team_project_name_unique").on(t.teamId, t.projectId, t.name),
     index("pln_environments_team_idx").on(t.teamId, t.projectId),
-    // Lớp L2: env không bao giờ trỏ sang project của team khác.
+    // Layer L2: an env can never point at another team's project.
     foreignKey({
       name: "pln_environments_project_fk",
       columns: [t.teamId, t.projectId],

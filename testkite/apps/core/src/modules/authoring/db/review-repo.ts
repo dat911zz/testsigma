@@ -6,9 +6,9 @@ export type ReviewRow = typeof autCaseReviews.$inferSelect;
 export type ReviewClosedState = "approved" | "changes_requested" | "withdrawn";
 
 /**
- * L1: mọi truy vấn mang `teamId` của TenantContext. Cố tình KHÔNG có `delete`:
- * role app không có GRANT DELETE trên bảng này (0013_aut_case_reviews_grants.sql)
- * — lịch sử ai yêu cầu / ai duyệt là bằng chứng four-eyes.
+ * L1: every query carries the TenantContext's `teamId`. Deliberately has NO `delete`:
+ * the app role has no GRANT DELETE on this table (0013_aut_case_reviews_grants.sql)
+ * — the history of who requested / who decided is the four-eyes evidence.
  */
 export class ReviewRepo extends TenantRepo {
   constructor(tx: TkTx, ctx: TenantContext) {
@@ -21,7 +21,7 @@ export class ReviewRepo extends TenantRepo {
       .values({ teamId: this.teamId, caseId, revisionId, state: "open", requestedBy })
       .returning();
     const row = rows[0];
-    if (row === undefined) throw new Error("aut_case_reviews: INSERT không trả row");
+    if (row === undefined) throw new Error("aut_case_reviews: INSERT returned no row");
     return row;
   }
 
@@ -67,7 +67,7 @@ export class ReviewRepo extends TenantRepo {
       .where(and(eq(autCaseReviews.teamId, this.teamId), eq(autCaseReviews.id, reviewId)))
       .returning();
     const row = rows[0];
-    if (row === undefined) throw new Error("aut_case_reviews: UPDATE không trả row");
+    if (row === undefined) throw new Error("aut_case_reviews: UPDATE returned no row");
     return row;
   }
 }

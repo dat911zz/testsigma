@@ -1,10 +1,10 @@
 /**
- * Module governance — quota_limits (ownership.json). Bản M2 là bản TỐI THIỂU đủ cho
- * onboarding: 6 chỉ số của blueprint §3, chưa có reservation/ledger (M5).
+ * Module governance — quota_limits (ownership.json). The M2 build is the MINIMUM
+ * needed for onboarding: the 6 metrics from blueprint §3, no reservation/ledger yet (M5).
  *
- * `team_id` vừa là PK vừa là khoá tenant: mỗi team đúng MỘT bộ hạn mức, nên
- * `ON CONFLICT (team_id) DO NOTHING` của seed là phép idempotent do DB canh, không
- * phải do người gọi nhớ kiểm tra.
+ * `team_id` is both the PK and the tenant key: each team gets exactly ONE set of
+ * limits, so the seed's `ON CONFLICT (team_id) DO NOTHING` is idempotency guarded by the
+ * DB, not something the caller has to remember to check.
  */
 import { sql } from "drizzle-orm";
 import { index, integer, pgPolicy, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";

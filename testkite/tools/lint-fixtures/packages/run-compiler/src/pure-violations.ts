@@ -1,4 +1,4 @@
-/** VI PHẠM CÓ CHỦ ĐÍCH — bốn kiểu phá purity trong một file. */
+/** DELIBERATE VIOLATION — four kinds of purity break in one file. */
 import { readFileSync } from "node:fs";
 
 export const readIt = readFileSync;

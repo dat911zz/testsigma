@@ -7,13 +7,13 @@ let teamId = "";
 let projectId = "";
 
 /**
- * drizzle-orm 0.45 BỌC lỗi driver: `message` chỉ là "Failed query: <sql>\nparams: …",
- * tên constraint KHÔNG nằm trong đó. Đo thật trên PGlite 18.3:
- *   - `rejects.toThrow(/aut_cases_status_timeline|check constraint/i)` KHÔNG BAO GIỜ xanh;
- *   - `rejects.toThrow(/version/i)` thì xanh GIẢ — nó khớp chữ "version" trong chính
- *     câu SQL, nên vẫn xanh cả khi cột `version` chưa tồn tại (đã thấy ở pha ĐỎ).
- * Vì vậy khẳng định thẳng vào `cause` (SQLSTATE + tên constraint) — đúng pattern đã
- * chốt ở M1, xem test/schema/tenancy.test.ts.
+ * drizzle-orm 0.45 WRAPS the driver error: `message` is just "Failed query: <sql>\nparams: …",
+ * the constraint name is NOT in there. Measured for real on PGlite 18.3:
+ *   - `rejects.toThrow(/aut_cases_status_timeline|check constraint/i)` NEVER goes green;
+ *   - `rejects.toThrow(/version/i)` goes FALSELY green — it matches the word "version" in
+ *     the SQL statement itself, so it's still green even when the `version` column doesn't exist yet (seen at the RED phase).
+ * So assert directly on `cause` (SQLSTATE + constraint name) — the same pattern settled
+ * on in M1, see test/schema/tenancy.test.ts.
  */
 type PgFailure = { readonly code?: string; readonly constraint?: string };
 
@@ -51,14 +51,14 @@ beforeEach(async () => {
 });
 
 describe("aut_cases — workflow columns", () => {
-  it("aut_case_status là enum đúng 3 trạng thái", async () => {
+  it("aut_case_status is an enum with exactly 3 states", async () => {
     const r = await t.db.execute(sql`
       SELECT e.enumlabel FROM pg_enum e JOIN pg_type ty ON ty.oid = e.enumtypid
       WHERE ty.typname = 'aut_case_status' ORDER BY e.enumsortorder`);
     expect(r.rows.map((x) => x["enumlabel"])).toEqual(["draft", "in_review", "ready"]);
   });
 
-  it("có đủ 5 timestamp workflow", async () => {
+  it("has all 5 workflow timestamps", async () => {
     const r = await t.db.execute(sql`
       SELECT column_name FROM information_schema.columns
       WHERE table_name = 'aut_cases' AND column_name LIKE '%_at'`);
@@ -66,7 +66,7 @@ describe("aut_cases — workflow columns", () => {
     expect(cols).toEqual(["created_at", "promoted_at", "reviewed_at", "submitted_at", "updated_at"]);
   });
 
-  it("case mới mặc định draft, version = 1, ba timestamp sau NULL", async () => {
+  it("a new case defaults to draft, version = 1, the three later timestamps NULL", async () => {
     const r = await t.db.execute(sql`
       INSERT INTO aut_cases (team_id, project_id, name) VALUES (${teamId}, ${projectId}, 'C1')
       RETURNING status, version, submitted_at, reviewed_at, promoted_at`);
@@ -78,7 +78,7 @@ describe("aut_cases — workflow columns", () => {
     expect(row?.["promoted_at"]).toBeNull();
   });
 
-  it("CHECK chặn status=in_review khi submitted_at NULL", async () => {
+  it("CHECK blocks status=in_review when submitted_at is NULL", async () => {
     const cause = await violationOf(
       t.db.execute(sql`
         INSERT INTO aut_cases (team_id, project_id, name, status)
@@ -88,7 +88,7 @@ describe("aut_cases — workflow columns", () => {
     expect(cause?.constraint).toBe("aut_cases_status_timeline");
   });
 
-  it("CHECK chặn status=ready khi thiếu promoted_at", async () => {
+  it("CHECK blocks status=ready when promoted_at is missing", async () => {
     const cause = await violationOf(
       t.db.execute(sql`
         INSERT INTO aut_cases (team_id, project_id, name, status, submitted_at, reviewed_at)
@@ -98,7 +98,7 @@ describe("aut_cases — workflow columns", () => {
     expect(cause?.constraint).toBe("aut_cases_status_timeline");
   });
 
-  it("CHECK chặn version <= 0", async () => {
+  it("CHECK blocks version <= 0", async () => {
     const cause = await violationOf(
       t.db.execute(sql`
         INSERT INTO aut_cases (team_id, project_id, name, version)
@@ -108,7 +108,7 @@ describe("aut_cases — workflow columns", () => {
     expect(cause?.constraint).toBe("aut_cases_version_positive");
   });
 
-  it("teams.allow_self_promote mặc định FALSE — four-eyes bật sẵn, phải TỰ TAY tắt", async () => {
+  it("teams.allow_self_promote defaults to FALSE — four-eyes is on by default, must be turned off BY HAND", async () => {
     const r = await t.db.execute(sql`SELECT allow_self_promote FROM teams WHERE id = ${teamId}`);
     expect(r.rows[0]?.["allow_self_promote"]).toBe(false);
   });

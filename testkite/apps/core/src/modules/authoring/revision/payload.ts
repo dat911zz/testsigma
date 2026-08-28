@@ -1,10 +1,10 @@
 /**
- * Hình dạng ảnh chụp lưu trong `aut_case_revisions.payload` (sau canonical + zstd).
+ * Snapshot shape stored in `aut_case_revisions.payload` (after canonical + zstd).
  *
- * KHÔNG có `ordinal`: vị trí được mã hoá bằng `after` = id step liền trước CÙNG CHA.
- * Lý do đo được (spike 2026-08-28): ordinal là số nên chèn một step làm đánh số lại
- * cả đuôi ⇒ mọi thuật toán diff báo N thay đổi cho 1 hành động. Với `after`, chèn
- * một step chỉ chạm đúng hai mục.
+ * Has NO `ordinal`: position is encoded via `after` = the id of the preceding step with
+ * the SAME parent. Measured reason (spike 2026-08-28): ordinal is a number, so inserting
+ * a step renumbers the entire tail ⇒ every diff algorithm reports N changes for 1 action.
+ * With `after`, inserting a step touches exactly two entries.
  */
 import type { StepKindDto } from "@testkite/contract";
 
@@ -24,9 +24,9 @@ export interface RevisionRest {
 export interface RevisionStep {
   readonly id: string;
   readonly kind: StepKindDto;
-  /** null = step gốc của case. */
+  /** null = the case's root step. */
   readonly parentId: string | null;
-  /** null = step đầu tiên trong danh sách anh em. */
+  /** null = the first step in the sibling list. */
   readonly after: string | null;
   readonly renderedSentence: string;
   readonly verbOpKey?: string;
@@ -47,6 +47,6 @@ export interface RevisionCase {
 
 export interface RevisionPayload {
   readonly case: RevisionCase;
-  /** Danh sách PHẲNG mọi step (kể cả step con) — cây dựng lại từ parentId + after. */
+  /** A FLAT list of every step (including children) — the tree is rebuilt from parentId + after. */
   readonly steps: readonly RevisionStep[];
 }
