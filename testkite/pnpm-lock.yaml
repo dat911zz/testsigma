@@ -35,6 +35,9 @@ importers:
 
   apps/core:
     dependencies:
+      '@testkite/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@electric-sql/pglite@0.5.8)(@types/pg@8.23.1)(pg@8.23.0)

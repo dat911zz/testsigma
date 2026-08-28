@@ -744,7 +744,7 @@ git commit -m "M2-AUT T2: aut_cases 5 timestamp workflow + version + allow_self_
 >
 > `subscription_id` (XOR với `step_group_case_id`, blueprint §2) thuộc phần **sharing** (`step_group_subscriptions`) — ngoài phạm vi M2, xem Self-Review.
 
-- [ ] **Step 1: Viết test ĐỎ `apps/core/test/authoring/step-schema.test.ts`**
+- [x] **Step 1: Viết test ĐỎ `apps/core/test/authoring/step-schema.test.ts`**
 
 ```ts
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
@@ -915,12 +915,12 @@ describe("RLS + GRANT cho 3 bảng step", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/step-schema.test.ts`
 Expected: FAIL — `relation "aut_steps" does not exist`.
 
-- [ ] **Step 3: Thêm 3 bảng vào `apps/core/src/modules/authoring/db/schema.ts`**
+- [x] **Step 3: Thêm 3 bảng vào `apps/core/src/modules/authoring/db/schema.ts`**
 
 Thêm vào cuối file:
 
@@ -1089,7 +1089,7 @@ export const autRestSteps = pgTable(
 
 Thêm `jsonb` vào khối import của file (`import { boolean, check, foreignKey, index, integer, jsonb, pgEnum, pgPolicy, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";`).
 
-- [ ] **Step 4: Sinh migration + viết tay grants**
+- [x] **Step 4: Sinh migration + viết tay grants**
 
 Run: `cd testkite/apps/core && pnpm db:generate --name=aut_steps`
 
@@ -1108,12 +1108,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON aut_rest_steps TO "testkite_app";
 
 Thêm entry vào `apps/core/drizzle/meta/_journal.json` (copy entry cuối, `idx` +1, `"tag": "0009_aut_steps_grants"`, `"when"` = `node -e "console.log(Date.now())"`).
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/authoring/step-schema.test.ts`
 Expected: PASS 13 test.
 
-- [ ] **Step 6: Verify + commit**
+- [x] **Step 6: Verify + commit**
 
 Run: `cd testkite && pnpm typecheck && pnpm --filter @testkite/core test`
 

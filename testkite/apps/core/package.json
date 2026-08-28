@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@testkite/contract": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.23.0",
     "zod": "^3.24.1"

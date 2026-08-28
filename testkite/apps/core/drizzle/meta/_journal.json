@@ -57,6 +57,20 @@
       "when": 1787884349822,
       "tag": "0007_authoring_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787884944320,
+      "tag": "0008_aut_steps",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787884955774,
+      "tag": "0009_aut_steps_grants",
+      "breakpoints": true
     }
   ]
 }
