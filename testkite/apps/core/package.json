@@ -11,6 +11,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.1.0",
     "@testkite/contract": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.12.1",

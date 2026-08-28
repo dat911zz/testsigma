@@ -13,6 +13,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 // Xuôi DAG: identity → kernel qua FACADE. `appRole` là role DB do kernel sở hữu.
@@ -35,6 +36,8 @@ export const membershipRole = pgEnum("membership_role", [
 ]);
 
 export const teamStatus = pgEnum("team_status", ["active", "suspended", "archived"]);
+
+export const userStatus = pgEnum("user_status", ["active", "suspended", "deactivated"]);
 
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -101,13 +104,27 @@ export const projects = pgTable(
   ],
 ).enableRLS();
 
-/** users là toàn cục (một người có thể ở nhiều team) — KHÔNG tenant-scoped. */
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  email: text("email").notNull().unique(),
-  displayName: text("display_name").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+/**
+ * users là TOÀN CỤC (một người ở nhiều team) — KHÔNG tenant-scoped, KHÔNG RLS.
+ * `email` lưu dạng đã chuẩn hoá chữ thường: unique index trên lower(email) là thứ
+ * chặn "QA@Acme.test" và "qa@acme.test" thành hai tài khoản khác nhau.
+ * `passwordHash` NULL = tài khoản chỉ đăng nhập bằng OIDC (không đặt mật khẩu nội bộ).
+ */
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull(),
+    passwordHash: text("password_hash"),
+    status: userStatus("status").notNull().default("active"),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("users_email_lower_uidx").on(sql`lower(${t.email})`)],
+);
 
 export const memberships = pgTable(
   "memberships",

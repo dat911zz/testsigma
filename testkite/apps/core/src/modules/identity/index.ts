@@ -11,4 +11,6 @@ export const MODULE = "identity" as const;
 
 // Facade công khai của identity. Module khác (authoring, planning, ...) chỉ được
 // import từ file này — không bao giờ với tay vào `./db/schema.js`.
-export { projects, teams } from "./db/schema.js";
+export { hashPassword, verifyPassword, needsRehash, passwordPolicy, PASSWORD_MIN_LENGTH } from "./auth/password.js";
+export { users, memberships, teams, organizations, membershipRole, userStatus } from "./db/schema.js";
+export { projects } from "./db/schema.js";
