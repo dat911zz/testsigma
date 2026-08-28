@@ -8,3 +8,7 @@
  *  - Repository phải khởi tạo với TenantContext (fail-closed) — xem lớp cách ly L1.
  */
 export const MODULE = "orchestration" as const;
+
+// Facade công khai của orchestration. Bản M2 chỉ có phần tối thiểu cho onboarding.
+export { egressPolicies, egressMode } from "./db/schema.js";
+export { seedEgressObserve, EGRESS_OBSERVE_DAYS } from "./onboarding.js";

@@ -18,3 +18,5 @@ export {
   type AuditActorKind,
 } from "./audit/write.js";
 export { auditEvents } from "./db/audit-schema.js";
+export { quotaLimits } from "./db/schema.js";
+export { seedQuotaDefaults } from "./onboarding.js";

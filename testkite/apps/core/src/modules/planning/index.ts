@@ -8,3 +8,7 @@
  *  - Repository phải khởi tạo với TenantContext (fail-closed) — xem lớp cách ly L1.
  */
 export const MODULE = "planning" as const;
+
+// Facade công khai của planning. Bản M2 chỉ có phần tối thiểu cho onboarding.
+export { plnEnvironments, plnEnvStatus } from "./db/schema.js";
+export { seedEnvironmentStubs, ONBOARD_ENV_NAMES } from "./onboarding.js";

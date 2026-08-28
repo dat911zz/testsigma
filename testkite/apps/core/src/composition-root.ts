@@ -15,6 +15,7 @@ import { createAuthenticator, createAuthzCache } from "./modules/identity/index.
 import { identityRouteRegistrations } from "./modules/identity/routes.js";
 import { writeAuditEvent } from "./modules/governance/index.js";
 import { governanceRouteRegistrations } from "./modules/governance/routes.js";
+import { onboardRouteRegistration } from "./http/usecases/onboard-team.js";
 import { buildHttpApp, type TkApp } from "./http/app.js";
 
 export async function buildApp(env: KernelEnv): Promise<TkApp> {
@@ -31,6 +32,9 @@ export async function buildApp(env: KernelEnv): Promise<TkApp> {
       // là nơi duy nhất biết cả hai, nên phép nối hai module xảy ra ở ĐÂY.
       ...identityRouteRegistrations({ db, cache, audit: writeAuditEvent }),
       ...governanceRouteRegistrations({ db }),
+      // Onboarding chạm bảng của BỐN module trong một transaction ⇒ use case (và cả
+      // registration của nó) sống ở tầng shell, không ở module identity.
+      onboardRouteRegistration({ db }),
       // authoring nối registration của nó vào đây (một dòng, sau identity).
     ],
   });

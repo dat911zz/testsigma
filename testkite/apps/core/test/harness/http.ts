@@ -13,6 +13,7 @@ import {
 import { identityRouteRegistrations } from "../../src/modules/identity/routes.js";
 import { writeAuditEvent } from "../../src/modules/governance/index.js";
 import { governanceRouteRegistrations } from "../../src/modules/governance/routes.js";
+import { onboardRouteRegistration } from "../../src/http/usecases/onboard-team.js";
 
 export type TestApp = {
   readonly app: TkApp;
@@ -109,6 +110,8 @@ export async function makeTestApp(): Promise<TestApp> {
       // đúng đường dây sản xuất chứ không phải một biến thể riêng của harness.
       ...identityRouteRegistrations({ db: db.db, cache, audit: writeAuditEvent, defer }),
       ...governanceRouteRegistrations({ db: db.db }),
+      // Onboarding nộp từ tầng shell (nó ghép bốn module) — y hệt composition-root thật.
+      onboardRouteRegistration({ db: db.db }),
     ],
   });
   await app.ready();
