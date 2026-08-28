@@ -26,7 +26,7 @@
 | 4 | Số team go-live | **2–5 team ngay từ đầu** | M5 (fair-share + quota + onboarding) là GA-blocking đúng nghĩa; fleet khởi điểm 3 host; onboarding tested với ≥2 team thật trước cutover |
 | 5 | App đích chịu tải | **Thoải mái (app prod hàng triệu user)** | Giữ nguyên sizing 24–66 context; yêu cầu còn lại: pool tài khoản test lease per-chain |
 | 6 | Ngôn ngữ UI | **Song ngữ vi+en, i18n từ đầu** | +2–3 tuần setup i18n (M3–M4 phần UI); câu verb NLP giữ tiếng Anh khớp catalog, nhãn UI song ngữ |
-| 7 | Auth | **SSO + email nội bộ** | Email/password + **generic OIDC connector** (phủ Keycloak/AD FS/Google Workspace); IdP cụ thể là câu hỏi mở còn lại |
+| 7 | Auth | **SSO + email nội bộ** | Email/password + **generic OIDC connector**; IdP đã chốt 28-08-2026: **Keycloak self-host** (dev/test dùng mock OIDC in-process vì sandbox không Docker; CI cân nhắc Keycloak service container) |
 | 8 | Retention | **Kết quả test VĨNH VIỄN; ảnh/artifact tối đa 30 ngày** | Đổi so blueprint (90d full): res_* rows giữ mãi → partition theo tháng bắt buộc từ v1 + rollup summaries; lifecycle object store: mọi ảnh/trace ≤30d (failure cũng vậy — `failure_context` JSON trong DB là bản ghi debug vĩnh viễn) |
 
 ## Tóm tắt điều hành
