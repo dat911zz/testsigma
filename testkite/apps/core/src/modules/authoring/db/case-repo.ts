@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { TenantRepo, type TenantContext, type TkTx } from "../../kernel/index.js";
 import { autCases, autRestSteps, autStepLoops, autSteps } from "./schema.js";
 import type { LoopRow, RestRow, StepRow } from "../steps-flatten.js";
@@ -35,6 +35,23 @@ export class CaseRepo extends TenantRepo {
     const row = rows[0];
     if (row === undefined) throw new Error("aut_cases: INSERT không trả row");
     return row;
+  }
+
+  /**
+   * Khoá ghi theo (team, case) — phải gọi TRƯỚC MỌI ĐỌC của một mutation kiểu
+   * check-then-act, nếu không hai transaction cùng đọc trạng thái cũ rồi cùng ghi.
+   *
+   * `pg_advisory_xact_lock` tự nhả khi transaction kết thúc (COMMIT hoặc ROLLBACK)
+   * nên không có `unlock` nào để quên; không bao giờ dùng bản session-scope trong
+   * request path. Khoá là MỘT bigint `hashtextextended(team||':'||case, 0)` — dạng
+   * 2×int4 chỉ có 32 bit mỗi vế nên đụng độ nhiều hơn. Đụng độ hash bigint vẫn có
+   * thể xảy ra; hậu quả duy nhất là hai case không liên quan xếp hàng nhau, đúng
+   * bản chất "advisory". Khoá mang `teamId` nên id của tenant khác không chặn được
+   * ai — và vì chỉ khoá số, nó không hé lộ case có tồn tại hay không.
+   */
+  async lockCase(caseId: string): Promise<void> {
+    const key = `${this.teamId}:${caseId}`;
+    await this.tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}::text, 0))`);
   }
 
   async findById(caseId: string): Promise<CaseRow | undefined> {

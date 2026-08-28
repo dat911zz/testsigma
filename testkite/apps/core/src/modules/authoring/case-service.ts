@@ -99,6 +99,16 @@ export async function replaceSteps(
   const cases = new CaseRepo(tx, ctx);
   const revisions = new RevisionRepo(tx, ctx);
 
+  // KHOÁ TRƯỚC MỌI ĐỌC. So `version` với `expectedVersion` rồi mới ghi là check-then-act:
+  // không có khoá, hai request cùng `expectedVersion` trên hai connection thật đều đọc
+  // trúng version CŨ (chưa bên nào commit) nên CẢ HAI qua được nhánh so sánh và cùng ghi
+  // — bên thua đâm vào unique `aut_steps_position_unique` (mọi lần replace đều đánh ordinal
+  // lại từ 1) và ném DrizzleQueryError/23505 thô thay vì hợp đồng 409 + diff 3 chiều.
+  // Bằng chứng ĐỎ→XANH: test/concurrency/case-edit-race.test.ts trên Postgres thật.
+  // Khoá đứng trước cả kiểm tra tồn tại: nó chỉ khoá một số, không đọc row nào, nên
+  // không đổi được luật "cross-tenant ⇒ 404".
+  await cases.lockCase(input.caseId);
+
   const row = await cases.findById(input.caseId);
   // Tenant khác ⇒ RLS đã lọc mất row ⇒ 404. KHÔNG BAO GIỜ 403 (blueprint §3 L3).
   if (row === undefined) throw new CaseNotFoundError(input.caseId);

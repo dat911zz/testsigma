@@ -3500,6 +3500,31 @@ git add testkite/apps/core/src/modules/authoring/db/case-repo.ts \
 git commit -m "M2-AUT T9: case service tao/sua + revision + 409 diff 3 chieu"
 ```
 
+- [x] **Step 8 (review fix, 28-08): khoá advisory TRƯỚC MỌI ĐỌC trong `replaceSteps`**
+
+Review chặn T9: `replaceSteps` là check-then-act không khoá. Tái hiện trên Postgres THẬT (hai
+connection `pg.Pool`, hai transaction cùng mở trước khi bên nào đọc): cả hai đọc trúng
+`version=1` vì chưa bên nào commit, cả hai qua nhánh so version, rồi cùng chèn step `ordinal=1`
+⇒ bên thua nhận `DrizzleQueryError` thô (`duplicate key ... aut_steps_position_unique`, 23505)
+thay vì hợp đồng 409 + diff 3 chiều. Không phải edge-case hiếm: **mọi** lần `replaceSteps` đánh
+ordinal lại từ 1, nên hai tab / autosave cùng case là trúng ngay. 8 test PGlite không thấy được
+vì PGlite một connection, mọi lời gọi đều tuần tự.
+
+Sửa: `CaseRepo.lockCase(caseId)` (chính là hàm Task 11 khai — landed sớm ở đây, Task 11 chỉ còn
+`applyPromote`) gọi ở **dòng đầu** `replaceSteps`, trước cả `findById`. Khoá chỉ là một bigint
+`hashtextextended(team||':'||case, 0)`, không đọc row nào ⇒ luật "cross-tenant ⇒ 404" không đổi.
+Bằng chứng ĐỎ→XANH: `apps/core/test/concurrency/case-edit-race.test.ts` (Postgres thật) — test 1
+ĐỎ với lỗi `insert into "aut_steps"` thô, XANH thành `VersionConflictError` 409 sau khi thêm
+khoá; test 2 chốt khoá theo **(team, case)** chứ không toàn cục (edit case B đi qua trong lúc
+transaction của case A còn giữ khoá).
+
+```bash
+git add testkite/apps/core/src/modules/authoring/db/case-repo.ts \
+        testkite/apps/core/src/modules/authoring/case-service.ts \
+        testkite/apps/core/test/concurrency/case-edit-race.test.ts
+git commit -m "M2-AUT T9: review fixes"
+```
+
 ---
 
 ## Task 10 — `aut_case_reviews` + máy trạng thái submit / withdraw / decide
