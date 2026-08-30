@@ -16,7 +16,10 @@
  *     back after release() and the second try_advisory_lock SUCCEEDS, so a returned
  *     connection quietly creates a co-leader;
  *  3. a failover that waits for the dead leader's SESSION to die rather than for its TTL ⇒
- *     minutes-to-hours of no dispatcher behind a network partition.
+ *     minutes-to-hours of no dispatcher behind a network partition;
+ *  4. an identity that is not unique per live process (the hostname alone, say) ⇒ every
+ *     candidate matches the "holder = me" branch, which is a RENEW, so all of them lead at
+ *     once, permanently, with an epoch that never advances.
  *
  * `warmPool` precedes every race: on a cold pool `Promise.all` is not parallel at all — the
  * second caller must open a physical connection (TCP + auth) and only reaches the table after
@@ -32,6 +35,7 @@ import {
   readLease,
   type DispatcherLease,
 } from "../../src/modules/orchestration/dispatcher/lease.js";
+import { defaultDispatcherId } from "../../src/modules/kernel/env.js";
 import { describeRealPg, makeRealDb, type RealDb } from "../harness/realpg.js";
 
 /** Genuinely parallel connections. Equal to the harness pool's `max`, so nobody queues for one. */
@@ -45,13 +49,22 @@ async function warmPool(pool: RealDb["pool"], n: number): Promise<void> {
 
 describeRealPg("dispatcher leadership on a real Postgres", () => {
   let r: RealDb;
+  /**
+   * A SECOND pool, with its own physical connections — the closest a test gets to a second OS
+   * process. Two calls on one pool would still be two connections, but a separate pool also
+   * separates the pg client state, which is precisely what the advisory-lock trap turned on.
+   */
+  let other: RealDb;
 
   beforeAll(async () => {
     r = await makeRealDb();
+    other = await makeRealDb();
     await warmPool(r.pool, PARALLEL);
+    await warmPool(other.pool, 2);
   });
   afterAll(async () => {
     await r.close();
+    await other.close();
   });
   beforeEach(async () => {
     await r.db.execute(sql`TRUNCATE orc_dispatcher_lease`);
@@ -117,5 +130,45 @@ describeRealPg("dispatcher leadership on a real Postgres", () => {
     expect(elapsed).toBeLessThan(2_000);
     // The dead-man saw the gap while it lasted: the promotion is a new epoch, not a renew.
     expect(await readLease(r.db)).toMatchObject({ holder: "d2", stale: false });
+  });
+
+  it("elects one leader out of two dispatcher processes on the SAME host (default identity)", async () => {
+    // Same hostname, two live processes — node cluster, `pm2 -i`, a rolling deploy that
+    // overlaps old and new, two containers sharing the host UTS namespace. The default
+    // identity must separate them without an operator having to know it should.
+    const a = defaultDispatcherId("runner-a", 4242);
+    const b = defaultDispatcherId("runner-a", 4243);
+    expect(a).not.toBe(b);
+    for (let round = 0; round < 3; round += 1) {
+      const raced = await Promise.all([
+        acquireOrRenewLease(r.db, { holder: a }),
+        acquireOrRenewLease(other.db, { holder: b }),
+      ]);
+      // Not just on the first round: the loser must keep losing while the winner renews,
+      // which is what makes the reaper single-writer for longer than one tick.
+      expect(raced.filter((x): x is DispatcherLease => x !== null), `round ${String(round)}`).toHaveLength(1);
+    }
+    expect(await readLease(r.db)).toMatchObject({ epoch: 1, stale: false });
+  });
+
+  it("would run TWO leaders indefinitely if both processes shared one identity — why the default carries the pid", async () => {
+    // Characterisation of the hazard the default exists to avoid, run on the same two-pool
+    // setup as the test above. `hostname()` alone was the original T8 default; here it stands
+    // for any two processes that end up with one holder string.
+    const collided = "runner-a";
+    for (let round = 0; round < 3; round += 1) {
+      const both = await Promise.all([
+        acquireOrRenewLease(r.db, { holder: collided }),
+        acquireOrRenewLease(other.db, { holder: collided }),
+      ]);
+      // BOTH win, every round: the same-holder branch of the election is defined as a renew,
+      // so neither connection ever loses. This is a sustained state, not the brief takeover
+      // window the loop's comments describe.
+      expect(both.every((x) => x !== null), `round ${String(round)}`).toBe(true);
+    }
+    // And the epoch never advances, so job_runs' epoch fencing cannot tell the two apart
+    // either: two reapers sweep the same team, and the single-writer invariant the whole
+    // lease exists to provide is gone. Hence: identities must be unique per LIVE PROCESS.
+    expect(await readLease(r.db)).toMatchObject({ holder: collided, epoch: 1 });
   });
 });

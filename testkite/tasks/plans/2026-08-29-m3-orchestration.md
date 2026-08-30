@@ -2364,6 +2364,24 @@ git commit -m "M3-ORC T7: leader-elect bang row-lock TTL (chon thay pg_advisory_
 - Create: `apps/core/src/modules/orchestration/dispatcher/loop.ts`
 - Create: `apps/core/test/orchestration/dispatcher-loop.test.ts`
 - Modify: `apps/core/src/modules/kernel/env.ts` (thêm `DISPATCHER_ENABLED`, `DISPATCHER_ID`)
+- Modify (bổ sung sau review): `apps/core/src/modules/kernel/env.test.ts` + `apps/core/test/concurrency/dispatcher-leader.test.ts` (Postgres THẬT, hai pool độc lập)
+
+> **Review fix (30-08-2026) — `DISPATCHER_ID` mặc định phải DUY NHẤT theo TIẾN TRÌNH.** Plan viết
+> `default(hostname())`. Nhưng `holder` là TOÀN BỘ danh tính mà `acquireOrRenewLease` fence lên —
+> phía sau nó không có session, không có pid — và nhánh `holder = me` của bầu cử được định nghĩa là
+> **renew**, không phải giành quyền. Hai tiến trình trùng chuỗi ⇒ **cả hai** đều được báo là leader,
+> ở **mọi** tick, `epoch` không bao giờ tăng nên fencing của `job_runs` cũng không tách được chúng:
+> split-brain VĨNH VIỄN, không phải "cửa sổ" tự sửa mà comment của `loop.ts` mô tả, và bất biến
+> single-writer của reaper (lý do tồn tại của lease) biến mất suốt thời gian trùng. Hostname một
+> mình không duy nhất theo tiến trình: node cluster, `pm2 -i`, rolling deploy chồng lấn, hai
+> container dùng chung UTS namespace của host. Sửa: `defaultDispatcherId(host = hostname(), pid =
+> process.pid)` trả `<hostname>#<pid>` (`#` chứ không `-` vì hostname có sẵn dấu `-` ⇒ đọc alert bị
+> nhập nhằng); pid duy nhất trong các tiến trình ĐANG SỐNG của một host, và tính liên tục của danh
+> tính qua restart vốn vô nghĩa ở đây (restart thì phải thắng bầu cử mới, dù tên là gì). Đo ĐỎ trước
+> khi sửa trên Postgres THẬT với **hai `pg.Pool` độc lập** (= hai tiến trình): cùng holder ⇒ cả hai
+> connection đều thắng ở cả 3 vòng, `epoch` đứng yên ở 1. Test hồi quy: `dispatcher-leader.test.ts`
+> ("elects one leader out of two dispatcher processes on the SAME host" + ca đặc tả chính hiểm hoạ)
+> và `env.test.ts`.
 
 **Interfaces:**
 - Produces:

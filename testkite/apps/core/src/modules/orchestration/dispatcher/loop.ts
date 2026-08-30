@@ -14,6 +14,11 @@
  * single-threaded — two sweeps requeueing the same team both compute MIN(queue_seq) - 1 and
  * tie (spike §4) — and to keep the tick rate predictable.
  *
+ * That "window" reasoning assumes the candidates carry DISTINCT identities. `state.holder` is
+ * the whole identity the election fences on, so two processes started with the same string
+ * are not in a window at all: each renews the other's lease forever and both reap (see
+ * lease.ts and `defaultDispatcherId` in kernel/env.ts, which is why the default carries a pid).
+ *
  * DELIBERATE DEVIATION from the plan's block: the plan renews every LEASE_RENEW_EVERY_TICKS-th
  * tick and does not look at the lease AT ALL in between, which leaves two holes its own tests
  * point at. (1) A takeover would go unnoticed for up to 2.5s of dispatching and reaping.

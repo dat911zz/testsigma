@@ -1,6 +1,6 @@
 import { hostname } from "node:os";
 import { describe, expect, it } from "vitest";
-import { parseEnv, type KernelEnv } from "./env.js";
+import { defaultDispatcherId, parseEnv, type KernelEnv } from "./env.js";
 
 const VALID = {
   NODE_ENV: "test",
@@ -57,13 +57,32 @@ describe("parseEnv", () => {
     expect(parseEnv({ ...VALID, PORT: "70000" }).ok).toBe(false);
   });
 
-  it("runs the dispatcher by default, under this host's name", () => {
+  it("runs the dispatcher by default, under an identity unique to THIS process", () => {
     const env = envOf(VALID);
     expect(env.DISPATCHER_ENABLED).toBe(true);
-    // The holder is what the dead-man alert and every "who leads?" answer will print, so an
-    // empty or duplicated identity is a debugging dead end.
-    expect(env.DISPATCHER_ID).toBe(hostname());
-    expect(env.DISPATCHER_ID.length).toBeGreaterThan(0);
+    // The holder string is the WHOLE identity the election fences on, and the same-holder
+    // branch of acquireOrRenewLease is a RENEW, not a takeover: two processes that pick the
+    // same string are both told they lead, on every tick, for as long as the collision lasts
+    // — a permanent split-brain, with an epoch that never moves for anything downstream to
+    // fence on. The hostname ALONE collides on any box running a second dispatcher-capable
+    // process (node cluster, `pm2 -i`, two containers sharing the host UTS namespace), so the
+    // pid belongs in the default. Proof on real Postgres:
+    // test/concurrency/dispatcher-leader.test.ts.
+    expect(env.DISPATCHER_ID).toBe(defaultDispatcherId());
+    expect(env.DISPATCHER_ID).toContain(hostname());
+    expect(env.DISPATCHER_ID).toContain(String(process.pid));
+  });
+
+  it("gives two dispatcher processes on the SAME host different default identities", () => {
+    // A restart is a fresh election no matter what the identity says, so a pid — cheap, and
+    // unique among the live processes of a host — is all the uniqueness this needs.
+    expect(defaultDispatcherId("runner-a", 4242)).not.toBe(defaultDispatcherId("runner-a", 4243));
+    // Still readable in a dead-man alert at 3am: host first, pid behind it.
+    expect(defaultDispatcherId("runner-a", 4242)).toContain("runner-a");
+  });
+
+  it("lets an operator override the identity — a deployment may name its dispatchers itself", () => {
+    expect(envOf({ ...VALID, DISPATCHER_ID: "dispatcher-blue" }).DISPATCHER_ID).toBe("dispatcher-blue");
   });
 
   it("reads DISPATCHER_ENABLED as a REAL boolean, so '0' and 'false' turn the loop off", () => {

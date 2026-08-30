@@ -5,6 +5,32 @@
 import { hostname } from "node:os";
 import { z } from "zod";
 
+/**
+ * Default identity of this process in the dispatcher election: `<hostname>#<pid>`.
+ *
+ * DELIBERATE DEVIATION from the plan's `default(hostname())`. The holder string is the WHOLE
+ * identity `acquireOrRenewLease` fences on — there is no connection, session or pid behind it
+ * — and the same-holder branch of the election is defined as a RENEW, not a takeover. Two
+ * processes that pick the SAME string are therefore both told they lead, on every tick, with
+ * an epoch that never advances for `job_runs` fencing to separate them by. That is a
+ * permanent split-brain, not the brief self-correcting takeover window the dispatcher loop is
+ * designed around, and it silently removes the single-writer property the reaper depends on
+ * (two sweeps requeueing one team both compute MIN(queue_seq) - 1 and tie). Measured on real
+ * Postgres over two independent pools: test/concurrency/dispatcher-leader.test.ts.
+ *
+ * The hostname alone is not unique per process: node cluster mode, `pm2 -i`, an overlapping
+ * rolling deploy, or two containers sharing the host UTS namespace all put a second
+ * dispatcher-capable process on one name. The pid closes that gap for free — pids are unique
+ * among the LIVE processes of a host, and identity continuity across a restart buys nothing
+ * here, since a restarted dispatcher must win a fresh election either way.
+ *
+ * `#` rather than `-` as the separator: hostnames contain `-`, so `runner-a-4242` would be
+ * ambiguous in the very alert this string exists to be read in.
+ */
+export function defaultDispatcherId(host: string = hostname(), pid: number = process.pid): string {
+  return `${host}#${String(pid)}`;
+}
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]),
   PORT: z.coerce.number().int().min(1).max(65_535).default(8080),
@@ -33,10 +59,10 @@ export const envSchema = z.object({
     .default("1")
     .transform((v) => v === "1" || v === "true"),
   /**
-   * Identity of this process in the leader election; the hostname is the natural value. It is
-   * also what the dead-man alert prints, so it must never be empty.
+   * Identity of THIS PROCESS in the leader election. It is also what the dead-man alert
+   * prints, so it must never be empty — and, per `defaultDispatcherId`, never be shared.
    */
-  DISPATCHER_ID: z.string().min(1).default(hostname()),
+  DISPATCHER_ID: z.string().min(1).default(defaultDispatcherId()),
 });
 
 export type KernelEnv = z.infer<typeof envSchema>;

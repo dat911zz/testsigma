@@ -43,6 +43,13 @@ function toLease(row: Record<string, unknown>): DispatcherLease {
  *   expires_at < now()     -> take over (epoch + 1, acquired_at = now)
  *   otherwise              -> 0 rows, someone else leads
  *
+ * `holder` MUST be unique per LIVE PROCESS — it is the entire identity, there is no session or
+ * pid behind it. Two processes sharing one string both match the first branch, so both are
+ * told they lead, on every tick, with an epoch that never moves: a permanent split-brain, not
+ * a takeover window. Use `defaultDispatcherId()` / `env.DISPATCHER_ID` (kernel/env.ts), which
+ * carries the pid for exactly this reason; the collision is characterised on real Postgres in
+ * test/concurrency/dispatcher-leader.test.ts.
+ *
  * One statement is safe HERE, unlike the read-then-write shapes elsewhere in this module:
  * `INSERT ... ON CONFLICT DO UPDATE` locks the conflicting row FIRST and only then evaluates
  * its WHERE against the latest committed version of that row. A concurrent takeover that
