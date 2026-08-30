@@ -1890,6 +1890,20 @@ git commit -m "M3-ORC T5: claim SKIP LOCKED + bump lease_epoch, complete/heartbe
 - Create: `apps/core/src/modules/orchestration/queue/reaper.ts`
 - Create: `apps/core/test/orchestration/reaper.test.ts`
 - Create: `apps/core/test/concurrency/lease-epoch-race.test.ts` (Postgres THẬT)
+- Create: `apps/core/test/kernel/pool-error.test.ts` (bổ sung sau review — xem ghi chú dưới)
+- Create: `apps/core/test/concurrency/pool-idle-disconnect.test.ts` (bổ sung sau review, Postgres THẬT)
+- Modify: `apps/core/src/modules/kernel/db/client.ts` + `apps/core/test/harness/realpg.ts` (handler `error` cho pg.Pool)
+
+> **Review fix (30-08-2026).** Không có `pg.Pool` nào trong repo gắn listener `error`. Pool là
+> EventEmitter: một kết nối đang NGỒI IDLE trong pool vẫn bị server cắt (DB restart, failover,
+> network blip, admin `pg_terminate_backend`), pg-pool phát lại lỗi đó **trên pool**, mà
+> EventEmitter không có listener `error` thì **ném** thay vì phát ⇒ uncaught exception, tiến trình
+> chết. Tiến trình đó chính là nơi chạy reaper + relay, nên một cú rớt kết nối thoáng qua sẽ làm
+> không job nào được reap nữa — đúng sự cố mà T6 sinh ra để chống. Đã đo ĐỎ thật (Postgres thật
+> qua `scripts/test-pg.sh`): giết backend đang idle ⇒ `Uncaught Exception: error: terminating
+> connection due to administrator command`, stack đi qua idleListener của pg-pool, 2 test đỏ.
+> Sửa: `attachPoolErrorHandler(pool)` — log **có giới hạn** (`err.stack`, không inspect nguyên
+> object `client` vài chục KB) rồi nuốt; gắn ở cả `createDb()` lẫn `makeRealDb()`.
 
 **Interfaces:**
 - Produces:

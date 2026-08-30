@@ -14,6 +14,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { fileURLToPath } from "node:url";
 import type { TkDb } from "../../src/modules/kernel/db/types.js";
+import { attachPoolErrorHandler } from "../../src/modules/kernel/db/client.js";
 
 const URL_ENV = "TESTKITE_TEST_PG_URL";
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("../../drizzle", import.meta.url));
@@ -42,6 +43,10 @@ export async function makeRealDb(): Promise<RealDb> {
   const connectionString = realPgUrl();
   if (connectionString === undefined) throw new Error(`${URL_ENV} is not set`);
   const pool = new pg.Pool({ connectionString, max: 8 });
+  // Same reason as production (see attachPoolErrorHandler): a backend dying while its
+  // connection is idle in this pool would otherwise take the whole vitest worker down with an
+  // "Unhandled error event" and report as an unrelated suite failure.
+  attachPoolErrorHandler(pool);
   // Cast like the PGlite harness: `TkDb` is intentionally driver-agnostic (`PgQueryResultHKT` isn't
   // bound to a driver yet), so `NodePgDatabase` isn't directly assignable; migrate() also expects
   // the real driver-bound database type.
