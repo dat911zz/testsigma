@@ -3,8 +3,9 @@
  * shell never imports back into a module except through its facade).
  */
 import type { z } from "zod";
-import type { RouteDescriptor } from "@testkite/contract";
+import type { InternalRouteDescriptor, RouteDescriptor } from "@testkite/contract";
 import type { CredentialKind, MembershipRole, Permission } from "../modules/identity/index.js";
+import type { RunTokenScope, WorkerTokenScope } from "../modules/orchestration/index.js";
 
 /**
  * The context of ONE request. `teamId` here is the single source of truth for the tenant —
@@ -82,6 +83,14 @@ declare module "fastify" {
   interface FastifyRequest {
     /** null on a public route; the auth hook sets it before every handler on a required route. */
     tk: RequestContext | null;
+    /**
+     * The two fleet credentials, set by the /internal/fleet auth hook (http/internal/app.ts) and
+     * null everywhere else — including on every /v1 request, which never accepts either of them.
+     * They live in this file, next to `tk`, because ONE file holding every Fastify augmentation
+     * is what stops two of them from disagreeing about the same request object.
+     */
+    tkRun: RunTokenScope | null;
+    tkWorker: WorkerTokenScope | null;
   }
 
   /**
@@ -92,6 +101,12 @@ declare module "fastify" {
    */
   interface FastifyContextConfig {
     readonly tk?: RouteDescriptor;
+    /**
+     * The same idea for the fleet plane, and a SEPARATE key on purpose: a descriptor landing in
+     * `tk` would be read by the tenant auth hook, and one landing in `tkInternal` by the fleet
+     * hook. Two names means a route can never be guarded by the wrong one of the two.
+     */
+    readonly tkInternal?: InternalRouteDescriptor;
   }
 
   interface FastifyInstance {

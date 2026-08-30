@@ -109,6 +109,46 @@ export class ConflictError extends AppError {
   readonly tenantVisible = true;
 }
 
+/**
+ * 409 with its OWN code, distinct from a generic CONFLICT: the worker branches on this exact
+ * string. STALE_EPOCH means "you were reaped, another attempt owns this chain now" — the
+ * worker must drop everything, close its context in `finally`, and never write again.
+ *
+ * `currentEpoch` travels in the payload (via publicExtras) even though the message is masked:
+ * it is the ONE piece of state a fenced worker is allowed to learn, and it is what lets a log
+ * line say how far behind the zombie was.
+ */
+export class StaleEpochError extends AppError {
+  readonly code = "STALE_EPOCH";
+  readonly httpStatus = 409;
+  readonly retryable = false;
+  readonly tenantVisible = false;
+  readonly currentEpoch: number;
+  constructor(message: string, currentEpoch: number) {
+    super(message);
+    this.currentEpoch = currentEpoch;
+  }
+  override publicExtras(): Readonly<Record<string, unknown>> {
+    return { currentEpoch: this.currentEpoch };
+  }
+}
+
+/** 410 — the run was cancelled while the worker was mid-chain. Abandon, do NOT complete. */
+export class JobCancelledError extends AppError {
+  readonly code = "JOB_CANCELLED";
+  readonly httpStatus = 410;
+  readonly retryable = false;
+  readonly tenantVisible = false;
+}
+
+/** 410 — the job already succeeded or failed; nothing more can be written to it. */
+export class JobTerminalError extends AppError {
+  readonly code = "JOB_TERMINAL";
+  readonly httpStatus = 410;
+  readonly retryable = false;
+  readonly tenantVisible = false;
+}
+
 /** 428 — mutation missing `If-Match` (optimistic concurrency, blueprint §4). */
 export class PreconditionRequiredError extends AppError {
   readonly code = "PRECONDITION_REQUIRED";

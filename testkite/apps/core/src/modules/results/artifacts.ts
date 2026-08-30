@@ -180,3 +180,41 @@ export async function createArtifactUpload(
     expiresAt: new Date(input.now.getTime() + ARTIFACT_URL_TTL_SECONDS * 1_000),
   };
 }
+
+/**
+ * The other half of an upload's lifecycle: the worker reported, at `complete` time, which blobs
+ * actually landed. Matching is BY DIGEST — the worker knows the sha256 of what it wrote, and it
+ * would have to have read the response of every presign call back to be able to quote artifact
+ * ids instead. A digest it never got a slot for matches nothing and is silently ignored: an
+ * upload the control plane never signed cannot exist in the store.
+ *
+ * Scoped to `(team_id, job_run_id, attempt)` and to rows still `pending`, so a replayed
+ * `complete` is a no-op rather than a second `uploaded_at`, and an earlier attempt's artifacts
+ * keep their own history. `uploaded_at` takes the DATABASE clock for the same reason
+ * `created_at` does: a caller must not be able to backdate a stored fact.
+ *
+ * Returns how many rows moved, which is what lets a caller notice a worker claiming blobs it
+ * never asked to store.
+ */
+export async function markArtifactsUploaded(
+  tx: TkTx,
+  ctx: TenantContext,
+  input: {
+    readonly jobRunId: string;
+    readonly attempt: number;
+    readonly sha256s: readonly string[];
+  },
+): Promise<number> {
+  const teamId = assertTenantContext(ctx);
+  if (input.sha256s.length === 0) return 0;
+  const digests = sql.join(
+    input.sha256s.map((digest) => sql`${digest}`),
+    sql`, `,
+  );
+  const updated = rowsOf(await tx.execute(sql`
+    UPDATE res_artifacts SET status = 'uploaded', uploaded_at = now()
+     WHERE team_id = ${teamId} AND job_run_id = ${input.jobRunId} AND attempt = ${input.attempt}
+       AND status = 'pending' AND sha256 IN (${digests})
+    RETURNING id`));
+  return updated.length;
+}

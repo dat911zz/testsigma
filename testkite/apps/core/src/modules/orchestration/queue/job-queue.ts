@@ -21,6 +21,7 @@ import {
   firstRow,
   rowsOf,
   withDispatchRole,
+  withTenant,
   type SqlRow,
   type TenantContext,
   type TkDb,
@@ -160,6 +161,86 @@ async function classifyMiss(
   if (status === "cancelled") return { ok: false, reason: "cancelled" };
   if (TERMINAL.includes(status)) return { ok: false, reason: "terminal" };
   return { ok: false, reason: "stale_epoch", currentEpoch: Number(row["lease_epoch"]) };
+}
+
+export interface FencedJob {
+  readonly runId: string;
+  readonly chainKey: string;
+  readonly attempt: number;
+  readonly leaseEpoch: number;
+}
+
+/**
+ * The fence for a mutation that is NOT itself a conditional UPDATE — an event, an artifact
+ * slot, the results half of a complete. Those write to OTHER tables, so nothing about them
+ * would notice that the chain has changed hands; this is what makes them notice.
+ *
+ * LOCK FIRST, TEST SECOND, and the two are separate statements on purpose. A single
+ * `... WHERE lease_epoch = $epoch FOR UPDATE` evaluates its predicate against the snapshot the
+ * statement STARTED with and only then takes the lock, so a reaper committing in between is
+ * invisible to it — the exact shape that made the outbox relay publish twice (kernel/outbox,
+ * commit c0c2f42). Locking by the immutable key `(team_id, id)` instead means Postgres waits
+ * for that concurrent writer, re-reads the row it committed, and hands back the epoch that is
+ * true NOW. The lock is then held for the rest of the transaction, so the result the caller
+ * goes on to write cannot be overtaken by a reap either.
+ *
+ * Runs on the TENANT transaction: another team's row is simply not there, which is what makes
+ * a cross-tenant job id a 404 rather than a 403.
+ */
+export async function fenceJob(
+  tx: TkTx,
+  ctx: TenantContext,
+  input: { readonly jobRunId: string; readonly epoch: number },
+): Promise<EpochOutcome<FencedJob>> {
+  const teamId = assertTenantContext(ctx);
+  const row = firstRow(
+    await tx.execute(sql`
+      SELECT run_id, chain_key, attempt, lease_epoch, status::text AS status FROM job_runs
+       WHERE team_id = ${teamId} AND id = ${input.jobRunId}
+       FOR UPDATE`),
+  );
+  if (row === undefined) return { ok: false, reason: "not_found" };
+  const status = String(row["status"]);
+  if (status === "cancelled") return { ok: false, reason: "cancelled" };
+  if (TERMINAL.includes(status)) return { ok: false, reason: "terminal" };
+  const leaseEpoch = Number(row["lease_epoch"]);
+  // A requeued job (status back to `pending`) is stale for its previous owner too: the epoch
+  // moved, so the comparison alone answers both cases without a second branch.
+  if (leaseEpoch !== input.epoch || status !== "running") {
+    return { ok: false, reason: "stale_epoch", currentEpoch: leaseEpoch };
+  }
+  return {
+    ok: true,
+    value: {
+      runId: String(row["run_id"]),
+      chainKey: String(row["chain_key"]),
+      attempt: Number(row["attempt"]),
+      leaseEpoch,
+    },
+  };
+}
+
+/**
+ * "Is this id a job of THIS team?" — asked on the authentication path of `/internal/fleet`,
+ * where a run token names one job and the request names another, to tell a worker bug (401,
+ * the credential does not apply here) from a job the caller cannot see (404).
+ *
+ * Deliberately tenant-scoped, and deliberately answering only a boolean: it can therefore
+ * never confirm that another team's id exists, which is the whole reason the answer for
+ * "unknown" and "someone else's" has to be the same one.
+ */
+export async function jobExistsForTeam(
+  db: TkDb,
+  input: { readonly teamId: string; readonly jobRunId: string },
+): Promise<boolean> {
+  return withTenant(db, { teamId: input.teamId }, async (tx) => {
+    const row = firstRow(
+      await tx.execute(sql`
+        SELECT 1 AS found FROM job_runs
+         WHERE team_id = ${input.teamId} AND id = ${input.jobRunId}`),
+    );
+    return row !== undefined;
+  });
 }
 
 /**

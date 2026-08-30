@@ -3912,7 +3912,7 @@ export declare function buildInternalApp(deps: {
 }): Promise<FastifyInstance>;
 ```
 
-- [ ] **Step 1: Ba lớp lỗi trong contract**
+- [x] **Step 1: Ba lớp lỗi trong contract**
 
 ```ts
 // packages/contract/src/errors.ts — append after ConflictError
@@ -3955,7 +3955,7 @@ export class JobTerminalError extends AppError {
 
 `EpochOutcome` của T5 đã có sẵn hai nhánh 410 (`"cancelled"` và `"terminal"`) — `unwrap()` dưới đây ánh xạ chúng sang đúng hai lớp lỗi này.
 
-- [ ] **Step 2: Viết test ĐỎ — contract test cho TỪNG endpoint**
+- [x] **Step 2: Viết test ĐỎ — contract test cho TỪNG endpoint**
 
 ```ts
 // apps/core/test/orchestration/internal-contract.test.ts
@@ -4201,12 +4201,12 @@ describe("/internal/fleet route coverage", () => {
 });
 ```
 
-- [ ] **Step 3: Chạy test, xác nhận ĐỎ**
+- [x] **Step 3: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/internal-`
 Expected: FAIL — `INTERNAL_ROUTES` chưa tồn tại.
 
-- [ ] **Step 4: Descriptor + DTO trong contract**
+- [x] **Step 4: Descriptor + DTO trong contract**
 
 ```ts
 // packages/contract/src/routes/internal.ts
@@ -4359,7 +4359,7 @@ export const INTERNAL_ROUTES: readonly InternalRouteDescriptor[] = [
 ];
 ```
 
-- [ ] **Step 5: App `/internal/fleet` + hook auth ba loại token**
+- [x] **Step 5: App `/internal/fleet` + hook auth ba loại token**
 
 ```ts
 // apps/core/src/modules/orchestration/internal/app.ts
@@ -4455,7 +4455,7 @@ export async function buildInternalApp(deps: {
 }
 ```
 
-- [ ] **Step 6: Handler — `internal/routes.ts`**
+- [x] **Step 6: Handler — `internal/routes.ts`**
 
 Đăng ký kiểu plugin (giống authoring), mỗi route `config: { tkInternal: descriptor }`. Ánh xạ `EpochOutcome` → HTTP là **một hàm dùng chung**, không lặp ở 4 handler:
 
@@ -4497,18 +4497,46 @@ Ràng buộc cài đặt của từng handler:
 | `internalArtifacts` | `assertEpochMatchesToken` → `createArtifactUpload` → 200 |
 | `internalComplete` | MỘT transaction `withTenant`: nhóm `steps[]` theo `caseId` → `writeCaseResults` → `completeJob` (verdict hoặc `infraError`) → `revokeRunTokensFor` → đánh dấu `res_artifacts` đã upload. `completeJob` trả stale/cancelled/terminal ⇒ **ném lỗi bên trong transaction ⇒ ROLLBACK**, nên kết quả không bao giờ tồn tại dưới epoch cũ (có test riêng) |
 
-- [ ] **Step 7: Chạy test, xác nhận XANH**
+- [x] **Step 7: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/internal-`
 Expected: PASS (24 contract + 5 coverage).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 cd testkite && pnpm typecheck && pnpm --filter @testkite/core test
 git add testkite/packages/contract testkite/apps/core/src testkite/apps/core/test
 git commit -m "M3-ORC T13: internal plane /internal/fleet — 7 endpoint, leaseEpoch bat buoc, contract test tung endpoint"
 ```
+
+
+**Ghi chú thực thi T13 (3 sai lệch có chủ đích so với block plan):**
+
+1. **App `/internal/fleet` nằm ở tầng SHELL** — `apps/core/src/http/internal/app.ts` +
+   `routes.ts`, không phải `modules/orchestration/internal/`. Lý do: 7 handler này ghép
+   orchestration (queue + token) VỚI results (`writeCaseResults`, `createArtifactUpload`,
+   `markArtifactsUploaded`), mà `results` đứng SAU `orchestration` trong `module-dag.json` ⇒
+   file trong orchestration import facade results là cạnh ngược, eslint-boundaries chặn.
+   Shell là tầng duy nhất được ghép hai module qua facade (cùng lý do
+   `http/usecases/onboard-team.ts` nằm ở đó). **T15 import `buildInternalApp` từ
+   `./http/internal/app.js`.** Facade mới mở: orchestration xuất `claimJobs`/`completeJob`/
+   `heartbeatJob`/`fenceJob`/`jobExistsForTeam`/`readRunPlan`, results xuất
+   `markArtifactsUploaded`.
+2. **`completeRequestSchema` KHÔNG bọc `.refine()`** — `.refine()` trả `ZodEffects`, không có
+   `.shape`, mà cổng `internal-coverage.test.ts` (và `apps/runner`) đọc `body.shape` để chứng
+   minh mọi endpoint mutation khai `leaseEpoch`. Ràng buộc "có verdict HOẶC infraError" do
+   handler cưỡng chế ⇒ 400 `VALIDATION_FAILED` (có test riêng).
+3. **`revokeRunTokensFor` chỉ chạy khi REQUEUE**, không chạy trên đường verdict. `complete`
+   giao ít nhất một lần: worker mất response sẽ gửi lại — token còn sống thì lần gửi lại đọc
+   410 `JOB_TERMINAL` ("job xong rồi, bỏ đi"), token bị revoke thì đọc 401 (= thoát 1 +
+   register lại) cho một job đã xong hoàn hảo. Token vẫn chết theo TTL của chính nó.
+
+Thêm `fenceJob` (khoá `FOR UPDATE` theo khoá bất biến `(team_id, id)` bằng MỘT câu, kiểm
+epoch/status bằng câu RIÊNG) vào `queue/job-queue.ts`: events/artifacts/complete ghi sang bảng
+KHÁC nên không có `rowCount` nào tự phát hiện mất lease. Hook auth phân biệt 404 với 401 khi
+`jobRunId` trong path khác token: dò sự tồn tại DƯỚI TENANT CỦA CHÍNH TOKEN ⇒ không thấy = 404
+(không bao giờ xác nhận id của team khác), thấy = 401.
 
 ---
 

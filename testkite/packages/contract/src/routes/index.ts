@@ -12,5 +12,9 @@ import type { RouteDescriptor } from "./types.js";
 export * from "./types.js";
 export { errorResponseSchema, identityRoutes } from "./identity.js";
 export * from "./authoring.js";
+// The fleet plane. Re-exported so `apps/runner` can import its schemas, but deliberately NOT
+// merged into ROUTES: /internal/fleet is not part of the tenant API and must never reach
+// openapi.json (gate in .github/workflows/testkite-ci.yml).
+export * from "./internal.js";
 
 export const ROUTES: readonly RouteDescriptor[] = [...identityRoutes, ...authoringRoutes];

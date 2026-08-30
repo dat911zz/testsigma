@@ -141,6 +141,41 @@ export async function startRun(
   return { kind: "queued", runId, planHash: plan.contentHash, chainCount: plan.chains.length };
 }
 
+/** What a worker needs at claim time besides its own row: the project and the frozen plan. */
+export interface FrozenRunPlan {
+  /** `job_runs` does not carry it — the run aggregate does, and the worker's telemetry wants it. */
+  readonly projectId: string;
+  /** The plan exactly as phase 7 froze it. `unknown` because nothing here re-validates it. */
+  readonly plan: unknown;
+}
+
+/**
+ * Reads back what phase 0 froze. It lives next to the write for one reason: the pair
+ * `orc_runs` + `orc_run_plans` is joined here on the same composite key the INSERT used, so a
+ * change to either statement has the other one in view.
+ *
+ * `undefined` means the run has no frozen plan — a compile error, or a run still compiling.
+ * A job in the queue for such a run is a control-plane bug, not a worker's problem, which is
+ * why the answer is an absence the caller must decide about rather than an empty plan it might
+ * hand to a worker.
+ */
+export async function readRunPlan(
+  tx: TkTx,
+  ctx: TenantContext,
+  runId: string,
+): Promise<FrozenRunPlan | undefined> {
+  const teamId = assertTenantContext(ctx);
+  const row = firstRow(
+    await tx.execute(sql`
+      SELECT r.project_id, p.plan
+        FROM orc_runs r
+        JOIN orc_run_plans p ON p.team_id = r.team_id AND p.run_id = r.id
+       WHERE r.team_id = ${teamId} AND r.id = ${runId}`),
+  );
+  if (row === undefined) return undefined;
+  return { projectId: String(row["project_id"]), plan: row["plan"] };
+}
+
 /**
  * `CompileSnapshotDto` (contract) and `CompileSnapshot` (compiler) describe the same data,
  * but the contract writes every optional as `?: T | undefined` — the shape zod infers — while

@@ -38,6 +38,7 @@ export {
   ARTIFACT_MAX_BYTES,
   ARTIFACT_URL_TTL_SECONDS,
   createArtifactUpload,
+  markArtifactsUploaded,
   type ArtifactKind,
   type ArtifactUploadSlot,
   type CreateArtifactUploadInput,

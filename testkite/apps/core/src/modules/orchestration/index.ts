@@ -50,10 +50,29 @@ export {
   type RunEventKind,
   type StoredRunEvent,
 } from "./events.js";
+// The ownership protocol itself. Exported because the internal fleet plane (Task 13) is the
+// only caller that ever holds a lease: it claims, fences, heartbeats and completes on behalf of
+// a worker that has no database credential of its own.
 export {
+  claimJobs,
+  completeJob,
+  dispatchPending,
+  fenceJob,
+  heartbeatJob,
+  jobExistsForTeam,
+  LEASE_SECONDS,
+  MAX_INFRA_ATTEMPTS,
+  type ClaimedJobRow,
+  type EpochOutcome,
+  type FencedJob,
+  type JobLane,
+} from "./queue/job-queue.js";
+export {
+  readRunPlan,
   startRun,
   jobCost,
   JOB_COST_MAX,
+  type FrozenRunPlan,
   type StartRunInput,
   type StartRunDeps,
   type StartRunResult,
