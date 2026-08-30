@@ -39,6 +39,12 @@ export interface InternalAppDeps {
   readonly db: TkDb;
   /** SHA-256 of `FLEET_BOOTSTRAP_TOKEN`. Hashed at the composition root; never held in clear here. */
   readonly bootstrapTokenHash: Buffer;
+  /**
+   * The claim budget's clock, and ONLY that budget's — see `internalRoutes`. Omitted in
+   * production, where it is `Date.now`; supplied by a suite that needs the refill to happen at
+   * instants it names instead of at whatever the host's load made of them.
+   */
+  readonly claimClock?: () => number;
 }
 
 export async function buildInternalApp(deps: InternalAppDeps): Promise<FastifyInstance> {
@@ -123,6 +129,14 @@ export async function buildInternalApp(deps: InternalAppDeps): Promise<FastifyIn
     req.tkRun = scope;
   });
 
-  await app.register(internalRoutes({ db: deps.db, env: deps.env }));
+  // `exactOptionalPropertyTypes`: an absent clock and one explicitly set to `undefined` are not
+  // the same type, so the key is spread in only when there is one.
+  await app.register(
+    internalRoutes({
+      db: deps.db,
+      env: deps.env,
+      ...(deps.claimClock === undefined ? {} : { claimClock: deps.claimClock }),
+    }),
+  );
   return app;
 }

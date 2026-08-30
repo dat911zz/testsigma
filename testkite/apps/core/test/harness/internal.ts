@@ -37,6 +37,27 @@ const nextWorkerId = (): string => {
   workerSeq += 1;
   return `w-${String(workerSeq)}`;
 };
+/**
+ * The clock the per-worker claim budget refills on — VIRTUAL, and standing still unless a test
+ * moves it with `advanceClaimClock()`.
+ *
+ * Real time here would make every storm assertion a coin flip: the bucket refills 10 tokens a
+ * second, and sixty sequential HTTP + database round trips take however long the host is in the
+ * mood for — ~0.45s warm here, seconds under the monorepo's parallel test load. Measured on this
+ * box: 22 of 60 calls served where the burst is 20, i.e. two tokens the storm did not pay for,
+ * and whether the sixty-first call finds one more is decided by nothing the test controls. A
+ * "flaky-by-design" test is exactly what let a real race hide in this repo for two milestones,
+ * so the budget's clock is a port and the suite owns it.
+ *
+ * Nothing else on the plane reads it: leases, heartbeats and tokens all stamp the wall clock.
+ */
+let claimClockMs = 0;
+/**
+ * Jumped between tests, not during them. An hour refills every bucket to the brim, so a storm
+ * cannot leak budget into whatever runs next — belt and braces with the per-test worker id.
+ */
+const CLAIM_CLOCK_STEP_MS = 3_600_000;
+
 /** Three chains, so a test can claim two distinct jobs and still leave one in the queue. */
 const CHAIN_COUNT = 3;
 /** Four times the reaper's 30s dead threshold: nothing about this heartbeat is borderline. */
@@ -124,6 +145,11 @@ export interface InternalTestApp {
   jobIdOfOtherTeam: () => Promise<string>;
   /** Jobs still sitting in the queue for a worker to take — the conservation check of a storm. */
   claimableJobCount: () => Promise<number>;
+  /**
+   * Moves the claim budget's clock forward by `ms`. The ONLY way time passes for the rate
+   * limiter in this suite, which is what makes "the budget refilled by exactly N" assertable.
+   */
+  advanceClaimClock: (ms: number) => void;
   caseResultCount: (jobRunId: string) => Promise<number>;
   artifactStatuses: (jobRunId: string) => Promise<readonly string[]>;
   sampleStep: () => SampleStep;
@@ -139,6 +165,7 @@ async function build(): Promise<Shared> {
     env: ENV,
     db: t.db,
     bootstrapTokenHash: createHash("sha256").update(BOOTSTRAP_TOKEN).digest(),
+    claimClock: (): number => claimClockMs,
   });
   await app.ready();
   return { t, app };
@@ -152,6 +179,9 @@ async function build(): Promise<Shared> {
 export async function makeInternalTestApp(): Promise<InternalTestApp> {
   shared ??= await build();
   const { t, app } = shared;
+  // Between tests, never inside one: the plane — and with it the limiter's buckets — is built
+  // once for the file, so this is what hands each test a full budget it can then spend exactly.
+  claimClockMs += CLAIM_CLOCK_STEP_MS;
   await t.reset();
   const [teamA, teamB] = await t.seedTwoTeams();
 
@@ -263,6 +293,9 @@ export async function makeInternalTestApp(): Promise<InternalTestApp> {
         `SELECT count(*)::int AS n FROM job_runs WHERE status = 'dispatched'`,
       );
       return r.rows[0]?.n ?? 0;
+    },
+    advanceClaimClock: (ms: number): void => {
+      claimClockMs += ms;
     },
     caseResultCount: async (jobRunId: string): Promise<number> => {
       const r = await t.raw.query<{ n: number }>(

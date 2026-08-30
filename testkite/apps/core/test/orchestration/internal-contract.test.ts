@@ -30,7 +30,7 @@ import {
   registerResponseSchema,
 } from "@testkite/contract";
 
-/** Well past one burst, so the budget runs out even while it refills mid-loop. */
+/** Well past one burst, so the budget runs out with room to spare on either side of it. */
 const CLAIM_STORM = 60;
 import {
   closeInternalTestApp,
@@ -369,15 +369,23 @@ describe("/internal/fleet — leaseEpoch is mandatory on every mutation", () => 
    * queue. The contract's answer to that is `429 RATE_LIMITED` + `Retry-After`, which the fleet
    * plan's worker backs off on exponentially; without it here, the twenty tasks of that plan
    * would code a branch the server can never take.
+   *
+   * The budget's clock is INJECTED and frozen for the length of a test (harness/internal.ts).
+   * Against the wall clock this loop measured 22 of 60 calls served where the burst is 20: real
+   * HTTP against real Postgres is slow enough for the bucket to refill underneath it, so every
+   * count here would have been "20 plus however loaded the machine was". Time now moves only
+   * where the test says it does, and the refill is asserted on rather than tolerated.
    */
   it("claim: answers 429 RATE_LIMITED with a Retry-After once one worker storms the queue", async () => {
     const queued = await h.claimableJobCount();
     expect(queued, "the fixture must have work to hand out").toBeGreaterThan(0);
+    expect(queued, "a burst must outlast the queue, or the 200s alone would spend it").toBeLessThan(
+      CLAIM_RATE_LIMIT_BURST,
+    );
 
     const seen: number[] = [];
     const claimed = new Set<string>();
     const backoffs: number[] = [];
-    const startedMs = Date.now();
     for (let i = 0; i < CLAIM_STORM; i += 1) {
       const res = await h.post(
         "/internal/fleet/claim",
@@ -391,7 +399,6 @@ describe("/internal/fleet — leaseEpoch is mandatory on every mutation", () => 
         backoffs.push(Number(res.headers["retry-after"]));
       }
     }
-    const elapsedSeconds = (Date.now() - startedMs) / 1000;
 
     const throttled = seen.filter((s) => s === 429).length;
     const served = seen.filter((s) => s === 200 || s === 204).length;
@@ -399,11 +406,29 @@ describe("/internal/fleet — leaseEpoch is mandatory on every mutation", () => 
     expect(new Set(seen)).toEqual(new Set([200, 204, 429]));
     // Every 429 names a delay the worker can act on: `Retry-After` in whole seconds, never 0.
     expect(backoffs.every((s) => Number.isInteger(s) && s >= 1)).toBe(true);
-    // The budget is a burst plus whatever refilled while the loop ran — the upper bound is what
-    // proves the limiter is a real budget and not a counter that resets on every request.
-    expect(served).toBeLessThanOrEqual(
-      CLAIM_RATE_LIMIT_BURST + Math.ceil(elapsedSeconds * CLAIM_RATE_LIMIT_PER_SECOND),
-    );
+    // EXACTLY one burst: the budget's clock stands still for the whole storm, so nothing
+    // refilled while the loop ran and the counts are arithmetic rather than a stopwatch reading.
+    expect(served, "a storm buys one burst and not one call more").toBe(CLAIM_RATE_LIMIT_BURST);
+    expect(throttled).toBe(CLAIM_STORM - CLAIM_RATE_LIMIT_BURST);
+
+    // A rate, not a quota: one second of time buys exactly one second of claims back, and the
+    // call after those is refused again. This is also what proves the plane really refills off
+    // the clock it was handed — a handler still reading the wall clock would refill by ~0 here.
+    h.advanceClaimClock(1000);
+    const afterRefill: number[] = [];
+    for (let i = 0; i < CLAIM_RATE_LIMIT_PER_SECOND + 1; i += 1) {
+      const res = await h.post(
+        "/internal/fleet/claim",
+        { workerId: h.workerId, lane: "batch", freeSlots: 1 },
+        h.workerToken,
+      );
+      afterRefill.push(res.statusCode);
+    }
+    // The queue is empty by now, so a granted claim is a 204 — the budget, not the queue, is
+    // what these count.
+    expect(afterRefill.filter((s) => s === 204).length).toBe(CLAIM_RATE_LIMIT_PER_SECOND);
+    expect(afterRefill.at(-1), "one second buys one second, then the wait resumes").toBe(429);
+
     // Conservation: throttling is a refusal to LOOK at the queue, so no job may go missing and
     // none may be handed out twice.
     expect(claimed.size).toBe(queued);
@@ -418,6 +443,9 @@ describe("/internal/fleet — leaseEpoch is mandatory on every mutation", () => 
         h.workerToken,
       );
     }
+    // Refused because the burst is spent and the budget's clock has not moved — NOT because
+    // sixty round trips happened to outrun the refill, which is what decided this call before
+    // the clock became a port (it flipped to 204 whenever the loop ran long enough).
     const exhausted = await h.post(
       "/internal/fleet/claim",
       { workerId: h.workerId, lane: "batch", freeSlots: 1 },

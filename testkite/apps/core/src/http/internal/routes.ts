@@ -191,8 +191,23 @@ function toCaseResults(
   });
 }
 
-export function internalRoutes(deps: { readonly db: TkDb; readonly env: KernelEnv }): FastifyPluginAsync {
+export function internalRoutes(deps: {
+  readonly db: TkDb;
+  readonly env: KernelEnv;
+  /**
+   * The clock the claim BUDGET refills on, and nothing else on this plane reads it — every
+   * other handler stamps `new Date()` straight from the wall clock, as it must.
+   *
+   * It is a port because a rate limit is the one thing here whose behaviour is a function of
+   * elapsed time: driven over HTTP against a real database, "how much budget refilled while
+   * sixty round trips ran" is a property of how loaded the host is, so a test asserting on it
+   * is a coin flip dressed up as a contract. With the clock injected, a suite freezes it and
+   * the counts become arithmetic. Production passes nothing and gets `Date.now`.
+   */
+  readonly claimClock?: () => number;
+}): FastifyPluginAsync {
   const db = deps.db;
+  const claimClock = deps.claimClock ?? ((): number => Date.now());
   /**
    * One budget per plane instance, keyed by worker identity. Built here rather than per request
    * for the obvious reason (state), and per INSTANCE rather than per module so a test can stand
@@ -294,7 +309,7 @@ export function internalRoutes(deps: { readonly db: TkDb; readonly env: KernelEn
        * tell the worker about it, leaving the chain `running` with nobody holding it until the
        * reaper takes it back 30s later.
        */
-      const budget = claimRate.take(scope.workerId, Date.now());
+      const budget = claimRate.take(scope.workerId, claimClock());
       if (!budget.allowed) {
         throw new TooManyRequestsError(
           "Too many claims from this worker.",
