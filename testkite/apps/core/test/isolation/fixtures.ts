@@ -52,6 +52,17 @@ export const RESOURCE_FIXTURES: Readonly<Record<string, (c: FixtureCtx) => Promi
     if (r.statusCode !== 201) throw new Error(`fixture caseId failed: ${r.statusCode} ${r.body}`);
     return (r.json() as { id: string }).id;
   },
+  // --- orchestration ---
+  // A run owned by team A. Written straight to `orc_runs` rather than through POST /v1/runs:
+  // the real route compiles a snapshot, which needs runnable cases, an environment and a
+  // day's quota — a fixture that heavy would fail for reasons that have nothing to do with
+  // tenant isolation, and every /v1/runs/{runId} route only ever reads the row by id anyway.
+  runId: async ({ app }) =>
+    app.db.seedRun({
+      teamId: app.ids.teamA,
+      projectId: app.ids.projectA,
+      userId: app.ids.authorUser,
+    }),
 };
 
 export const BODY_FIXTURES: Readonly<Record<string, unknown>> = {

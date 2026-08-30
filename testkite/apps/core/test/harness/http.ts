@@ -3,7 +3,7 @@
  * Used by auth tests (Task 6), onboarding (Task 10), and the L3 isolation suite (Task 11).
  */
 import { sql } from "drizzle-orm";
-import { makeTestDb, type TestDb } from "./pglite.js";
+import { makeTestDb, PENDING_LOCATOR_ELEMENT_ID, type TestDb } from "./pglite.js";
 import { buildHttpApp, type TkApp } from "../../src/http/app.js";
 import {
   createAuthenticator,
@@ -14,7 +14,9 @@ import { identityRouteRegistrations } from "../../src/modules/identity/routes.js
 import { writeAuditEvent } from "../../src/modules/governance/index.js";
 import { governanceRouteRegistrations } from "../../src/modules/governance/routes.js";
 import { authoringRoutes } from "../../src/modules/authoring/index.js";
+import { orchestrationRoutes } from "../../src/modules/orchestration/index.js";
 import { onboardRouteRegistration } from "../../src/http/usecases/onboard-team.js";
+import type { ElementDto } from "@testkite/contract";
 
 export type TestApp = {
   readonly app: TkApp;
@@ -54,6 +56,30 @@ const ENV = {
   DATABASE_APP_ROLE: "testkite_app",
   DATABASE_POOL_MAX: 10,
   LOG_LEVEL: "error" as const,
+};
+
+/**
+ * Phase 0 takes both loaders as injection ports (elements and testdata only land in M4), so the
+ * harness decides what an element looks like. The id is what decides the answer: the one
+ * `seedCaseWithPendingLocator` uses comes back with no locator — which is what makes the
+ * compiler stop with `element_pending_locator` — and everything else comes back ready.
+ */
+const COMPILE_DEPS = {
+  loadElements: async (ids: readonly string[]): Promise<Record<string, ElementDto>> =>
+    Object.fromEntries(
+      ids.map((id): readonly [string, ElementDto] => [
+        id,
+        id === PENDING_LOCATOR_ELEMENT_ID
+          ? { id, name: "checkout button", status: "pending_locator" as const, locators: [] }
+          : {
+              id,
+              name: `element ${id}`,
+              status: "ready" as const,
+              locators: [{ kind: "css" as const, value: `#${id}` }],
+            },
+      ]),
+    ),
+  loadDataProfiles: async (): Promise<Record<string, never>> => ({}),
 };
 
 /** Postgres array literal for text[] — PGlite can't infer the type from a bare JS array. */
@@ -119,7 +145,7 @@ export async function makeTestApp(): Promise<TestApp> {
     ],
     // Authoring is a plugin (same as composition-root); the L3 suite drives its
     // routes through the real auth hook to prove cross-tenant ids yield 404.
-    plugins: [authoringRoutes(db.db)],
+    plugins: [authoringRoutes(db.db), orchestrationRoutes(db.db, { compile: COMPILE_DEPS })],
   });
   await app.ready();
 
@@ -218,6 +244,12 @@ export async function makeTestApp(): Promise<TestApp> {
     await db.db.execute(
       sql`INSERT INTO memberships (team_id,user_id,role) VALUES (${ids.teamA},${ids.orgAdminUser},'org_admin')`,
     );
+    // Default quota limits, exactly like seedQuotaDefaults() does on the real onboarding path.
+    // Without the row a team is "never onboarded" and EVERY run reservation is refused, so
+    // `POST /v1/runs` would answer 429 for a reason that has nothing to do with the test.
+    for (const teamId of [ids.teamA, ids.teamB]) {
+      await db.db.execute(sql`INSERT INTO quota_limits (team_id) VALUES (${teamId})`);
+    }
 
     // case:write + case:promote let the L3 suite reach the authoring handlers (and get
     // 404 for a cross-tenant id) instead of stopping at the scope gate; team_admin's
@@ -226,12 +258,17 @@ export async function makeTestApp(): Promise<TestApp> {
       "case:read",
       "case:write",
       "case:promote",
+      // The three run scopes team_admin's role really carries: without them the L3 probe of
+      // /v1/runs* would stop at the scope gate with 403 and never reach the 404-vs-403 question.
+      "run:read",
+      "run:trigger",
+      "run:abort",
       "member:manage",
       "token:issue:user",
       "audit:read",
       "team:manage",
     ];
-    const AUTHOR = ["case:read", "case:write", "run:trigger"];
+    const AUTHOR = ["case:read", "case:write", "run:read", "run:trigger", "run:abort"];
     // org_admin: manages people + creates teams, does NOT read team assets (only break-glass reads).
     const ORG_ADMIN = ["member:manage", "audit:read", "team:manage", "team:create"];
     tokens.adminA = await issue(ids.teamA, ids.adminUser, ADMIN, { days: 30 });

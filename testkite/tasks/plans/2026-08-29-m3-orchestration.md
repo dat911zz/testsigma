@@ -4589,7 +4589,7 @@ KHÁC nên không có `rowCount` nào tự phát hiện mất lease. Hook auth p
 **Interfaces:**
 - Produces: descriptor `triggerRun` (POST `/v1/runs`, perm `run:trigger`), `getRun` (GET `/v1/runs/{runId}`, `run:read`), `abortRun` (POST `/v1/runs/{runId}/abort`, `run:abort`), `streamRun` (GET `/v1/runs/{runId}/stream`, `run:read`); `orchestrationRoutes(db, deps): FastifyPluginAsync`.
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 ```ts
 // apps/core/test/orchestration/sse.test.ts
@@ -4639,12 +4639,12 @@ describe("GET /v1/runs/:runId/stream", () => {
 
 `run-routes.test.ts`: trigger 202 + `runId`; trigger với case của team khác ⇒ 404; trigger khi hết quota ⇒ 429 `RATE_LIMITED`; trigger sinh diagnostics ⇒ 200 với `verdict: "compile_error"` + mảng `diagnostics`; `GET /v1/runs/{id}` của team khác ⇒ 404; abort ⇒ mọi `job_runs` chưa terminal chuyển `cancelled` + bump epoch (zombie tiếp theo ăn 409).
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/sse.test.ts`
 Expected: FAIL — route chưa tồn tại (404).
 
-- [ ] **Step 3: `sse.ts`**
+- [x] **Step 3: `sse.ts`**
 
 ```ts
 // apps/core/src/modules/orchestration/sse.ts
@@ -4698,7 +4698,7 @@ async function handleStream(req: FastifyRequest, reply: FastifyReply): Promise<v
 }
 ```
 
-- [ ] **Step 4: Chạy test, xác nhận XANH + regen OpenAPI**
+- [x] **Step 4: Chạy test, xác nhận XANH + regen OpenAPI**
 
 ```bash
 cd testkite && pnpm --filter @testkite/core test test/orchestration/
@@ -4706,7 +4706,7 @@ pnpm openapi:gen && git diff --stat packages/contract/openapi.json
 ```
 Expected: test PASS; `openapi.json` chỉ thêm 4 path `/v1/runs*` (không có `/internal`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add testkite/packages/contract testkite/apps/core/src/modules/orchestration testkite/apps/core/test

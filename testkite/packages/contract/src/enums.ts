@@ -41,3 +41,19 @@ export type JobKind = (typeof JOB_KINDS)[number];
 
 export const LANES = ["interactive", "batch"] as const;
 export type Lane = (typeof LANES)[number];
+
+/**
+ * Lifecycle of the RUN AGGREGATE (`orc_runs.status`) — not to be confused with `JOB_STATUSES`,
+ * which is the state of ONE chain in the queue. A run is `finished` the moment it has a
+ * verdict, including the verdicts reached before any browser started (compile_error, blocked).
+ */
+export const RUN_LIFECYCLE_STATUSES = ["compiling", "queued", "running", "finished"] as const;
+export type RunLifecycleStatus = (typeof RUN_LIFECYCLE_STATUSES)[number];
+
+/**
+ * `orc_runs.verdict` carries one value the tenant-facing `RUN_VERDICTS` does not: `pending`,
+ * the state of a run that has not reached a verdict yet. It is a READ-side value only —
+ * nothing ever finishes with it.
+ */
+export const RUN_VERDICTS_WITH_PENDING = ["pending", ...RUN_VERDICTS] as const;
+export type RunVerdictWithPending = (typeof RUN_VERDICTS_WITH_PENDING)[number];

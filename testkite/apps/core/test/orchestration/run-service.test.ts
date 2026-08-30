@@ -219,6 +219,26 @@ describe("startRun — compiler phase 0", () => {
     expect(Number(used.rows[0]?.["n"])).toBe(0);
   });
 
+  it("404s a project belonging to another team instead of tripping the foreign key", async () => {
+    const [a, b] = await t.seedTwoTeams();
+    const caseIds = await t.seedRunnableCases(a, 1);
+    // `orc_runs` carries a composite FK on (team_id, project_id). Opening the run row before
+    // the project has been read back under RLS made THIS case answer 500 on a constraint
+    // violation instead of 404 — a cross-tenant id must never produce anything but 404.
+    await expect(
+      t.asTeamCtx(a.teamId, (tx, ctx) =>
+        startRun(
+          tx,
+          ctx,
+          { projectId: b.projectId, targetCaseIds: caseIds, lane: "batch", pin: "latest", requestedBy: a.userId, now },
+          DEPS,
+        ),
+      ),
+    ).rejects.toMatchObject({ httpStatus: 404 });
+    const runs = await t.asTeam(a.teamId, (tx) => tx.execute(sql`SELECT count(*)::int n FROM orc_runs`));
+    expect(Number(runs.rows[0]?.["n"])).toBe(0);
+  });
+
   it("computes job cost as clamp(ceil(steps/10), 1, 8)", () => {
     expect([jobCost(0), jobCost(1), jobCost(10), jobCost(11), jobCost(80), jobCost(500)]).toEqual([
       1, 1, 1, 2, 8, 8,

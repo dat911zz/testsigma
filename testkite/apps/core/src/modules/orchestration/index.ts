@@ -68,6 +68,9 @@ export {
   type JobLane,
 } from "./queue/job-queue.js";
 export {
+  abortRun,
+  isRunTerminal,
+  loadRunStatus,
   readRunPlan,
   startRun,
   jobCost,
@@ -77,3 +80,13 @@ export {
   type StartRunDeps,
   type StartRunResult,
 } from "./run-service.js";
+// The tenant-facing run plane (Task 14). Submitted to the shell as a Fastify plugin, the same
+// way authoring submits its case routes — the SSE route hijacks its reply, which the shell's
+// `registrations` path (always ending in `reply.send()`) cannot express.
+export { orchestrationRoutes, type OrchestrationRoutesDeps } from "./routes.js";
+export {
+  activeRunStreamCount,
+  SSE_HEARTBEAT_MS,
+  SSE_POLL_MS,
+  type RunStreamDeps,
+} from "./sse.js";

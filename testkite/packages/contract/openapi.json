@@ -2578,6 +2578,876 @@
           }
         }
       }
+    },
+    "/v1/runs": {
+      "post": {
+        "operationId": "triggerRun",
+        "summary": "Compile and queue a run (202), or answer the compile diagnostics (200)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "projectId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "caseIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "minItems": 1,
+                    "maxItems": 500
+                  },
+                  "lane": {
+                    "type": "string",
+                    "enum": [
+                      "interactive",
+                      "batch"
+                    ],
+                    "default": "batch"
+                  },
+                  "pin": {
+                    "type": "string",
+                    "enum": [
+                      "ready",
+                      "latest"
+                    ],
+                    "default": "ready"
+                  },
+                  "screenshots": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "failure",
+                      "none"
+                    ]
+                  }
+                },
+                "required": [
+                  "projectId",
+                  "caseIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "finished"
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "const": "compile_error"
+                    },
+                    "diagnostics": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CompileDiagnostic"
+                      }
+                    }
+                  },
+                  "required": [
+                    "runId",
+                    "status",
+                    "verdict",
+                    "diagnostics"
+                  ]
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "202",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "queued"
+                    },
+                    "planContentHash": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "chainTotal": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "runId",
+                    "status",
+                    "planContentHash",
+                    "chainTotal"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing permission within your own team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quota exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{runId}": {
+      "get": {
+        "operationId": "getRun",
+        "summary": "Read a run aggregate with the state of each of its chains",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "lane": {
+                      "type": "string",
+                      "enum": [
+                        "interactive",
+                        "batch"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "compiling",
+                        "queued",
+                        "running",
+                        "finished"
+                      ]
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "passed",
+                        "failed",
+                        "compile_error",
+                        "blocked",
+                        "aborted_early",
+                        "cancelled"
+                      ]
+                    },
+                    "planContentHash": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "chainTotal": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "chainDone": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "startedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "finishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "jobRunId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "chainKey": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "dispatched",
+                              "running",
+                              "succeeded",
+                              "failed",
+                              "cancelled",
+                              "rejected_quota",
+                              "unknown_after_restore"
+                            ]
+                          },
+                          "attempt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "leaseEpoch": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "startedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          },
+                          "finishedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "jobRunId",
+                          "chainKey",
+                          "status",
+                          "attempt",
+                          "leaseEpoch",
+                          "startedAt",
+                          "finishedAt"
+                        ]
+                      }
+                    },
+                    "diagnostics": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CompileDiagnostic"
+                      }
+                    }
+                  },
+                  "required": [
+                    "runId",
+                    "projectId",
+                    "lane",
+                    "status",
+                    "verdict",
+                    "planContentHash",
+                    "chainTotal",
+                    "chainDone",
+                    "startedAt",
+                    "finishedAt",
+                    "jobs",
+                    "diagnostics"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing permission within your own team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{runId}/abort": {
+      "post": {
+        "operationId": "abortRun",
+        "summary": "Cancel every chain of a run that has not finished yet",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "const": "cancelled"
+                    },
+                    "cancelledJobs": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "runId",
+                    "verdict",
+                    "cancelledJobs"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing permission within your own team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runs/{runId}/stream": {
+      "get": {
+        "operationId": "streamRun",
+        "summary": "Follow a run over server-sent events (text/event-stream). Frames: `status` carrying the schema below, `run_event` carrying one worker event, and a terminal `done`. Resume with Last-Event-ID.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "projectId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "lane": {
+                      "type": "string",
+                      "enum": [
+                        "interactive",
+                        "batch"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "compiling",
+                        "queued",
+                        "running",
+                        "finished"
+                      ]
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "passed",
+                        "failed",
+                        "compile_error",
+                        "blocked",
+                        "aborted_early",
+                        "cancelled"
+                      ]
+                    },
+                    "planContentHash": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "chainTotal": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "chainDone": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "startedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "finishedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "jobs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "jobRunId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "chainKey": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "dispatched",
+                              "running",
+                              "succeeded",
+                              "failed",
+                              "cancelled",
+                              "rejected_quota",
+                              "unknown_after_restore"
+                            ]
+                          },
+                          "attempt": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "leaseEpoch": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "startedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          },
+                          "finishedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "jobRunId",
+                          "chainKey",
+                          "status",
+                          "attempt",
+                          "leaseEpoch",
+                          "startedAt",
+                          "finishedAt"
+                        ]
+                      }
+                    },
+                    "diagnostics": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CompileDiagnostic"
+                      }
+                    }
+                  },
+                  "required": [
+                    "runId",
+                    "projectId",
+                    "lane",
+                    "status",
+                    "verdict",
+                    "planContentHash",
+                    "chainTotal",
+                    "chainDone",
+                    "startedAt",
+                    "finishedAt",
+                    "jobs",
+                    "diagnostics"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing permission within your own team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found — INCLUDING a resource belonging to another team (never 403)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "requestId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

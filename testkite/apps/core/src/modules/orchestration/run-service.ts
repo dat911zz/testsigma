@@ -12,7 +12,14 @@
  * forever, and a job without a plan would kill a worker on claim.
  */
 import { sql } from "drizzle-orm";
-import type { AuthoredCaseDto, AuthoredStepDto, CompileSnapshotDto } from "@testkite/contract";
+import type {
+  AuthoredCaseDto,
+  AuthoredStepDto,
+  CompileDiagnosticDto,
+  CompileSnapshotDto,
+  RunChainDto,
+  RunStatusDto,
+} from "@testkite/contract";
 import {
   compileRun,
   PLAN_FORMAT_VERSION,
@@ -23,7 +30,13 @@ import {
   type RunLane,
   type ScreenshotPolicy,
 } from "@testkite/run-compiler";
-import { assertTenantContext, firstRow, type TenantContext, type TkTx } from "../kernel/index.js";
+import {
+  assertTenantContext,
+  firstRow,
+  rowsOf,
+  type TenantContext,
+  type TkTx,
+} from "../kernel/index.js";
 import { buildCompileSnapshot, type SnapshotDeps, type SnapshotPin } from "../authoring/index.js";
 import { refundRunSlot, reserveRunSlot } from "../governance/index.js";
 import { loadRunEnvironment } from "../planning/index.js";
@@ -74,6 +87,14 @@ export async function startRun(
   const quota = await reserveRunSlot(tx, ctx, { now: input.now });
   if (!quota.granted) return { kind: "rejected_quota", used: quota.used, limit: quota.limit };
 
+  // The environment is read BEFORE the run row is opened, and that order is load-bearing:
+  // `orc_runs` carries a composite FK on (team_id, project_id), so a project belonging to
+  // another team used to reach Postgres and come back as a raw 500 on that constraint — a
+  // cross-tenant id answering anything but 404. Under RLS an invisible project has no
+  // environment either, so this read is the tenant gate as well as the compiler's input, and
+  // "not yours" and "no environment configured" are deliberately the same 404.
+  const env = await loadRunEnvironment(tx, ctx, input.projectId);
+
   const runRow = firstRow(
     await tx.execute(sql`
       INSERT INTO orc_runs (team_id, project_id, lane, status, requested_by, pin)
@@ -86,7 +107,6 @@ export async function startRun(
   // ---- phase 0b: snapshot. A case from another team simply is not visible under RLS, so
   // buildCompileSnapshot raises CaseNotFoundError => 404, never 403. Throwing here rolls the
   // whole transaction back, quota reservation included.
-  const env = await loadRunEnvironment(tx, ctx, input.projectId);
   const snapshot = await buildCompileSnapshot(
     tx,
     ctx,
@@ -174,6 +194,169 @@ export async function readRunPlan(
   );
   if (row === undefined) return undefined;
   return { projectId: String(row["project_id"]), plan: row["plan"] };
+}
+
+/**
+ * Job states nothing can move away from. Kept as one list because both readers below have to
+ * agree on it: `chainDone` counts them, and `abortRun` refuses to touch them.
+ */
+const TERMINAL_JOB_STATUSES: readonly string[] = ["succeeded", "failed", "cancelled", "rejected_quota"];
+
+/**
+ * The same list as a SQL literal list. `sql.raw` is safe here and nowhere else: the values are
+ * module constants, never input — and deriving the fragment from the array is what keeps the
+ * predicate and the counter from drifting apart.
+ */
+const TERMINAL_JOB_STATUS_SQL = sql.raw(TERMINAL_JOB_STATUSES.map((s) => `'${s}'`).join(", "));
+
+/** timestamptz comes back as a Date from both drivers; a driver that returns text must not lose ms. */
+function toIsoOrNull(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return (value instanceof Date ? value : new Date(String(value))).toISOString();
+}
+
+/**
+ * The READ MODEL of a run: the aggregate, one entry per chain, and the compile diagnostics.
+ * Lives next to the write for the same reason `readRunPlan` does — `startRun` is what puts
+ * every one of these rows there.
+ *
+ * `chainDone` is COUNTED FROM THE QUEUE rather than read from `orc_runs.chain_done`: no writer
+ * maintains that column yet (the roll-up lands with the results plane), and a progress number
+ * that is silently always 0 is worse than one that costs a scan of a handful of rows.
+ *
+ * `undefined` = no such run FOR THIS TENANT. Another team's id and a nonexistent id are the
+ * same answer on purpose: the caller turns both into 404, never 403 (blueprint §3 L3).
+ */
+export async function loadRunStatus(
+  tx: TkTx,
+  ctx: TenantContext,
+  runId: string,
+): Promise<RunStatusDto | undefined> {
+  const teamId = assertTenantContext(ctx);
+  const run = firstRow(
+    await tx.execute(sql`
+      SELECT id, project_id, lane::text AS lane, status::text AS status, verdict::text AS verdict,
+             plan_hash, chain_total, started_at, finished_at
+        FROM orc_runs
+       WHERE team_id = ${teamId} AND id = ${runId}`),
+  );
+  if (run === undefined) return undefined;
+
+  const jobRows = rowsOf(
+    await tx.execute(sql`
+      SELECT id, chain_key, status::text AS status, attempt, lease_epoch, started_at, finished_at
+        FROM job_runs
+       WHERE team_id = ${teamId} AND run_id = ${runId}
+       ORDER BY queue_seq, id`),
+  );
+  const diagnosticRows = rowsOf(
+    await tx.execute(sql`
+      SELECT severity::text AS severity, code, case_id, step_ordinal, message
+        FROM orc_compile_diagnostics
+       WHERE team_id = ${teamId} AND run_id = ${runId}
+       ORDER BY case_id, step_ordinal NULLS FIRST, code`),
+  );
+
+  const jobs: RunChainDto[] = jobRows.map((row) => ({
+    jobRunId: String(row["id"]),
+    chainKey: String(row["chain_key"]),
+    status: String(row["status"]) as RunChainDto["status"],
+    attempt: Number(row["attempt"]),
+    leaseEpoch: Number(row["lease_epoch"]),
+    startedAt: toIsoOrNull(row["started_at"]),
+    finishedAt: toIsoOrNull(row["finished_at"]),
+  }));
+
+  return {
+    runId: String(run["id"]),
+    projectId: String(run["project_id"]),
+    lane: String(run["lane"]) as RunStatusDto["lane"],
+    status: String(run["status"]) as RunStatusDto["status"],
+    verdict: String(run["verdict"]) as RunStatusDto["verdict"],
+    planContentHash: run["plan_hash"] === null ? null : String(run["plan_hash"]),
+    chainTotal: Number(run["chain_total"]),
+    chainDone: jobs.filter((j) => TERMINAL_JOB_STATUSES.includes(j.status)).length,
+    startedAt: toIsoOrNull(run["started_at"]),
+    finishedAt: toIsoOrNull(run["finished_at"]),
+    jobs,
+    diagnostics: diagnosticRows.map((row) => ({
+      severity: String(row["severity"]) as CompileDiagnosticDto["severity"],
+      code: String(row["code"]) as CompileDiagnosticDto["code"],
+      caseId: String(row["case_id"]),
+      ...(row["step_ordinal"] === null ? {} : { stepOrdinal: Number(row["step_ordinal"]) }),
+      message: String(row["message"]),
+    })),
+  };
+}
+
+/**
+ * "Is there anything left to wait for?" — the predicate the SSE stream closes on.
+ *
+ * Two independent ways to be over, because two different writers get there. `status =
+ * 'finished'` is what phase 0 (compile_error) and `abortRun` stamp on the aggregate; "every
+ * chain is terminal" is what the fleet reaches one job at a time, and no writer rolls that up
+ * onto the aggregate yet. A run with no chain at all is NOT terminal by the second rule — that
+ * is a run still compiling, not a finished one.
+ */
+export function isRunTerminal(run: RunStatusDto): boolean {
+  return run.status === "finished" || (run.jobs.length > 0 && run.chainDone === run.jobs.length);
+}
+
+/**
+ * Cancels a run: every chain that has not finished becomes `cancelled` WITH ITS EPOCH BUMPED,
+ * and the aggregate gets its verdict.
+ *
+ * The epoch bump is the fence. A worker that was mid-chain still holds the old value, so its
+ * next `heartbeat`/`events`/`complete` writes 0 rows and it is told to drop everything — see
+ * `fenceJob`, which answers `cancelled` (410 JOB_CANCELLED) for exactly this state.
+ *
+ * The run token is deliberately NOT revoked. Revoking it would turn the worker's next call into
+ * a 401, whose prescribed reaction is "exit 1 and re-register" — a restart nobody needs, when
+ * the contract already has the precise answer (410: abandon the chain, do NOT complete). The
+ * token dies with the lease TTL anyway.
+ *
+ * On locking: the aggregate is locked by its IMMUTABLE key first (no predicate on mutable
+ * state), and the cancel itself is a plain `UPDATE ... WHERE status NOT IN (...)`. A concurrent
+ * claim that flips a row to `running` between the two is not lost: an UPDATE re-evaluates its
+ * qualification against the row version it actually locked, unlike a `SELECT ... FOR UPDATE
+ * SKIP LOCKED` whose predicate is answered from the statement's opening snapshot.
+ *
+ * `undefined` = no such run for this tenant ⇒ 404.
+ */
+export async function abortRun(
+  tx: TkTx,
+  ctx: TenantContext,
+  input: { readonly runId: string; readonly now: Date },
+): Promise<{ readonly cancelledJobs: number } | undefined> {
+  const teamId = assertTenantContext(ctx);
+  const finishedAt = input.now.toISOString();
+  const run = firstRow(
+    await tx.execute(sql`
+      SELECT id FROM orc_runs WHERE team_id = ${teamId} AND id = ${input.runId} FOR UPDATE`),
+  );
+  if (run === undefined) return undefined;
+
+  const cancelled = rowsOf(
+    await tx.execute(sql`
+      UPDATE job_runs
+         SET status = 'cancelled',
+             lease_epoch = lease_epoch + 1,
+             worker_id = NULL,
+             lease_expires_at = NULL,
+             finished_at = ${finishedAt}::timestamptz
+       WHERE team_id = ${teamId} AND run_id = ${input.runId}
+         AND status NOT IN (${TERMINAL_JOB_STATUS_SQL})
+      RETURNING id`),
+  );
+
+  // `status <> 'finished'` keeps an already-decided run's verdict: a run that passed a second
+  // before the abort arrived did pass, and overwriting that would be rewriting history.
+  await tx.execute(sql`
+    UPDATE orc_runs
+       SET status = 'finished', verdict = 'cancelled', finished_at = ${finishedAt}::timestamptz
+     WHERE team_id = ${teamId} AND id = ${input.runId} AND status <> 'finished'`);
+
+  return { cancelledJobs: cancelled.length };
 }
 
 /**
