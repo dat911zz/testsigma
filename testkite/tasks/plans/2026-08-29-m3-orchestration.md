@@ -2642,6 +2642,22 @@ Ba credential (bootstrap → worker token → run token) đúng như hợp đồ
 >    được đọc (thêm `orc_run_tokens`, 5 → 6 bảng). Đó chính là tripwire làm đúng việc: mọi GRANT mới
 >    cho role auth buộc phải chạm vào danh sách này mới xanh lại.
 
+> **Review fix (30-08-2026) — `touchWorker` phải GIA HẠN `token_expires_at`, không chỉ ghi
+> `last_seen_at`/`free_slots`.** Hợp đồng fleet ở đầu plan (dòng 42) hứa worker token "TTL 24h, gia
+> hạn ở mỗi worker-heartbeat", và chính docstring của `WORKER_TOKEN_TTL_HOURS` dựa vào lời hứa đó để
+> nói 24h là hào phóng. Bản ship đầu đặt `token_expires_at` MỘT lần lúc register ⇒ TTL đo "thời gian
+> kể từ lần restart gần nhất", không đo im lặng: một worker heartbeat 5s liên tục quá 24h sẽ bị
+> `verifyWorkerToken` trả `null` ngay khi mốc cố định đó trôi qua — máy đang sống bị coi là chưa xác
+> thực, đúng ngược điều hợp đồng viết. Test cũ chỉ phủ ca KHÔNG có heartbeat xen giữa nên lỗ hổng
+> im lặng. Đã sửa trong chính T9: `UPDATE … SET token_expires_at = now + 24h` (gia hạn cả khi
+> `drain = true` — worker đang rút vẫn phải báo cáo nốt job đang giữ), và hàm trả thêm
+> `workerTokenRenewedAt: Date | null` để T13 dựng được trường cùng tên trong response heartbeat
+> (dòng 67 / bảng handler T13). 0 row ⇒ `null` (UPDATE không bao giờ INSERT: heartbeat không hồi
+> sinh được worker đã bị xoá, cũng không được khai một lần gia hạn không xảy ra) — T13 lúc đó trả
+> `command: "drain"`, serialise mốc thời gian của chính request.
+> Test mới: "renews the worker token on every heartbeat, so a worker that keeps beating outlives 24h"
+> (gia hạn là cửa sổ TRƯỢT: 24h sau heartbeat CUỐI thì token vẫn chết).
+
 **Files:**
 - Modify: `apps/core/src/modules/orchestration/db/fleet-schema.ts` (thêm `orc_workers`, `orc_run_tokens`)
 - Create: `apps/core/src/modules/orchestration/run-token.ts`
@@ -2668,7 +2684,8 @@ export declare function registerWorker(db: TkDb, input: {
 export declare function verifyWorkerToken(db: TkDb, secret: string, now: Date): Promise<WorkerTokenScope | null>;
 export declare function touchWorker(db: TkDb, input: {
   readonly workerId: string; readonly freeSlots: number; readonly now: Date;
-}): Promise<{ readonly command: "continue" | "drain" }>;
+// Sửa sau review (xem ghi chú "Review fix" ở đầu task): heartbeat GIA HẠN worker token.
+}): Promise<{ readonly command: "continue" | "drain"; readonly workerTokenRenewedAt: Date | null }>;
 export declare function mintRunToken(tx: TkTx, ctx: TenantContext, input: {
   readonly jobRunId: string; readonly attempt: number; readonly leaseEpoch: number;
   readonly workerId: string; readonly expiresAt: Date;

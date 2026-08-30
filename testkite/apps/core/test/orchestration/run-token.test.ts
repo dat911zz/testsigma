@@ -139,8 +139,11 @@ describe("fleet credentials", () => {
   it("tells a draining worker to stop taking work", async () => {
     await registerWorker(t.db, { workerId: "w1", hostname: "h1", lane: "batch", capacity: 4, now });
     await t.setWorkerDrain("w1", true);
+    // A draining worker still holds jobs it must finish and report on, so the heartbeat renews
+    // its credential exactly like any other: "stop taking NEW work" is not "stop existing".
     expect(await touchWorker(t.db, { workerId: "w1", freeSlots: 2, now })).toEqual({
       command: "drain",
+      workerTokenRenewedAt: now,
     });
   });
 
@@ -151,10 +154,43 @@ describe("fleet credentials", () => {
     // table first, so reaching zero rows means the worker was deregistered mid-flight.
     expect(await touchWorker(t.db, { workerId: "ghost", freeSlots: 4, now })).toEqual({
       command: "drain",
+      // Nothing was renewed because nothing was there: a heartbeat must never be able to
+      // conjure a roster row, or to claim a renewal that did not happen.
+      workerTokenRenewedAt: null,
     });
+    expect(await t.countRows("orc_workers")).toBe(0);
   });
 
-  it("refuses a worker token past its 24h TTL", async () => {
+  it("renews the worker token on every heartbeat, so a worker that keeps beating outlives 24h", async () => {
+    // The fleet contract says the worker token has a 24h TTL "renewed at every worker
+    // heartbeat". Without the renewal the TTL is counted from REGISTRATION and nothing else:
+    // a worker beating every 5s for more than a day would start reading as UNAUTHENTICATED
+    // the instant that fixed deadline passed, while it is demonstrably alive.
+    const r = await registerWorker(t.db, {
+      workerId: "w1",
+      hostname: "h1",
+      lane: "batch",
+      capacity: 4,
+      now,
+    });
+    const beat = new Date(now.getTime() + 23 * 3_600_000);
+    expect(await touchWorker(t.db, { workerId: "w1", freeSlots: 2, now: beat })).toEqual({
+      command: "continue",
+      workerTokenRenewedAt: beat,
+    });
+    const pastRegistrationTtl = new Date(now.getTime() + (WORKER_TOKEN_TTL_HOURS + 12) * 3_600_000);
+    expect(await verifyWorkerToken(t.db, r.workerToken, pastRegistrationTtl)).toMatchObject({
+      workerId: "w1",
+      lane: "batch",
+      capacity: 4,
+    });
+    // The renewal is a sliding window, not an amnesty: 24h after the LAST heartbeat the very
+    // same token is dead, so a worker that stops beating still loses its credential on time.
+    const pastRenewalTtl = new Date(beat.getTime() + (WORKER_TOKEN_TTL_HOURS + 1) * 3_600_000);
+    expect(await verifyWorkerToken(t.db, r.workerToken, pastRenewalTtl)).toBeNull();
+  });
+
+  it("refuses a worker token past its 24h TTL with no heartbeat to renew it", async () => {
     const r = await registerWorker(t.db, {
       workerId: "w1",
       hostname: "h1",

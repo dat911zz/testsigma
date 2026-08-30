@@ -27,7 +27,10 @@ import {
 
 /** A run token outlives its lease by this much, so a heartbeat racing the deadline still authenticates. */
 export const RUN_TOKEN_TTL_SLACK_SECONDS = 60;
-/** A worker token is renewed on every worker heartbeat (5s), so 24h is already generous. */
+/**
+ * A worker token is renewed on every worker heartbeat (5s), so 24h is already generous: the TTL
+ * measures SILENCE, not uptime. See `touchWorker` — the renewal is what makes that true.
+ */
 export const WORKER_TOKEN_TTL_HOURS = 24;
 
 const PREFIX_BYTES = 4;
@@ -57,6 +60,10 @@ function mintSecret(kind: "tkr" | "tkw"): {
 const byteaOf = (hash: Buffer): ReturnType<typeof sql> => sql`decode(${hash.toString("hex")}, 'hex')`;
 
 const tsOf = (at: Date): ReturnType<typeof sql> => sql`${at.toISOString()}::timestamptz`;
+
+/** One definition of "24h from this instant", shared by registration and every renewal. */
+const workerTokenExpiryFrom = (now: Date): Date =>
+  new Date(now.getTime() + WORKER_TOKEN_TTL_HOURS * 3_600_000);
 
 const laneOf = (value: unknown): WorkerLane =>
   String(value) === "interactive" ? "interactive" : "batch";
@@ -95,7 +102,7 @@ export async function registerWorker(
   },
 ): Promise<{ readonly workerToken: string; readonly drain: boolean }> {
   const { secret, prefix, hash } = mintSecret("tkw");
-  const expiresAt = new Date(input.now.getTime() + WORKER_TOKEN_TTL_HOURS * 3_600_000);
+  const expiresAt = workerTokenExpiryFrom(input.now);
   return withDispatchRole(db, async (tx) => {
     const row = firstRow(
       await tx.execute(sql`
@@ -146,29 +153,53 @@ export async function verifyWorkerToken(
 }
 
 /**
- * The worker heartbeat: records liveness and free slots, and answers with the only command the
- * host obeys.
+ * The worker heartbeat: records liveness and free slots, RENEWS the worker token, and answers
+ * with the only command the host obeys.
+ *
+ * The renewal is not a nicety. `token_expires_at` is set once at registration, so without it the
+ * 24h TTL would measure "time since this worker last restarted" — a worker beating every 5s for
+ * a day would have `verifyWorkerToken` start returning null the instant that fixed deadline
+ * passed, i.e. a demonstrably live machine would read as unauthenticated and stop being able to
+ * claim or report. Renewing here makes the TTL measure SILENCE instead, which is what the fleet
+ * contract promises ("TTL 24h, renewed at every worker heartbeat") and the only reading under
+ * which 24h is a safe number: a worker that stops beating still loses its credential 24h later.
+ *
+ * Renewal happens for a DRAINING worker too — it still holds jobs it must finish and report on,
+ * and "take no new work" is not "lose the credential you are using right now".
  *
  * DELIBERATE DEVIATION from the plan's block, which answered `continue` when no row matched: a
  * worker whose roster row is gone is told to DRAIN. "Carry on" is the one answer that must not
  * be given to a machine the control plane no longer knows about — and since the endpoint
  * verifies the worker token against this same table first, reaching zero rows here means the
- * worker was deregistered mid-flight, not that the input was odd.
+ * worker was deregistered mid-flight, not that the input was odd. Zero rows also means nothing
+ * was renewed, which is what `workerTokenRenewedAt: null` reports: the UPDATE never inserts, so
+ * a heartbeat can neither resurrect a deregistered worker nor claim a renewal that did not
+ * happen.
  */
 export async function touchWorker(
   db: TkDb,
   input: { readonly workerId: string; readonly freeSlots: number; readonly now: Date },
-): Promise<{ readonly command: "continue" | "drain" }> {
+): Promise<{
+  readonly command: "continue" | "drain";
+  /** When the token was renewed, or null if there was no roster row to renew. */
+  readonly workerTokenRenewedAt: Date | null;
+}> {
+  const renewedUntil = workerTokenExpiryFrom(input.now);
   return withDispatchRole(db, async (tx) => {
     const row = firstRow(
       await tx.execute(sql`
         UPDATE orc_workers
-           SET last_seen_at = ${tsOf(input.now)}, free_slots = ${input.freeSlots}
+           SET last_seen_at = ${tsOf(input.now)},
+               free_slots = ${input.freeSlots},
+               token_expires_at = ${tsOf(renewedUntil)}
          WHERE id = ${input.workerId}
         RETURNING drain`),
     );
-    if (row === undefined) return { command: "drain" };
-    return { command: row["drain"] === true ? "drain" : "continue" };
+    if (row === undefined) return { command: "drain", workerTokenRenewedAt: null };
+    return {
+      command: row["drain"] === true ? "drain" : "continue",
+      workerTokenRenewedAt: input.now,
+    };
   });
 }
 
