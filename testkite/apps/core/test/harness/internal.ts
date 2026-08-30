@@ -24,8 +24,19 @@ import type { KernelEnv } from "../../src/modules/kernel/index.js";
 
 /** The host credential. Long-lived and shared per host in production; per-file here. */
 const BOOTSTRAP_TOKEN = "tkb_test_bootstrap_secret_value";
-/** The worker every test starts with. A second one is registered by the tests that need it. */
-const WORKER_ID = "w-1";
+/**
+ * The worker every test starts with. A second one is registered by the tests that need it.
+ *
+ * The id is UNIQUE PER TEST because the app — and with it the per-worker claim budget behind
+ * `429 RATE_LIMITED` — is built once for the whole file while the database is reset per test.
+ * A shared id would carry one test's spent budget into the next, so a storm test would silently
+ * throttle whatever ran after it.
+ */
+let workerSeq = 0;
+const nextWorkerId = (): string => {
+  workerSeq += 1;
+  return `w-${String(workerSeq)}`;
+};
 /** Three chains, so a test can claim two distinct jobs and still leave one in the queue. */
 const CHAIN_COUNT = 3;
 /** Four times the reaper's 30s dead threshold: nothing about this heartbeat is borderline. */
@@ -111,6 +122,8 @@ export interface InternalTestApp {
   /** Empties the claimable queue for every lane and every team — the 204 fixture. */
   drainQueue: () => Promise<void>;
   jobIdOfOtherTeam: () => Promise<string>;
+  /** Jobs still sitting in the queue for a worker to take — the conservation check of a storm. */
+  claimableJobCount: () => Promise<number>;
   caseResultCount: (jobRunId: string) => Promise<number>;
   artifactStatuses: (jobRunId: string) => Promise<readonly string[]>;
   sampleStep: () => SampleStep;
@@ -199,7 +212,7 @@ export async function makeInternalTestApp(): Promise<InternalTestApp> {
     return { workerId, workerToken: token };
   };
 
-  const worker = await registerWorker(WORKER_ID);
+  const worker = await registerWorker(nextWorkerId());
 
   return {
     bootstrapToken: BOOTSTRAP_TOKEN,
@@ -245,6 +258,12 @@ export async function makeInternalTestApp(): Promise<InternalTestApp> {
       );
     },
     jobIdOfOtherTeam: async (): Promise<string> => foreignJobId,
+    claimableJobCount: async (): Promise<number> => {
+      const r = await t.raw.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM job_runs WHERE status = 'dispatched'`,
+      );
+      return r.rows[0]?.n ?? 0;
+    },
     caseResultCount: async (jobRunId: string): Promise<number> => {
       const r = await t.raw.query<{ n: number }>(
         `SELECT count(*)::int AS n FROM res_case_results WHERE job_run_id = $1`,

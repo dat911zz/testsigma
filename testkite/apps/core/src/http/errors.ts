@@ -17,6 +17,16 @@ export type ErrorPayload = {
 
 const GENERIC = "The request could not be completed.";
 
+/**
+ * Headers an error insists on. Only an AppError can ask for any, and it asks through
+ * `httpHeaders()` rather than the handler duck-typing individual classes — the same reason
+ * `publicExtras()` exists. Today that is `Retry-After` on a 429; a client that backs off on the
+ * standard header must not have to learn a private body field instead.
+ */
+export function toErrorHeaders(err: unknown): Readonly<Record<string, string>> {
+  return err instanceof AppError ? err.httpHeaders() : {};
+}
+
 export function toErrorPayload(err: unknown, requestId: string): { status: number; payload: ErrorPayload } {
   if (hasZodFastifySchemaValidationErrors(err)) {
     return {
@@ -51,7 +61,7 @@ export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err, req, reply) => {
     const { status, payload } = toErrorPayload(err, req.id);
     if (status >= 500) req.log.error({ err }, "unhandled error");
-    return reply.code(status).send(payload);
+    return reply.code(status).headers(toErrorHeaders(err)).send(payload);
   });
   // The router's 404 must have the same payload shape too — the client only parses ONE error shape.
   app.setNotFoundHandler((req, reply) =>

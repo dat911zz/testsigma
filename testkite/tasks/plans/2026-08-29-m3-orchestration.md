@@ -127,6 +127,12 @@ Run token **không phải credential team**: không mang `scopes`, không đọc
 | 410 | `JOB_TERMINAL` | job đã kết thúc (succeeded/failed) | bỏ job |
 | 429 | `RATE_LIMITED` | quá số claim/giây của một worker | backoff mũ có jitter theo `Retry-After` |
 
+Trần claim là **token bucket theo danh tính worker**, hai hằng số xuất từ contract để hai bên không
+đoán nhau: `CLAIM_RATE_LIMIT_BURST` (20 — luôn ≥ `capacity` lớn nhất, để worker khởi động lấp đủ slot
+không bao giờ bị phanh) và `CLAIM_RATE_LIMIT_PER_SECOND` (10, tốc độ nạp lại). Vượt ⇒ 429 kèm header
+`Retry-After` tính bằng giây nguyên, không bao giờ 0. Chỉ `POST /internal/fleet/claim` bị phanh; 6
+endpoint còn lại không (mỗi cái gắn với một job đang chạy, tần suất do lease/heartbeat chặn sẵn).
+
 ### Chênh lệch so với "hợp đồng giả định" trong plan fleet — đúng 5 chỗ
 
 Người thực thi plan fleet chỉ cần sửa `apps/runner/src/control-plane-client.ts` + harness của nó:
@@ -3884,13 +3890,44 @@ git commit -m "M3-ORC T12: presigned PUT bang node:crypto (khop test vector AWS)
 
 Đây là **hợp đồng plan fleet code theo** (mục "Hợp đồng cho plan fleet" ở đầu plan) — đường dẫn, tên trường và mã lỗi lấy đúng như plan fleet đã giả định, để bên đó chỉ phải sửa 5 điểm đã liệt kê. Mỗi endpoint mutation có contract test khẳng định: thiếu `leaseEpoch` ⇒ 400, sai ⇒ 409, job team khác ⇒ 404, sai loại token ⇒ 401.
 
+> **Review fix (30-08-2026) — `429 RATE_LIMITED` phải TỒN TẠI trên `/internal/fleet/claim`.**
+> Bảng "Mã lỗi trả về từ `/internal/fleet`" ở đầu plan (dòng 128) liệt kê thẳng
+> `429 RATE_LIMITED | quá số claim/giây của một worker | backoff mũ jitter theo Retry-After`, mà bản
+> ship đầu của T13 KHÔNG hiện thực nó ở đâu cả: không có throw nào trong `http/internal/{app,routes}.ts`,
+> không có logic đếm claim/giây, descriptor `internalClaim` chỉ khai `{200, 204, 401}`, và không có
+> test claim-storm. Đây cũng KHÔNG nằm trong 3 điểm "sai lệch có chủ đích" mà commit tự khai — nên nó
+> là lệch hợp đồng thật, không phải một lựa chọn đã cân nhắc. Hậu quả không nằm ở T13 (T13 không có
+> worker chạy thật) mà nằm ở **20 task của plan fleet**: bên đó sẽ code nhánh backoff/`Retry-After`
+> cho một mã server không bao giờ trả — chết trong review của họ, hoặc tệ hơn, sống như code chết.
+> Đã sửa:
+> - `CLAIM_RATE_LIMIT_PER_SECOND = 10` / `CLAIM_RATE_LIMIT_BURST = 20` **xuất từ contract**, vì cả hai
+>   bên đều code theo: control plane cưỡng chế, worker của plan fleet tự căn nhịp claim loop dưới trần
+>   đó thay vì dò bằng cách bị từ chối. Token bucket chứ không phải fixed window — worker khoẻ mạnh
+>   lúc khởi động claim liên tiếp để lấp slot (1 job / 1 request), nên burst phải ≥ `capacity` lớn
+>   nhất mà contract nhận (16); cổng `internal-coverage.test.ts` đọc thẳng `capacity.maxValue` để hai
+>   hằng số không thể lệch nhau.
+> - Ngân sách theo **DANH TÍNH WORKER lấy từ worker token** (không lấy từ body): một host hỏng bị
+>   phanh, phần còn lại của fleet vẫn claim được.
+> - Trừ ngân sách **TRƯỚC** khi chạm hàng đợi. Phanh sau `claimJobs` còn tệ hơn không phanh: job đã
+>   bị lấy khỏi queue rồi mới trả 429 ⇒ chain treo `running` không ai giữ cho tới khi reaper thu hồi
+>   sau 30s. Test concurrency giết đúng đột biến này.
+> - `TooManyRequestsError` nhận `retryAfterSeconds` (làm tròn LÊN, không bao giờ < 1) và
+>   `AppError.httpHeaders()` mới — cùng hợp đồng với `publicExtras()` — để error handler chung phát
+>   header chuẩn `Retry-After` thay vì bịa một trường riêng trong body.
+> - `take()` **đồng bộ, không `await`** bên trong: read-modify-write không có điểm treo thì không thể
+>   xen kẽ giữa hai request. Đây là tính chất mà `test/concurrency/claim-storm.test.ts` (Postgres
+>   THẬT, nhiều connection, `warmPool` trước mỗi race) chứng minh và sẽ bắt được nếu mất.
+
 **Files:**
 - Create: `packages/contract/src/routes/internal.ts` (descriptor + zod DTO, export `INTERNAL_ROUTES`)
 - Create: `apps/core/src/modules/orchestration/internal/app.ts`
 - Create: `apps/core/src/modules/orchestration/internal/routes.ts`
+- Create (review fix): `apps/core/src/http/internal/claim-rate-limit.ts`
 - Create: `apps/core/test/harness/internal.ts`
 - Create: `apps/core/test/orchestration/internal-contract.test.ts`
 - Create: `apps/core/test/orchestration/internal-coverage.test.ts`
+- Create (review fix): `apps/core/test/orchestration/internal-claim-rate-limit.test.ts`,
+  `apps/core/test/concurrency/claim-storm.test.ts`
 - Modify: `packages/contract/src/errors.ts` (thêm `StaleEpochError`, `JobTerminalError`, `JobCancelledError`), `packages/contract/src/index.ts`
 
 **Interfaces:**

@@ -25,6 +25,7 @@ import {
   registerRequestSchema,
   StaleEpochError,
   toFastifyPath,
+  TooManyRequestsError,
   UnauthorizedError,
   ValidationFailedError,
   workerHeartbeatRequestSchema,
@@ -56,6 +57,7 @@ import {
   type S3Config,
   type StepResultInput,
 } from "../../modules/results/index.js";
+import { createClaimRateLimiter } from "./claim-rate-limit.js";
 
 /** How often a worker must report in. Delivered in the register response; the worker obeys it. */
 const WORKER_HEARTBEAT_INTERVAL_MS = 5000;
@@ -191,6 +193,12 @@ function toCaseResults(
 
 export function internalRoutes(deps: { readonly db: TkDb; readonly env: KernelEnv }): FastifyPluginAsync {
   const db = deps.db;
+  /**
+   * One budget per plane instance, keyed by worker identity. Built here rather than per request
+   * for the obvious reason (state), and per INSTANCE rather than per module so a test can stand
+   * two planes up without them sharing a ceiling.
+   */
+  const claimRate = createClaimRateLimiter();
   const s3: S3Config = {
     endpoint: deps.env.S3_ENDPOINT,
     region: deps.env.S3_REGION,
@@ -277,6 +285,21 @@ export function internalRoutes(deps: { readonly db: TkDb; readonly env: KernelEn
       }
       if (body.lane !== scope.lane) {
         throw new UnauthorizedError("claim lane does not match the worker token");
+      }
+      /*
+       * The budget is spent BEFORE the queue is touched, and this is the whole design: a claim is
+       * a `FOR UPDATE SKIP LOCKED` scan, a plan read and a token INSERT across two transactions,
+       * while the token lookup the auth hook already did is one indexed point read. Throttling
+       * after the claim would be worse than useless — it would hand out a job and then refuse to
+       * tell the worker about it, leaving the chain `running` with nobody holding it until the
+       * reaper takes it back 30s later.
+       */
+      const budget = claimRate.take(scope.workerId, Date.now());
+      if (!budget.allowed) {
+        throw new TooManyRequestsError(
+          "Too many claims from this worker.",
+          budget.retryAfterSeconds,
+        );
       }
       const claimed = await claimJobs(db, { workerId: scope.workerId, lane: scope.lane, max: 1 });
       const job = claimed[0];

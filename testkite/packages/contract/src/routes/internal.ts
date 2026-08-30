@@ -59,6 +59,22 @@ export const claimRequestSchema = z.object({
   lane,
   freeSlots: z.number().int().min(1).max(16),
 });
+
+/**
+ * The claim budget of ONE worker, published here because both sides code against it: the control
+ * plane enforces it, and the fleet plan's worker paces its claim loop under it instead of
+ * discovering the ceiling by being refused.
+ *
+ * A token bucket, not a fixed window: `CLAIM_RATE_LIMIT_BURST` claims may go out back to back —
+ * that is a healthy worker filling its slots one job per request at startup, so the burst is
+ * never smaller than the largest `capacity` this contract accepts — and after that the budget
+ * refills at `CLAIM_RATE_LIMIT_PER_SECOND`. Over that, the answer is `429 RATE_LIMITED` with a
+ * `Retry-After` header. The shape being refused is a claim loop that lost its `claimIdleMs`
+ * sleep and spins against `FOR UPDATE SKIP LOCKED`; the shape being protected is every OTHER
+ * worker's share of the control plane's database.
+ */
+export const CLAIM_RATE_LIMIT_PER_SECOND = 10;
+export const CLAIM_RATE_LIMIT_BURST = 20;
 export const claimedJobSchema = z.object({
   jobRunId: z.string().uuid(),
   runId: z.string().uuid(),
@@ -237,7 +253,14 @@ export const INTERNAL_ROUTES: readonly InternalRouteDescriptor[] = [
       permission: null,
       body: claimRequestSchema,
       // 204 carries no body at all: an empty queue is the normal answer, not an error.
-      responses: { 200: claimedJobSchema, 204: z.undefined(), 401: errorResponseSchema },
+      // 429 is the ONE throttled answer of this plane (see CLAIM_RATE_LIMIT_*): it carries a
+      // `Retry-After` header, and the worker backs off exponentially with jitter from it.
+      responses: {
+        200: claimedJobSchema,
+        204: z.undefined(),
+        401: errorResponseSchema,
+        429: errorResponseSchema,
+      },
     }),
     credential: "worker",
   },

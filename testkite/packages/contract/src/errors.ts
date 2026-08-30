@@ -22,6 +22,17 @@ export abstract class AppError extends Error {
   publicExtras(): Readonly<Record<string, unknown>> {
     return {};
   }
+
+  /**
+   * Response HEADERS this error requires, as lowercase names. Some answers are only actionable
+   * through a header the HTTP spec already defines — `Retry-After` on a 429 is the one this
+   * exists for: the fleet worker's backoff reads it, and putting the delay only in the JSON
+   * body would invent a private convention where a standard one already works. Same contract as
+   * `publicExtras()`: override in the subclass that carries the data, default is none.
+   */
+  httpHeaders(): Readonly<Record<string, string>> {
+    return {};
+  }
 }
 
 /** Infra error that CAN be retried: browser_oom, context_crash, host_death, lease_expired, network. */
@@ -157,9 +168,27 @@ export class PreconditionRequiredError extends AppError {
   readonly tenantVisible = true;
 }
 
+/**
+ * 429 — the caller spent its budget. `retryable` stays FALSE because that flag governs the RUN
+ * retry taxonomy (only a RetryableInfraError requeues a chain); a 429 is retried by the CALLER
+ * after waiting, which is a different decision made in a different place.
+ *
+ * `retryAfterSeconds` travels as the standard `Retry-After` header, in whole seconds and never
+ * below 1: the header has no sub-second gear, and 0 would read as "come straight back", which is
+ * the behaviour being refused. It is the input to the fleet worker's exponential backoff with
+ * jitter (plan "Hop dong cho plan fleet", the `/internal/fleet` error table).
+ */
 export class TooManyRequestsError extends AppError {
   readonly code = "RATE_LIMITED";
   readonly httpStatus = 429;
   readonly retryable = false;
   readonly tenantVisible = true;
+  readonly retryAfterSeconds: number;
+  constructor(message: string, retryAfterSeconds = 1) {
+    super(message);
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+  }
+  override httpHeaders(): Readonly<Record<string, string>> {
+    return { "retry-after": String(this.retryAfterSeconds) };
+  }
 }

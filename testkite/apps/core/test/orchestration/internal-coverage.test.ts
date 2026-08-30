@@ -4,7 +4,14 @@
  * Static check on the descriptor list — no app, no DB, runs in milliseconds.
  */
 import { describe, expect, it } from "vitest";
-import { INTERNAL_ROUTES, ROUTES, RUN_EVENT_KIND_VALUES } from "@testkite/contract";
+import {
+  CLAIM_RATE_LIMIT_BURST,
+  CLAIM_RATE_LIMIT_PER_SECOND,
+  INTERNAL_ROUTES,
+  registerRequestSchema,
+  ROUTES,
+  RUN_EVENT_KIND_VALUES,
+} from "@testkite/contract";
 import { ARTIFACT_KINDS } from "../../src/modules/results/index.js";
 import { RUN_EVENT_KINDS } from "../../src/modules/orchestration/events.js";
 
@@ -15,6 +22,12 @@ const EPOCH_REQUIRED = [
   "internalArtifacts",
   "internalComplete",
 ];
+/**
+ * Routes that publish `429 RATE_LIMITED`. It is exactly the set the server actually throttles:
+ * a descriptor promising a 429 nobody can trigger teaches the fleet plan to write dead code,
+ * and a throttled route with no 429 in its descriptor teaches it to treat one as a crash.
+ */
+const RATE_LIMITED = ["internalClaim"];
 const EPOCH_EXEMPT: Record<string, string> = {
   internalRegister: "registration happens before any job exists, so there is no lease to fence",
   internalWorkerHeartbeat:
@@ -73,6 +86,25 @@ describe("/internal/fleet route coverage", () => {
     // contract cannot import apps/core, so the list exists twice; this is the only thing
     // stopping the two copies from drifting.
     expect([...RUN_EVENT_KIND_VALUES]).toEqual([...RUN_EVENT_KINDS]);
+  });
+
+  it("publishes 429 RATE_LIMITED on exactly the routes that are throttled", () => {
+    for (const r of INTERNAL_ROUTES) {
+      expect(
+        r.responses[429] !== undefined,
+        `${r.operationId}: a 429 in the descriptor and a rate limiter in the handler are one decision`,
+      ).toBe(RATE_LIMITED.includes(r.operationId));
+    }
+  });
+
+  it("gives a worker enough burst to fill every slot it is allowed to own", () => {
+    // A worker registers with a capacity, then claims ONE job per request until its slots are
+    // full. If the burst were smaller than the largest capacity the contract accepts, a healthy
+    // cold start would answer 429 — the limiter would be throttling correct behaviour.
+    const capacity: unknown = registerRequestSchema.shape.capacity.maxValue;
+    expect(typeof capacity).toBe("number");
+    expect(CLAIM_RATE_LIMIT_BURST).toBeGreaterThanOrEqual(capacity as number);
+    expect(CLAIM_RATE_LIMIT_PER_SECOND).toBeGreaterThan(0);
   });
 
   it("keeps the artifact-kind list identical on both sides of the module boundary", () => {

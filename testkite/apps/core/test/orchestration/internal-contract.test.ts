@@ -22,11 +22,16 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import {
   artifactResponseSchema,
   claimedJobSchema,
+  CLAIM_RATE_LIMIT_BURST,
+  CLAIM_RATE_LIMIT_PER_SECOND,
   completeResponseSchema,
   eventResponseSchema,
   jobHeartbeatResponseSchema,
   registerResponseSchema,
 } from "@testkite/contract";
+
+/** Well past one burst, so the budget runs out even while it refills mid-loop. */
+const CLAIM_STORM = 60;
 import {
   closeInternalTestApp,
   makeInternalTestApp,
@@ -357,6 +362,78 @@ describe("/internal/fleet — leaseEpoch is mandatory on every mutation", () => 
     const again = await h.post(`/internal/fleet/jobs/${job.jobRunId}/complete`, body, job.runToken);
     expect(again.statusCode).toBe(410);
     expect(again.json()).toMatchObject({ code: "JOB_TERMINAL" });
+  });
+
+  /**
+   * A worker whose claim loop loses its `claimIdleMs` sleep becomes a spin loop against the
+   * queue. The contract's answer to that is `429 RATE_LIMITED` + `Retry-After`, which the fleet
+   * plan's worker backs off on exponentially; without it here, the twenty tasks of that plan
+   * would code a branch the server can never take.
+   */
+  it("claim: answers 429 RATE_LIMITED with a Retry-After once one worker storms the queue", async () => {
+    const queued = await h.claimableJobCount();
+    expect(queued, "the fixture must have work to hand out").toBeGreaterThan(0);
+
+    const seen: number[] = [];
+    const claimed = new Set<string>();
+    const backoffs: number[] = [];
+    const startedMs = Date.now();
+    for (let i = 0; i < CLAIM_STORM; i += 1) {
+      const res = await h.post(
+        "/internal/fleet/claim",
+        { workerId: h.workerId, lane: "batch", freeSlots: 1 },
+        h.workerToken,
+      );
+      seen.push(res.statusCode);
+      if (res.statusCode === 200) claimed.add(res.json<{ jobRunId: string }>().jobRunId);
+      if (res.statusCode === 429) {
+        expect(res.json()).toMatchObject({ code: "RATE_LIMITED" });
+        backoffs.push(Number(res.headers["retry-after"]));
+      }
+    }
+    const elapsedSeconds = (Date.now() - startedMs) / 1000;
+
+    const throttled = seen.filter((s) => s === 429).length;
+    const served = seen.filter((s) => s === 200 || s === 204).length;
+    expect(throttled, "a spinning worker must eventually be told to wait").toBeGreaterThan(0);
+    expect(new Set(seen)).toEqual(new Set([200, 204, 429]));
+    // Every 429 names a delay the worker can act on: `Retry-After` in whole seconds, never 0.
+    expect(backoffs.every((s) => Number.isInteger(s) && s >= 1)).toBe(true);
+    // The budget is a burst plus whatever refilled while the loop ran — the upper bound is what
+    // proves the limiter is a real budget and not a counter that resets on every request.
+    expect(served).toBeLessThanOrEqual(
+      CLAIM_RATE_LIMIT_BURST + Math.ceil(elapsedSeconds * CLAIM_RATE_LIMIT_PER_SECOND),
+    );
+    // Conservation: throttling is a refusal to LOOK at the queue, so no job may go missing and
+    // none may be handed out twice.
+    expect(claimed.size).toBe(queued);
+    expect(await h.claimableJobCount()).toBe(0);
+  });
+
+  it("claim: one worker's storm never spends another worker's budget", async () => {
+    for (let i = 0; i < CLAIM_STORM; i += 1) {
+      await h.post(
+        "/internal/fleet/claim",
+        { workerId: h.workerId, lane: "batch", freeSlots: 1 },
+        h.workerToken,
+      );
+    }
+    const exhausted = await h.post(
+      "/internal/fleet/claim",
+      { workerId: h.workerId, lane: "batch", freeSlots: 1 },
+      h.workerToken,
+    );
+    expect(exhausted.statusCode).toBe(429);
+
+    // One broken host on a shared runner must not be able to lock the rest of the fleet out of
+    // the queue: the budget is per worker identity, taken from the token and not from the body.
+    const other = await h.registerWorker("w-unstormed");
+    const res = await h.post(
+      "/internal/fleet/claim",
+      { workerId: other.workerId, lane: "batch", freeSlots: 1 },
+      other.workerToken,
+    );
+    expect(res.statusCode).not.toBe(429);
   });
 
   it("serves /internal/fleet on its own instance and never mounts /v1 there", async () => {
