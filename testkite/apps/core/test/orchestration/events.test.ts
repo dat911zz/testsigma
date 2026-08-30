@@ -13,7 +13,12 @@
  *  - six tests the plan leaves out: the closed 7-value `kind` enum and the `seq >= 1` guard at
  *    the STORAGE layer (a worker is the one choosing both, so a zod schema in the HTTP layer
  *    is a second line of defence, not the only one), the append-only GRANT, the resume cursor
- *    `afterSeqByJob` that SSE depends on, a cross-tenant write, and the L1 fail-closed check.
+ *    `afterOrdinal` that SSE depends on, a cross-tenant write, and the L1 fail-closed check.
+ *
+ * The ORDINAL cases exist because the first cut of the SSE stream numbered its frames by array
+ * position over an `ORDER BY attempt, seq, job_run_id` read. Both of those counters restart at 1
+ * per chain, so a run with two chains renumbered — and silently dropped — events. `run_ordinal`
+ * is the answer: one number per run, handed out once at insert, in COMMIT order.
  */
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -106,7 +111,12 @@ describe("run events", () => {
     expect(events[0]?.payload).toMatchObject({ verdict: "passed" });
   });
 
-  it("accepts events out of order and reports them back in seq order", async () => {
+  it("accepts events out of order and reports them back in ARRIVAL order, seq intact", async () => {
+    // A stream cannot un-send a frame. If seq 3 reached the server first, the client has
+    // already been told about it, so re-sorting the read by `seq` would only move seq 1 BELOW
+    // a cursor that was already acked — the drop this whole ordinal exists to prevent. Arrival
+    // order is what a cursor can walk; `seq` stays on every event for a consumer that wants to
+    // present one chain in the worker's own numbering.
     const job = await t.seedClaimedJob(a);
     for (const seq of [3, 1, 2]) {
       await t.asTeamCtx(a.teamId, (tx, ctx) =>
@@ -122,7 +132,8 @@ describe("run events", () => {
     const events = await t.asTeamCtx(a.teamId, (tx, ctx) =>
       readRunEvents(tx, ctx, { runId: job.runId }),
     );
-    expect(events.map((e) => e.seq)).toEqual([1, 2, 3]);
+    expect(events.map((e) => e.seq)).toEqual([3, 1, 2]);
+    expect(events.map((e) => e.runOrdinal)).toEqual([1, 2, 3]);
   });
 
   it("keeps attempt 2's events separate from attempt 1's — the same seq means a different event", async () => {
@@ -161,7 +172,7 @@ describe("run events", () => {
     expect(seen).toEqual([]);
   });
 
-  it("resumes from a per-job cursor — an SSE reconnect replays nothing it already sent", async () => {
+  it("resumes from a run-scoped ordinal — an SSE reconnect replays nothing it already sent", async () => {
     const job = await t.seedClaimedJob(a);
     for (const seq of [1, 2, 3]) {
       await t.asTeamCtx(a.teamId, (tx, ctx) =>
@@ -175,20 +186,106 @@ describe("run events", () => {
       );
     }
     const tail = await t.asTeamCtx(a.teamId, (tx, ctx) =>
-      readRunEvents(tx, ctx, {
-        runId: job.runId,
-        afterSeqByJob: new Map([[job.jobRunId, 2]]),
-      }),
+      readRunEvents(tx, ctx, { runId: job.runId, afterOrdinal: 2 }),
     );
+    expect(tail.map((e) => e.runOrdinal)).toEqual([3]);
     expect(tail.map((e) => e.seq)).toEqual([3]);
-    // A cursor naming a DIFFERENT job must not silence this one — the map is per job, not global.
+    // Cursor 0 is "I have seen nothing" — never "replay is disabled".
     const untouched = await t.asTeamCtx(a.teamId, (tx, ctx) =>
-      readRunEvents(tx, ctx, {
-        runId: job.runId,
-        afterSeqByJob: new Map([["00000000-0000-4000-8000-0000000000ff", 99]]),
+      readRunEvents(tx, ctx, { runId: job.runId, afterOrdinal: 0 }),
+    );
+    expect(untouched.map((e) => e.runOrdinal)).toEqual([1, 2, 3]);
+  });
+
+  it("numbers by INSERTION across chains, so a chain that starts late sorts AFTER what was sent", async () => {
+    // The bug this pins down: (attempt, seq) is per-chain-local. Chain B's first-ever event is
+    // attempt 1 / seq 1, which sorts BEFORE chain A's seq 2 and 3 — events a stream had already
+    // delivered. Ordering by that tuple therefore renumbers delivered events and buries the new
+    // one below the client's cursor, where a `> cursor` reader never looks at it again.
+    const { runId, jobIds } = await t.seedRunWithJobs(a, 2);
+    const [chainA, chainB] = jobIds;
+    if (chainA === undefined || chainB === undefined) throw new Error("seed: expected two chains");
+    for (const seq of [1, 2, 3]) {
+      await t.asTeamCtx(a.teamId, (tx, ctx) =>
+        recordRunEvent(tx, ctx, {
+          jobRunId: chainA,
+          attempt: 1,
+          seq,
+          kind: "step_finished",
+          payload: { chain: "A", seq },
+        }),
+      );
+    }
+    await t.asTeamCtx(a.teamId, (tx, ctx) =>
+      recordRunEvent(tx, ctx, {
+        jobRunId: chainB,
+        attempt: 1,
+        seq: 1,
+        kind: "chain_started",
+        payload: { chain: "B" },
       }),
     );
-    expect(untouched.map((e) => e.seq)).toEqual([1, 2, 3]);
+
+    const events = await t.asTeamCtx(a.teamId, (tx, ctx) => readRunEvents(tx, ctx, { runId }));
+    expect(events.map((e) => e.runOrdinal)).toEqual([1, 2, 3, 4]);
+    expect(events.map((e) => e.jobRunId)).toEqual([chainA, chainA, chainA, chainB]);
+    // ...and the cursor of a client that acked A's three events sees B's one event, not nothing.
+    const tail = await t.asTeamCtx(a.teamId, (tx, ctx) =>
+      readRunEvents(tx, ctx, { runId, afterOrdinal: 3 }),
+    );
+    expect(tail.map((e) => e.jobRunId)).toEqual([chainB]);
+    expect(tail.map((e) => e.runOrdinal)).toEqual([4]);
+  });
+
+  it("counts per RUN: a second run starts its narration at 1 again", async () => {
+    // The ordinal is the id space of ONE stream. A counter shared between runs would leak how
+    // busy the rest of the tenant is into every `id:` a client sees, and buy nothing.
+    const first = await t.seedClaimedJob(a);
+    const second = await t.seedClaimedJob(a);
+    for (const job of [first, second]) {
+      await t.asTeamCtx(a.teamId, (tx, ctx) =>
+        recordRunEvent(tx, ctx, {
+          jobRunId: job.jobRunId,
+          attempt: 1,
+          seq: 1,
+          kind: "chain_started",
+          payload: {},
+        }),
+      );
+    }
+    for (const job of [first, second]) {
+      const events = await t.asTeamCtx(a.teamId, (tx, ctx) =>
+        readRunEvents(tx, ctx, { runId: job.runId }),
+      );
+      expect(events.map((e) => e.runOrdinal)).toEqual([1]);
+    }
+  });
+
+  it("never renumbers a stored event when the worker replays it", async () => {
+    // A frame id is a promise to the client. If a retry could move an event's ordinal, every
+    // reconnect after one would either skip or replay — the very thing the cursor exists to stop.
+    const job = await t.seedClaimedJob(a);
+    const ev = {
+      jobRunId: job.jobRunId,
+      attempt: 1,
+      seq: 1,
+      kind: "chain_started" as const,
+      payload: {},
+    };
+    await t.asTeamCtx(a.teamId, (tx, ctx) => recordRunEvent(tx, ctx, ev));
+    await t.asTeamCtx(a.teamId, (tx, ctx) => recordRunEvent(tx, ctx, ev));
+    await t.asTeamCtx(a.teamId, (tx, ctx) =>
+      recordRunEvent(tx, ctx, { ...ev, seq: 2, kind: "step_started" }),
+    );
+    const events = await t.asTeamCtx(a.teamId, (tx, ctx) =>
+      readRunEvents(tx, ctx, { runId: job.runId }),
+    );
+    expect(events.map((e) => e.seq)).toEqual([1, 2]);
+    // The replay burned an ordinal (the allocator is what serializes writers, so it cannot know
+    // the INSERT will be a no-op). A gap is harmless — the cursor is `>`, not `+1` — but the
+    // ordinal already handed out must never move.
+    expect(events[0]?.runOrdinal).toBe(1);
+    expect(events[1]?.runOrdinal).toBe(3);
   });
 
   it("refuses a kind outside the closed seven — the enum is a CHECK, not a convention", async () => {
@@ -197,8 +294,8 @@ describe("run events", () => {
     // independently of whatever the HTTP layer's zod schema does with the same value.
     const msg = await rejectionMessage(() =>
       t.db.execute(sql`
-        INSERT INTO orc_run_events (team_id, job_run_id, attempt, seq, kind)
-        VALUES (${a.teamId}, ${job.jobRunId}, 1, 1, 'rm_minus_rf')`),
+        INSERT INTO orc_run_events (team_id, job_run_id, attempt, seq, kind, run_ordinal)
+        VALUES (${a.teamId}, ${job.jobRunId}, 1, 1, 'rm_minus_rf', 1)`),
     );
     expect(msg).toMatch(/orc_run_events_kind_check|check constraint/i);
   });
@@ -207,8 +304,8 @@ describe("run events", () => {
     const job = await t.seedClaimedJob(a);
     const msg = await rejectionMessage(() =>
       t.db.execute(sql`
-        INSERT INTO orc_run_events (team_id, job_run_id, attempt, seq, kind)
-        VALUES (${a.teamId}, ${job.jobRunId}, 1, 0, 'chain_started')`),
+        INSERT INTO orc_run_events (team_id, job_run_id, attempt, seq, kind, run_ordinal)
+        VALUES (${a.teamId}, ${job.jobRunId}, 1, 0, 'chain_started', 1)`),
     );
     expect(msg).toMatch(/orc_run_events_seq_check|check constraint/i);
   });

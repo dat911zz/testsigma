@@ -198,6 +198,20 @@ export const orcRunEvents = pgTable(
     jobRunId: uuid("job_run_id").notNull(),
     attempt: integer("attempt").notNull(),
     seq: integer("seq").notNull(),
+    /**
+     * The event's position in ITS RUN's narration — the only stable id the SSE stream can put
+     * in `id:`, and the cursor `Last-Event-ID` resumes from.
+     *
+     * `(attempt, seq)` cannot be that id: both counters restart at 1 for every chain, so a
+     * chain that starts narrating later than another produces tuples that sort in FRONT of
+     * events already delivered. `run_ordinal` is handed out once, at insert, by
+     * `recordRunEvent`, under the `orc_runs` row lock — which makes ordinal order COMMIT
+     * order, the only order a poller can safely advance a cursor along.
+     *
+     * Gaps are legal (a replayed `seq` inserts no row but still burned a number). The reader
+     * is `> cursor`, never `cursor + 1`, precisely so a gap costs nothing.
+     */
+    runOrdinal: bigint("run_ordinal", { mode: "number" }).notNull(),
     kind: text("kind").notNull(),
     payload: jsonb("payload").notNull().default({}),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),

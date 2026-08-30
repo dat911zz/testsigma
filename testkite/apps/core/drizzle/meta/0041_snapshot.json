@@ -1,0 +1,4328 @@
+{
+  "id": "9add8a2a-beb7-4d30-a0ff-ce3b9045c1f8",
+  "prevId": "0d9ba9b1-f41f-458a-8b63-afb0d6790dce",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.aut_case_reviews": {
+      "name": "aut_case_reviews",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision_id": {
+          "name": "revision_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "aut_review_state",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "aut_case_reviews_case_idx": {
+          "name": "aut_case_reviews_case_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "requested_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "aut_case_reviews_one_open": {
+          "name": "aut_case_reviews_one_open",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "state = 'open'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "aut_case_reviews_case_fk": {
+          "name": "aut_case_reviews_case_fk",
+          "tableFrom": "aut_case_reviews",
+          "tableTo": "aut_cases",
+          "columnsFrom": [
+            "team_id",
+            "case_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "aut_case_reviews_revision_fk": {
+          "name": "aut_case_reviews_revision_fk",
+          "tableFrom": "aut_case_reviews",
+          "tableTo": "aut_case_revisions",
+          "columnsFrom": [
+            "team_id",
+            "revision_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "aut_case_reviews_team_id_unique": {
+          "name": "aut_case_reviews_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "aut_case_reviews_decided_shape": {
+          "name": "aut_case_reviews_decided_shape",
+          "value": "(state = 'open' AND decided_by IS NULL AND decided_at IS NULL)\n       OR (state <> 'open' AND decided_at IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.aut_case_revisions": {
+      "name": "aut_case_revisions",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision_no": {
+          "name": "revision_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "case_version": {
+          "name": "case_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "codec": {
+          "name": "codec",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_size": {
+          "name": "payload_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_sha256": {
+          "name": "payload_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "aut_case_revisions_case_version_idx": {
+          "name": "aut_case_revisions_case_version_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "case_version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "aut_case_revisions_case_fk": {
+          "name": "aut_case_revisions_case_fk",
+          "tableFrom": "aut_case_revisions",
+          "tableTo": "aut_cases",
+          "columnsFrom": [
+            "team_id",
+            "case_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "aut_case_revisions_team_id_unique": {
+          "name": "aut_case_revisions_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "aut_case_revisions_no_unique": {
+          "name": "aut_case_revisions_no_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "case_id",
+            "revision_no"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "aut_case_revisions_codec_known": {
+          "name": "aut_case_revisions_codec_known",
+          "value": "codec IN ('zstd','raw')"
+        },
+        "aut_case_revisions_no_positive": {
+          "name": "aut_case_revisions_no_positive",
+          "value": "revision_no > 0 AND case_version > 0"
+        },
+        "aut_case_revisions_sha256_hex": {
+          "name": "aut_case_revisions_sha256_hex",
+          "value": "payload_sha256 ~ '^[0-9a-f]{64}$'"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.aut_cases": {
+      "name": "aut_cases",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_step_group": {
+          "name": "is_step_group",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "prereq_case_id": {
+          "name": "prereq_case_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "status": {
+          "name": "status",
+          "type": "aut_case_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "latest_revision_id": {
+          "name": "latest_revision_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ready_revision_id": {
+          "name": "ready_revision_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_edited_by": {
+          "name": "last_edited_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "submitted_at": {
+          "name": "submitted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "submitted_by": {
+          "name": "submitted_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_by": {
+          "name": "reviewed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "promoted_at": {
+          "name": "promoted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "promoted_by": {
+          "name": "promoted_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "aut_cases_team_project_idx": {
+          "name": "aut_cases_team_project_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "aut_cases_project_fk": {
+          "name": "aut_cases_project_fk",
+          "tableFrom": "aut_cases",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "team_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "aut_cases_prereq_fk": {
+          "name": "aut_cases_prereq_fk",
+          "tableFrom": "aut_cases",
+          "tableTo": "aut_cases",
+          "columnsFrom": [
+            "team_id",
+            "prereq_case_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "aut_cases_latest_revision_fk": {
+          "name": "aut_cases_latest_revision_fk",
+          "tableFrom": "aut_cases",
+          "tableTo": "aut_case_revisions",
+          "columnsFrom": [
+            "team_id",
+            "latest_revision_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "aut_cases_ready_revision_fk": {
+          "name": "aut_cases_ready_revision_fk",
+          "tableFrom": "aut_cases",
+          "tableTo": "aut_case_revisions",
+          "columnsFrom": [
+            "team_id",
+            "ready_revision_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "aut_cases_team_id_unique": {
+          "name": "aut_cases_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "aut_cases_version_positive": {
+          "name": "aut_cases_version_positive",
+          "value": "version > 0"
+        },
+        "aut_cases_status_timeline": {
+          "name": "aut_cases_status_timeline",
+          "value": "(status = 'draft')\n       OR (status = 'in_review' AND submitted_at IS NOT NULL)\n       OR (status = 'ready' AND submitted_at IS NOT NULL AND reviewed_at IS NOT NULL\n           AND promoted_at IS NOT NULL AND ready_revision_id IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.aut_rest_steps": {
+      "name": "aut_rest_steps",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "step_id": {
+          "name": "step_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "method": {
+          "name": "method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "headers": {
+          "name": "headers",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "store_as": {
+          "name": "store_as",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "aut_rest_steps_team_idx": {
+          "name": "aut_rest_steps_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "step_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "aut_rest_steps_step_fk": {
+          "name": "aut_rest_steps_step_fk",
+          "tableFrom": "aut_rest_steps",
+          "tableTo": "aut_steps",
+          "columnsFrom": [
+            "team_id",
+            "step_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "aut_rest_steps_team_id_unique": {
+          "name": "aut_rest_steps_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "aut_rest_steps_step_unique": {
+          "name": "aut_rest_steps_step_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "step_id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "aut_rest_steps_method_known": {
+          "name": "aut_rest_steps_method_known",
+          "value": "method IN ('GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.aut_step_loops": {
+      "name": "aut_step_loops",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "step_id": {
+          "name": "step_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_profile_id": {
+          "name": "data_profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_iterations": {
+          "name": "max_iterations",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "aut_step_loops_team_idx": {
+          "name": "aut_step_loops_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "step_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "aut_step_loops_step_fk": {
+          "name": "aut_step_loops_step_fk",
+          "tableFrom": "aut_step_loops",
+          "tableTo": "aut_steps",
+          "columnsFrom": [
+            "team_id",
+            "step_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "aut_step_loops_team_id_unique": {
+          "name": "aut_step_loops_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "aut_step_loops_step_unique": {
+          "name": "aut_step_loops_step_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "step_id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "aut_step_loops_max_iterations_positive": {
+          "name": "aut_step_loops_max_iterations_positive",
+          "value": "max_iterations IS NULL OR max_iterations > 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.aut_steps": {
+      "name": "aut_steps",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_step_id": {
+          "name": "parent_step_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "aut_step_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rendered_sentence": {
+          "name": "rendered_sentence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verb_op_key": {
+          "name": "verb_op_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "element_id": {
+          "name": "element_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "args": {
+          "name": "args",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "step_group_case_id": {
+          "name": "step_group_case_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "condition_expected": {
+          "name": "condition_expected",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "aut_steps_team_case_idx": {
+          "name": "aut_steps_team_case_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ordinal",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "aut_steps_case_fk": {
+          "name": "aut_steps_case_fk",
+          "tableFrom": "aut_steps",
+          "tableTo": "aut_cases",
+          "columnsFrom": [
+            "team_id",
+            "case_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "aut_steps_parent_fk": {
+          "name": "aut_steps_parent_fk",
+          "tableFrom": "aut_steps",
+          "tableTo": "aut_steps",
+          "columnsFrom": [
+            "team_id",
+            "parent_step_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "aut_steps_step_group_fk": {
+          "name": "aut_steps_step_group_fk",
+          "tableFrom": "aut_steps",
+          "tableTo": "aut_cases",
+          "columnsFrom": [
+            "team_id",
+            "step_group_case_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "aut_steps_team_id_unique": {
+          "name": "aut_steps_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "aut_steps_position_unique": {
+          "name": "aut_steps_position_unique",
+          "nullsNotDistinct": true,
+          "columns": [
+            "team_id",
+            "case_id",
+            "parent_step_id",
+            "ordinal"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "aut_steps_ordinal_positive": {
+          "name": "aut_steps_ordinal_positive",
+          "value": "ordinal > 0"
+        },
+        "aut_steps_kind_shape": {
+          "name": "aut_steps_kind_shape",
+          "value": "(kind = 'action'     AND verb_op_key IS NOT NULL AND step_group_case_id IS NULL AND condition_expected IS NULL)\n       OR (kind = 'step_group' AND step_group_case_id IS NOT NULL AND verb_op_key IS NULL AND element_id IS NULL AND args IS NULL AND condition_expected IS NULL)\n       OR (kind = 'if'         AND condition_expected IS NOT NULL AND array_length(condition_expected, 1) >= 1 AND verb_op_key IS NULL AND step_group_case_id IS NULL AND element_id IS NULL)\n       OR (kind IN ('for','while') AND verb_op_key IS NULL AND step_group_case_id IS NULL AND condition_expected IS NULL AND element_id IS NULL)\n       OR (kind = 'rest'       AND verb_op_key IS NULL AND step_group_case_id IS NULL AND condition_expected IS NULL AND element_id IS NULL)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.quota_limits": {
+      "name": "quota_limits",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "max_concurrent_contexts": {
+          "name": "max_concurrent_contexts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 8
+        },
+        "max_runs_per_day": {
+          "name": "max_runs_per_day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 200
+        },
+        "max_storage_gb": {
+          "name": "max_storage_gb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 50
+        },
+        "max_ai_tokens_per_month": {
+          "name": "max_ai_tokens_per_month",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1000000
+        },
+        "max_members": {
+          "name": "max_members",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 25
+        },
+        "max_projects": {
+          "name": "max_projects",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "quota_limits_team_idx": {
+          "name": "quota_limits_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.api_tokens": {
+      "name": "api_tokens",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prefix": {
+          "name": "prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "api_token_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "api_tokens_token_hash_uidx": {
+          "name": "api_tokens_token_hash_uidx",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "api_tokens_team_idx": {
+          "name": "api_tokens_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "api_tokens_team_id_teams_id_fk": {
+          "name": "api_tokens_team_id_teams_id_fk",
+          "tableFrom": "api_tokens",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "api_tokens_user_id_users_id_fk": {
+          "name": "api_tokens_user_id_users_id_fk",
+          "tableFrom": "api_tokens",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "api_tokens_created_by_users_id_fk": {
+          "name": "api_tokens_created_by_users_id_fk",
+          "tableFrom": "api_tokens",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "api_tokens_team_id_unique": {
+          "name": "api_tokens_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        },
+        "auth_lookup": {
+          "name": "auth_lookup",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "testkite_auth"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.idn_oidc_connectors": {
+      "name": "idn_oidc_connectors",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issuer_url": {
+          "name": "issuer_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client_secret": {
+          "name": "client_secret",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claim_email": {
+          "name": "claim_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'email'"
+        },
+        "claim_groups": {
+          "name": "claim_groups",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'groups'"
+        },
+        "role_mapping": {
+          "name": "role_mapping",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "default_role": {
+          "name": "default_role",
+          "type": "oidc_default_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'viewer'"
+        },
+        "allow_insecure_http": {
+          "name": "allow_insecure_http",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idn_oidc_connectors_team_idx": {
+          "name": "idn_oidc_connectors_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idn_oidc_connectors_team_id_teams_id_fk": {
+          "name": "idn_oidc_connectors_team_id_teams_id_fk",
+          "tableFrom": "idn_oidc_connectors",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idn_oidc_connectors_team_id_unique": {
+          "name": "idn_oidc_connectors_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "idn_oidc_connectors_team_name_unique": {
+          "name": "idn_oidc_connectors_team_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        },
+        "auth_lookup": {
+          "name": "auth_lookup",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "testkite_auth"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.idn_oidc_identities": {
+      "name": "idn_oidc_identities",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idn_oidc_identities_connector_subject_uidx": {
+          "name": "idn_oidc_identities_connector_subject_uidx",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "subject",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idn_oidc_identities_team_idx": {
+          "name": "idn_oidc_identities_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idn_oidc_identities_team_id_teams_id_fk": {
+          "name": "idn_oidc_identities_team_id_teams_id_fk",
+          "tableFrom": "idn_oidc_identities",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idn_oidc_identities_user_id_users_id_fk": {
+          "name": "idn_oidc_identities_user_id_users_id_fk",
+          "tableFrom": "idn_oidc_identities",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idn_oidc_identities_connector_fk": {
+          "name": "idn_oidc_identities_connector_fk",
+          "tableFrom": "idn_oidc_identities",
+          "tableTo": "idn_oidc_connectors",
+          "columnsFrom": [
+            "team_id",
+            "connector_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idn_oidc_identities_team_id_unique": {
+          "name": "idn_oidc_identities_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.idn_oidc_login_states": {
+      "name": "idn_oidc_login_states",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nonce": {
+          "name": "nonce",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code_verifier": {
+          "name": "code_verifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redirect_uri": {
+          "name": "redirect_uri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idn_oidc_login_states_state_uidx": {
+          "name": "idn_oidc_login_states_state_uidx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idn_oidc_login_states_team_id_teams_id_fk": {
+          "name": "idn_oidc_login_states_team_id_teams_id_fk",
+          "tableFrom": "idn_oidc_login_states",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idn_oidc_login_states_connector_fk": {
+          "name": "idn_oidc_login_states_connector_fk",
+          "tableFrom": "idn_oidc_login_states",
+          "tableTo": "idn_oidc_connectors",
+          "columnsFrom": [
+            "team_id",
+            "connector_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idn_oidc_login_states_team_id_unique": {
+          "name": "idn_oidc_login_states_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        },
+        "auth_lookup": {
+          "name": "auth_lookup",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "testkite_auth"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.memberships": {
+      "name": "memberships",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "membership_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "memberships_team_idx": {
+          "name": "memberships_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "memberships_team_id_teams_id_fk": {
+          "name": "memberships_team_id_teams_id_fk",
+          "tableFrom": "memberships",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "memberships_user_id_users_id_fk": {
+          "name": "memberships_user_id_users_id_fk",
+          "tableFrom": "memberships",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "memberships_team_id_unique": {
+          "name": "memberships_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "memberships_team_user_unique": {
+          "name": "memberships_team_user_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "user_id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        },
+        "auth_lookup": {
+          "name": "auth_lookup",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "testkite_auth"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.organizations": {
+      "name": "organizations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "organizations_slug_unique": {
+          "name": "organizations_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.projects": {
+      "name": "projects",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "projects_team_idx": {
+          "name": "projects_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "projects_team_id_teams_id_fk": {
+          "name": "projects_team_id_teams_id_fk",
+          "tableFrom": "projects",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "projects_team_id_unique": {
+          "name": "projects_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "projects_team_slug_unique": {
+          "name": "projects_team_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "slug"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.teams": {
+      "name": "teams",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "team_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "allow_self_promote": {
+          "name": "allow_self_promote",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {
+        "teams_org_idx": {
+          "name": "teams_org_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "teams_org_id_organizations_id_fk": {
+          "name": "teams_org_id_organizations_id_fk",
+          "tableFrom": "teams",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "teams_org_slug_unique": {
+          "name": "teams_org_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "org_id",
+            "slug"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "user_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "email_verified_at": {
+          "name": "email_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_login_at": {
+          "name": "last_login_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "users_email_lower_uidx": {
+          "name": "users_email_lower_uidx",
+          "columns": [
+            {
+              "expression": "lower(\"email\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.krn_outbox": {
+      "name": "krn_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "topic": {
+          "name": "topic",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "available_at": {
+          "name": "available_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "krn_outbox_ready_idx": {
+          "name": "krn_outbox_ready_idx",
+          "columns": [
+            {
+              "expression": "available_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.krn_outbox_consumed": {
+      "name": "krn_outbox_consumed",
+      "schema": "",
+      "columns": {
+        "outbox_id": {
+          "name": "outbox_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumer": {
+          "name": "consumer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "krn_outbox_consumed_outbox_id_krn_outbox_id_fk": {
+          "name": "krn_outbox_consumed_outbox_id_krn_outbox_id_fk",
+          "tableFrom": "krn_outbox_consumed",
+          "tableTo": "krn_outbox",
+          "columnsFrom": [
+            "outbox_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "krn_outbox_consumed_pk": {
+          "name": "krn_outbox_consumed_pk",
+          "columns": [
+            "outbox_id",
+            "consumer"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.egress_policies": {
+      "name": "egress_policies",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "mode": {
+          "name": "mode",
+          "type": "egress_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'observe'"
+        },
+        "allowlist": {
+          "name": "allowlist",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observe_until": {
+          "name": "observe_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "egress_policies_team_idx": {
+          "name": "egress_policies_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "egress_policies_team_id_unique": {
+          "name": "egress_policies_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "egress_policies_team_unique": {
+          "name": "egress_policies_team_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.pln_environments": {
+      "name": "pln_environments",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_url": {
+          "name": "base_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "pln_env_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'stub'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "pln_environments_team_idx": {
+          "name": "pln_environments_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pln_environments_project_fk": {
+          "name": "pln_environments_project_fk",
+          "tableFrom": "pln_environments",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "team_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "pln_environments_team_id_unique": {
+          "name": "pln_environments_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "pln_environments_team_project_name_unique": {
+          "name": "pln_environments_team_project_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "project_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "pln_environments_base_url_check": {
+          "name": "pln_environments_base_url_check",
+          "value": "\"pln_environments\".\"base_url\" ~ '^https?://'"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.orc_compile_diagnostics": {
+      "name": "orc_compile_diagnostics",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "severity": {
+          "name": "severity",
+          "type": "diagnostic_severity",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "step_ordinal": {
+          "name": "step_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orc_compile_diagnostics_team_run_idx": {
+          "name": "orc_compile_diagnostics_team_run_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orc_compile_diagnostics_run_fk": {
+          "name": "orc_compile_diagnostics_run_fk",
+          "tableFrom": "orc_compile_diagnostics",
+          "tableTo": "orc_runs",
+          "columnsFrom": [
+            "team_id",
+            "run_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "orc_compile_diagnostics_team_id_unique": {
+          "name": "orc_compile_diagnostics_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.orc_run_plans": {
+      "name": "orc_run_plans",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_format_version": {
+          "name": "plan_format_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan": {
+          "name": "plan",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orc_run_plans_team_hash_idx": {
+          "name": "orc_run_plans_team_hash_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "content_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orc_run_plans_run_fk": {
+          "name": "orc_run_plans_run_fk",
+          "tableFrom": "orc_run_plans",
+          "tableTo": "orc_runs",
+          "columnsFrom": [
+            "team_id",
+            "run_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "orc_run_plans_team_id_unique": {
+          "name": "orc_run_plans_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "orc_run_plans_team_run_unique": {
+          "name": "orc_run_plans_team_run_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "run_id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.orc_runs": {
+      "name": "orc_runs",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lane": {
+          "name": "lane",
+          "type": "run_lane",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'batch'"
+        },
+        "status": {
+          "name": "status",
+          "type": "run_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'compiling'"
+        },
+        "verdict": {
+          "name": "verdict",
+          "type": "run_verdict",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "plan_hash": {
+          "name": "plan_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pin": {
+          "name": "pin",
+          "type": "run_pin",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chain_total": {
+          "name": "chain_total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "chain_done": {
+          "name": "chain_done",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "event_ordinal": {
+          "name": "event_ordinal",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orc_runs_team_created_idx": {
+          "name": "orc_runs_team_created_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orc_runs_team_status_idx": {
+          "name": "orc_runs_team_status_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orc_runs_project_fk": {
+          "name": "orc_runs_project_fk",
+          "tableFrom": "orc_runs",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "team_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orc_runs_user_fk": {
+          "name": "orc_runs_user_fk",
+          "tableFrom": "orc_runs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "requested_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "orc_runs_team_id_unique": {
+          "name": "orc_runs_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.job_runs": {
+      "name": "job_runs",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chain_key": {
+          "name": "chain_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lane": {
+          "name": "lane",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'batch'"
+        },
+        "job_kind": {
+          "name": "job_kind",
+          "type": "job_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'chain'"
+        },
+        "status": {
+          "name": "status",
+          "type": "job_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "lease_epoch": {
+          "name": "lease_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "queue_seq": {
+          "name": "queue_seq",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cost": {
+          "name": "cost",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "worker_id": {
+          "name": "worker_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "heartbeat_at": {
+          "name": "heartbeat_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "oom_count": {
+          "name": "oom_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "quarantined_at": {
+          "name": "quarantined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error_code": {
+          "name": "last_error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enqueued_at": {
+          "name": "enqueued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "job_runs_team_run_idx": {
+          "name": "job_runs_team_run_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "job_runs_run_fk": {
+          "name": "job_runs_run_fk",
+          "tableFrom": "job_runs",
+          "tableTo": "orc_runs",
+          "columnsFrom": [
+            "team_id",
+            "run_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "job_runs_team_id_unique": {
+          "name": "job_runs_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "job_runs_team_run_chain_unique": {
+          "name": "job_runs_team_run_chain_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "run_id",
+            "chain_key"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        },
+        "dispatch_all": {
+          "name": "dispatch_all",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_dispatch"
+          ],
+          "using": "true",
+          "withCheck": "true"
+        }
+      },
+      "checkConstraints": {
+        "job_runs_lane_check": {
+          "name": "job_runs_lane_check",
+          "value": "\"job_runs\".\"lane\" IN ('interactive','batch')"
+        },
+        "job_runs_attempt_check": {
+          "name": "job_runs_attempt_check",
+          "value": "\"job_runs\".\"attempt\" >= 1"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.orc_dispatcher_lease": {
+      "name": "orc_dispatcher_lease",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "smallint",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "holder": {
+          "name": "holder",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "epoch": {
+          "name": "epoch",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "acquired_at": {
+          "name": "acquired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_tick_at": {
+          "name": "last_tick_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "orc_dispatcher_lease_singleton": {
+          "name": "orc_dispatcher_lease_singleton",
+          "value": "\"orc_dispatcher_lease\".\"id\" = 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.orc_run_events": {
+      "name": "orc_run_events",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "job_run_id": {
+          "name": "job_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_ordinal": {
+          "name": "run_ordinal",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "orc_run_events_job_fk": {
+          "name": "orc_run_events_job_fk",
+          "tableFrom": "orc_run_events",
+          "tableTo": "job_runs",
+          "columnsFrom": [
+            "team_id",
+            "job_run_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "orc_run_events_team_id_unique": {
+          "name": "orc_run_events_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        },
+        "orc_run_events_seq_unique": {
+          "name": "orc_run_events_seq_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "job_run_id",
+            "attempt",
+            "seq"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "orc_run_events_seq_check": {
+          "name": "orc_run_events_seq_check",
+          "value": "\"orc_run_events\".\"seq\" >= 1"
+        },
+        "orc_run_events_kind_check": {
+          "name": "orc_run_events_kind_check",
+          "value": "\"orc_run_events\".\"kind\" IN ('chain_started','case_started','case_finished','step_started','step_finished','screenshot','infra_error')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.orc_run_tokens": {
+      "name": "orc_run_tokens",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "job_run_id": {
+          "name": "job_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lease_epoch": {
+          "name": "lease_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "worker_id": {
+          "name": "worker_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prefix": {
+          "name": "prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orc_run_tokens_team_job_idx": {
+          "name": "orc_run_tokens_team_job_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "job_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "attempt",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orc_run_tokens_hash_uidx": {
+          "name": "orc_run_tokens_hash_uidx",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orc_run_tokens_job_fk": {
+          "name": "orc_run_tokens_job_fk",
+          "tableFrom": "orc_run_tokens",
+          "tableTo": "job_runs",
+          "columnsFrom": [
+            "team_id",
+            "job_run_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "orc_run_tokens_team_id_unique": {
+          "name": "orc_run_tokens_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        },
+        "auth_lookup": {
+          "name": "auth_lookup",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": [
+            "testkite_auth"
+          ],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.orc_workers": {
+      "name": "orc_workers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "hostname": {
+          "name": "hostname",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lane": {
+          "name": "lane",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "capacity": {
+          "name": "capacity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "drain": {
+          "name": "drain",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "prefix": {
+          "name": "prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_expires_at": {
+          "name": "token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "free_slots": {
+          "name": "free_slots",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "registered_at": {
+          "name": "registered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orc_workers_hash_uidx": {
+          "name": "orc_workers_hash_uidx",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "orc_workers_lane_check": {
+          "name": "orc_workers_lane_check",
+          "value": "\"orc_workers\".\"lane\" IN ('interactive','batch')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.usage_counters": {
+      "name": "usage_counters",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metric": {
+          "name": "metric",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_start": {
+          "name": "window_start",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used": {
+          "name": "used",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "usage_counters_team_idx": {
+          "name": "usage_counters_team_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "metric",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "window_start",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "usage_counters_team_id_metric_window_start_pk": {
+          "name": "usage_counters_team_id_metric_window_start_pk",
+          "columns": [
+            "team_id",
+            "metric",
+            "window_start"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "usage_counters_used_check": {
+          "name": "usage_counters_used_check",
+          "value": "\"usage_counters\".\"used\" >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.res_artifacts": {
+      "name": "res_artifacts",
+      "schema": "",
+      "columns": {
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "job_run_id": {
+          "name": "job_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "uploaded_at": {
+          "name": "uploaded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "res_artifacts_team_job_idx": {
+          "name": "res_artifacts_team_job_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "job_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "attempt",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "res_artifacts_job_fk": {
+          "name": "res_artifacts_job_fk",
+          "tableFrom": "res_artifacts",
+          "tableTo": "job_runs",
+          "columnsFrom": [
+            "team_id",
+            "job_run_id"
+          ],
+          "columnsTo": [
+            "team_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "res_artifacts_team_id_unique": {
+          "name": "res_artifacts_team_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "team_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "testkite_app"
+          ],
+          "using": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid",
+          "withCheck": "team_id = NULLIF(current_setting('app.team_id', true), '')::uuid"
+        }
+      },
+      "checkConstraints": {
+        "res_artifacts_attempt_check": {
+          "name": "res_artifacts_attempt_check",
+          "value": "\"res_artifacts\".\"attempt\" >= 1"
+        },
+        "res_artifacts_kind_check": {
+          "name": "res_artifacts_kind_check",
+          "value": "\"res_artifacts\".\"kind\" IN ('trace','screenshot','screenshot_bundle','video','log')"
+        },
+        "res_artifacts_status_check": {
+          "name": "res_artifacts_status_check",
+          "value": "\"res_artifacts\".\"status\" IN ('pending','uploaded')"
+        },
+        "res_artifacts_size_check": {
+          "name": "res_artifacts_size_check",
+          "value": "\"res_artifacts\".\"size_bytes\" >= 0 AND \"res_artifacts\".\"size_bytes\" <= 2147483647"
+        }
+      },
+      "isRLSEnabled": true
+    }
+  },
+  "enums": {
+    "public.aut_case_status": {
+      "name": "aut_case_status",
+      "schema": "public",
+      "values": [
+        "draft",
+        "in_review",
+        "ready"
+      ]
+    },
+    "public.aut_review_state": {
+      "name": "aut_review_state",
+      "schema": "public",
+      "values": [
+        "open",
+        "approved",
+        "changes_requested",
+        "withdrawn"
+      ]
+    },
+    "public.aut_step_kind": {
+      "name": "aut_step_kind",
+      "schema": "public",
+      "values": [
+        "action",
+        "step_group",
+        "if",
+        "for",
+        "while",
+        "rest"
+      ]
+    },
+    "public.api_token_kind": {
+      "name": "api_token_kind",
+      "schema": "public",
+      "values": [
+        "user_pat",
+        "service",
+        "session"
+      ]
+    },
+    "public.membership_role": {
+      "name": "membership_role",
+      "schema": "public",
+      "values": [
+        "instance_operator",
+        "org_admin",
+        "team_admin",
+        "author",
+        "runner",
+        "viewer"
+      ]
+    },
+    "public.oidc_default_role": {
+      "name": "oidc_default_role",
+      "schema": "public",
+      "values": [
+        "team_admin",
+        "author",
+        "runner",
+        "viewer"
+      ]
+    },
+    "public.team_status": {
+      "name": "team_status",
+      "schema": "public",
+      "values": [
+        "active",
+        "suspended",
+        "archived"
+      ]
+    },
+    "public.user_status": {
+      "name": "user_status",
+      "schema": "public",
+      "values": [
+        "active",
+        "suspended",
+        "deactivated"
+      ]
+    },
+    "public.egress_mode": {
+      "name": "egress_mode",
+      "schema": "public",
+      "values": [
+        "observe",
+        "enforce"
+      ]
+    },
+    "public.pln_env_status": {
+      "name": "pln_env_status",
+      "schema": "public",
+      "values": [
+        "stub",
+        "active",
+        "archived"
+      ]
+    },
+    "public.diagnostic_severity": {
+      "name": "diagnostic_severity",
+      "schema": "public",
+      "values": [
+        "error",
+        "warning"
+      ]
+    },
+    "public.run_lane": {
+      "name": "run_lane",
+      "schema": "public",
+      "values": [
+        "interactive",
+        "batch"
+      ]
+    },
+    "public.run_pin": {
+      "name": "run_pin",
+      "schema": "public",
+      "values": [
+        "ready",
+        "latest"
+      ]
+    },
+    "public.run_status": {
+      "name": "run_status",
+      "schema": "public",
+      "values": [
+        "compiling",
+        "queued",
+        "running",
+        "finished"
+      ]
+    },
+    "public.run_verdict": {
+      "name": "run_verdict",
+      "schema": "public",
+      "values": [
+        "pending",
+        "passed",
+        "failed",
+        "compile_error",
+        "blocked",
+        "aborted_early",
+        "cancelled"
+      ]
+    },
+    "public.job_kind": {
+      "name": "job_kind",
+      "schema": "public",
+      "values": [
+        "chain",
+        "element_verify",
+        "capture_session",
+        "env_probe"
+      ]
+    },
+    "public.job_status": {
+      "name": "job_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "dispatched",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "rejected_quota",
+        "unknown_after_restore"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {
+    "testkite_app": {
+      "name": "testkite_app",
+      "createDb": false,
+      "createRole": false,
+      "inherit": true
+    },
+    "testkite_auth": {
+      "name": "testkite_auth",
+      "createDb": false,
+      "createRole": false,
+      "inherit": true
+    },
+    "testkite_dispatch": {
+      "name": "testkite_dispatch",
+      "createDb": false,
+      "createRole": false,
+      "inherit": true
+    },
+    "testkite_relay": {
+      "name": "testkite_relay",
+      "createDb": false,
+      "createRole": false,
+      "inherit": true
+    }
+  },
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -11,15 +11,20 @@
  *    subscribes to `req.raw.on("close")`. That one is measured here rather than reviewed:
  *    an abandoned tab that leaks a timer also leaks one database query per second, forever.
  *
- * Two of the cases need a REAL socket (an incremental read, and a client that walks away
+ * Three of the cases need a REAL socket (two incremental reads, and a client that walks away
  * mid-stream), so the harness's app is put on a loopback port. The rest are served by
  * `inject`, because a stream over an ALREADY FINISHED run ends by itself.
+ *
+ * `id:` IS A CONTRACT. It is `run_ordinal` — one number per run, handed out once at insert —
+ * and the multi-chain case below is why it cannot be an array position over an
+ * (attempt, seq) read: those two counters restart at 1 for every chain.
  */
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { makeTestApp, type TestApp } from "../harness/http.js";
 import type { SeededTeam } from "../harness/pglite.js";
 import { activeRunStreamCount } from "../../src/modules/orchestration/sse.js";
+import { recordRunEvent } from "../../src/modules/orchestration/events.js";
 
 let h: TestApp;
 let baseUrl = "";
@@ -89,20 +94,38 @@ async function seedLiveRun(): Promise<string> {
   return runId;
 }
 
-async function seedEvents(runId: string, count: number): Promise<void> {
-  const jobs = await h.db.raw.query<{ id: string }>(
-    `SELECT id FROM job_runs WHERE run_id = $1 ORDER BY chain_key LIMIT 1`,
-    [runId],
-  );
-  const jobRunId = jobs.rows[0]?.id;
-  if (jobRunId === undefined) throw new Error("seedEvents: the run has no job");
-  for (let seq = 1; seq <= count; seq += 1) {
-    await h.db.raw.query(
-      `INSERT INTO orc_run_events (team_id, job_run_id, attempt, seq, kind, payload)
-       VALUES ($1, $2, 1, $3, 'step_finished', $4::jsonb)`,
-      [h.ids.teamA, jobRunId, seq, JSON.stringify({ ordinal: seq })],
+/**
+ * Through `recordRunEvent`, never a raw INSERT: `run_ordinal` — the number this suite asserts
+ * on as the frame `id:` — is handed out by that function, so a fixture that wrote the row
+ * itself would be asserting on numbers the fixture chose.
+ */
+async function seedEvents(jobRunId: string, seqs: readonly number[]): Promise<void> {
+  for (const seq of seqs) {
+    await h.db.asTeamCtx(h.ids.teamA, (tx, ctx) =>
+      recordRunEvent(tx, ctx, {
+        jobRunId,
+        attempt: 1,
+        seq,
+        kind: "step_finished",
+        payload: { ordinal: seq },
+      }),
     );
   }
+}
+
+/** The run's chains, in the order `seedRunWithJobs` created them. */
+async function chainsOf(runId: string): Promise<readonly string[]> {
+  const jobs = await h.db.raw.query<{ id: string }>(
+    `SELECT id FROM job_runs WHERE run_id = $1 ORDER BY chain_key`,
+    [runId],
+  );
+  return jobs.rows.map((row) => row.id);
+}
+
+async function firstChainOf(runId: string): Promise<string> {
+  const first = (await chainsOf(runId))[0];
+  if (first === undefined) throw new Error("seedEvents: the run has no job");
+  return first;
 }
 
 function inject(
@@ -115,6 +138,26 @@ function inject(
     url: `/v1/runs/${runId}/stream`,
     headers: { ...(token === null ? {} : { authorization: `Bearer ${token}` }), ...headers },
   });
+}
+
+/**
+ * Frames that have arrived WHOLE. A chunk boundary can fall inside a frame, and counting a
+ * half-written one would make the multi-chain test act a poll too early.
+ */
+function completeFrames(raw: string): readonly SseFrame[] {
+  const end = raw.lastIndexOf("\n\n");
+  return end < 0 ? [] : parseFrames(raw.slice(0, end + 2));
+}
+
+/** The `jobRunId` a `run_event` frame names — the chain the event belongs to. */
+function jobRunIdOf(frame: SseFrame): string {
+  const parsed: unknown = JSON.parse(frame.data);
+  if (typeof parsed !== "object" || parsed === null || !("jobRunId" in parsed)) {
+    throw new Error(`run_event frame carries no jobRunId: ${frame.data}`);
+  }
+  const id: unknown = parsed.jobRunId;
+  if (typeof id !== "string") throw new Error(`run_event jobRunId is not a string: ${frame.data}`);
+  return id;
 }
 
 /** Spins the event loop until `check()` holds; vitest's own timeout is the failure mode. */
@@ -202,7 +245,7 @@ describe("GET /v1/runs/:runId/stream", () => {
 
   it("replays the whole narration when no cursor is supplied", async () => {
     const runId = await seedFinishedRun();
-    await seedEvents(runId, 6);
+    await seedEvents(await firstChainOf(runId), [1, 2, 3, 4, 5, 6]);
     const res = await inject(runId, h.tokens.authorA);
     const events = parseFrames(res.body).filter((f) => f.event === "run_event");
     expect(events.map((f) => f.id)).toEqual(["1", "2", "3", "4", "5", "6"]);
@@ -210,12 +253,62 @@ describe("GET /v1/runs/:runId/stream", () => {
 
   it("resumes from Last-Event-ID instead of replaying the whole run", async () => {
     const runId = await seedFinishedRun();
-    await seedEvents(runId, 6);
+    await seedEvents(await firstChainOf(runId), [1, 2, 3, 4, 5, 6]);
     const res = await inject(runId, h.tokens.authorA, { "last-event-id": "3" });
     const frames = parseFrames(res.body);
     expect(frames.filter((f) => f.event === "run_event").map((f) => f.id)).toEqual(["4", "5", "6"]);
     expect(frames.every((f) => Number(f.id) > 3)).toBe(true);
   });
+
+  it("keeps numbering a SECOND chain's first event above the cursor it already handed out", async () => {
+    // THE MULTI-CHAIN REGRESSION. Every chain restarts `attempt`/`seq` at 1, so chain B's
+    // first-ever event (1, 1) sorts in front of chain A's (1, 2) and (1, 3) under any
+    // (attempt, seq) ordering. The first cut numbered frames by ARRAY POSITION over exactly
+    // that ordering, which meant: B's brand-new event landed at position 2 — below the cursor
+    // the client had already acked — and was never sent, while A's third event was renumbered
+    // to 4 and sent a second time as if it were new. A run with 2+ chains is the ordinary case
+    // for a multi-case run, so this was a silent drop on the normal path, not an edge case.
+    const { runId } = await h.db.seedRunWithJobs(teamA(), 2);
+    await h.db.raw.query(`UPDATE orc_runs SET status = 'queued' WHERE id = $1`, [runId]);
+    const [chainA, chainB] = await chainsOf(runId);
+    if (chainA === undefined || chainB === undefined) throw new Error("seed: expected two chains");
+    await seedEvents(chainA, [1, 2, 3]);
+
+    const delivered = await new Promise<readonly SseFrame[]>((resolve) => {
+      let raw = "";
+      let narratedB = false;
+      const req = httpRequest(
+        `${baseUrl}/v1/runs/${runId}/stream`,
+        { headers: { authorization: `Bearer ${h.tokens.authorA}` } },
+        (res) => {
+          res.setEncoding("utf8");
+          res.on("data", (chunk: string) => {
+            raw += chunk;
+            const events = completeFrames(raw).filter((f) => f.event === "run_event");
+            // Only once chain A's three are ON THE WIRE — the client has acked cursor 3 —
+            // does chain B open its mouth. That ordering IS the bug's precondition.
+            if (!narratedB && events.length >= 3) {
+              narratedB = true;
+              void seedEvents(chainB, [1]);
+            }
+            if (narratedB && events.length >= 4) {
+              res.destroy();
+              resolve(completeFrames(raw));
+            }
+          });
+          res.on("error", () => undefined);
+        },
+      );
+      req.on("error", () => undefined);
+      req.end();
+    });
+
+    const events = delivered.filter((f) => f.event === "run_event");
+    // No renumbering: A's three keep the ids they were sent under, and B's event is the FOURTH.
+    expect(events.map((f) => f.id)).toEqual(["1", "2", "3", "4"]);
+    expect(events.map(jobRunIdOf)).toEqual([chainA, chainA, chainA, chainB]);
+    await waitUntil(() => activeRunStreamCount() === 0);
+  }, 20_000);
 
   it("closes its poll timer when the client goes away", async () => {
     const runId = await seedLiveRun();

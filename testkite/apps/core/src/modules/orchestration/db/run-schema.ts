@@ -12,6 +12,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   foreignKey,
   index,
   integer,
@@ -58,6 +59,18 @@ export const orcRuns = pgTable(
     pin: runPin("pin").notNull(),
     chainTotal: integer("chain_total").notNull().default(0),
     chainDone: integer("chain_done").notNull().default(0),
+    /**
+     * The allocator behind `orc_run_events.run_ordinal`. It lives on the RUN because the SSE
+     * stream narrates a run, not a chain, and the chains of one run advance independently —
+     * a counter kept per chain could never order them against each other.
+     *
+     * It is a COUNTER COLUMN rather than a sequence on purpose: `nextval` hands out its number
+     * without a lock, so a writer can take a low number and commit after a writer that took a
+     * high one, and a poller that already acked the high one never looks down again. Bumping
+     * this column takes the run row's lock and holds it to commit, which is what makes ordinal
+     * order and commit order the same order.
+     */
+    eventOrdinal: bigint("event_ordinal", { mode: "number" }).notNull().default(0),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

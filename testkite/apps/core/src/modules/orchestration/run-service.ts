@@ -315,13 +315,22 @@ export function isRunTerminal(run: RunStatusDto): boolean {
  * the contract already has the precise answer (410: abandon the chain, do NOT complete). The
  * token dies with the lease TTL anyway.
  *
- * On locking: the aggregate is locked by its IMMUTABLE key first (no predicate on mutable
- * state), and the cancel itself is a plain `UPDATE ... WHERE status NOT IN (...)`. A concurrent
- * claim that flips a row to `running` between the two is not lost: an UPDATE re-evaluates its
- * qualification against the row version it actually locked, unlike a `SELECT ... FOR UPDATE
- * SKIP LOCKED` whose predicate is answered from the statement's opening snapshot.
+ * On locking: THE JOB ROWS FIRST, THE RUN ROW LAST — the same order `recordRunEvent` takes them
+ * in, and the reason it can be taken for granted there. A worker narrating a chain is already
+ * holding that chain's job row (`fenceJob`) when it reaches for the run row to allocate an
+ * event ordinal; an abort that grabbed the run row first and then went after the job rows would
+ * close the cycle, and Postgres would answer a perfectly ordinary "abort during a run" with a
+ * deadlock (40P01). Measured in `test/concurrency/run-event-ordinal-race.test.ts`.
  *
- * `undefined` = no such run for this tenant ⇒ 404.
+ * Nothing is lost by dropping the old `FOR UPDATE` on the run: the cancel is a plain
+ * `UPDATE ... WHERE status NOT IN (...)`, and an UPDATE re-evaluates its qualification against
+ * the row version it actually locked (unlike a `SELECT ... FOR UPDATE SKIP LOCKED`, whose
+ * predicate is answered from the statement's opening snapshot). A claim that flips a row to
+ * `running` in between is therefore seen, not skipped — and the run row's own write carries
+ * `status <> 'finished'`, which is its own guard against a verdict landing first.
+ *
+ * `undefined` = no such run for this tenant ⇒ 404. The visibility read takes NO lock: it
+ * answers a question about existence, and 404 is not worth a lock ordering hazard.
  */
 export async function abortRun(
   tx: TkTx,
@@ -332,7 +341,7 @@ export async function abortRun(
   const finishedAt = input.now.toISOString();
   const run = firstRow(
     await tx.execute(sql`
-      SELECT id FROM orc_runs WHERE team_id = ${teamId} AND id = ${input.runId} FOR UPDATE`),
+      SELECT id FROM orc_runs WHERE team_id = ${teamId} AND id = ${input.runId}`),
   );
   if (run === undefined) return undefined;
 

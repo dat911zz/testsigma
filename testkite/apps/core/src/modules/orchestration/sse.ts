@@ -16,13 +16,20 @@
  * end) but needs a dedicated LISTEN connection per API instance plus in-process fan-out; that
  * is an M6 upgrade, and the poll is what makes v1 shippable with zero new moving parts.
  *
- * THE ID SPACE. `id:` is the position of the last run event delivered, counting from 1 over the
- * run's narration in `(attempt, seq, job_run_id)` order — the order `readRunEvents` returns. A
- * reconnect sends `Last-Event-ID: <n>` and gets positions > n and nothing else. `status` and
- * `done` frames carry the CURRENT position rather than one of their own, so a client that
- * reconnects right after one of them resumes exactly where the narration stopped: no gap, no
- * replay. That is why the ledger is a list of stored events and not a counter of frames — a
- * frame counter would renumber itself on every reconnect.
+ * THE ID SPACE. `id:` is `run_ordinal` — the number `recordRunEvent` stamps on an event once,
+ * at insert, from a counter on the run. A reconnect sends `Last-Event-ID: <n>` and the poll
+ * asks the database for `run_ordinal > n`, so resume is a WHERE clause and not a re-count.
+ * `status` and `done` frames carry the CURRENT cursor rather than one of their own, so a client
+ * that reconnects right after one of them resumes exactly where the narration stopped.
+ *
+ * It used to be the ARRAY POSITION of the event in a `(attempt, seq, job_run_id)`-ordered read,
+ * and that was wrong on any run with more than one chain — the ordinary case. Every chain
+ * restarts `attempt` and `seq` at 1, so the moment a second chain said its first word, its
+ * (1, 1) sorted in front of the first chain's (1, 2) and (1, 3): the new event landed at a
+ * position the client had already acked and was never sent, while the events above it were
+ * renumbered and sent again as if new. An id has to be a property OF THE EVENT, not of the
+ * list it happens to be sitting in. Ordinals may skip a number (a replayed `seq` burns one);
+ * the loop is `> cursor`, never `cursor + 1`, so a gap costs nothing.
  */
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { RunStatusDto } from "@testkite/contract";
@@ -57,8 +64,8 @@ function frame(id: number, event: string, data: unknown): string {
   return `id: ${String(id)}\nevent: ${event}\ndata: ${payload.replace(/\n/g, "")}\n\n`;
 }
 
-function toEventFrame(position: number, event: StoredRunEvent): string {
-  return frame(position, "run_event", {
+function toEventFrame(event: StoredRunEvent): string {
+  return frame(event.runOrdinal, "run_event", {
     jobRunId: event.jobRunId,
     attempt: event.attempt,
     seq: event.seq,
@@ -144,10 +151,13 @@ export function streamRun(
     if (!alive || polling) return;
     polling = true;
     try {
+      // The cursor is read INTO the query, so a poll only ever carries back what this client
+      // has not seen — the resume rule and the live rule are one statement, not two.
+      const since = cursor;
       const { run, events } = await withTenant(deps.db, ctx, async (tx) => {
         const status = await loadRunStatus(tx, ctx, runId);
         if (status === undefined) return { run: undefined, events: [] as readonly StoredRunEvent[] };
-        return { run: status, events: await readRunEvents(tx, ctx, { runId }) };
+        return { run: status, events: await readRunEvents(tx, ctx, { runId, afterOrdinal: since }) };
       });
       if (!alive) return;
       // The run vanished under the stream (a team purge). Nothing left to narrate.
@@ -155,11 +165,10 @@ export function streamRun(
         close();
         return;
       }
-      for (let position = cursor + 1; position <= events.length; position += 1) {
-        const event = events[position - 1];
-        if (event !== undefined) reply.raw.write(toEventFrame(position, event));
+      for (const event of events) {
+        reply.raw.write(toEventFrame(event));
+        cursor = Math.max(cursor, event.runOrdinal);
       }
-      cursor = Math.max(cursor, events.length);
 
       // Only when it CHANGED: a status frame every second would drown the narration and make
       // the heartbeat pointless.
