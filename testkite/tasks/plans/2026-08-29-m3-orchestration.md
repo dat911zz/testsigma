@@ -3328,7 +3328,7 @@ export declare function latestCaseResults(tx: TkTx, ctx: TenantContext, runId: s
 export declare function latestStepResults(tx: TkTx, ctx: TenantContext, caseResultId: string): Promise<readonly StepResultRow[]>;
 ```
 
-- [ ] **Step 1: Viết test ĐỎ cho partition + quyền**
+- [x] **Step 1: Viết test ĐỎ cho partition + quyền**
 
 ```ts
 // apps/core/test/results/partition.test.ts
@@ -3405,12 +3405,12 @@ describe("MAX(attempt) read rule", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/results/`
 Expected: FAIL — `relation "res_case_results" does not exist`.
 
-- [ ] **Step 3: Migration VIẾT TAY (TAG `m3_res_results`)**
+- [x] **Step 3: Migration VIẾT TAY (TAG `m3_res_results`)**
 
 ```sql
 -- res_case_results / res_step_results: partitioned BY MONTH, kept 400 days (blueprint §2, §5).
@@ -3524,7 +3524,7 @@ REVOKE EXECUTE ON FUNCTION ensure_result_partition(text, date) FROM PUBLIC;
 
 Thêm entry `_journal.json` với tag `m3_res_results`.
 
-- [ ] **Step 4: Kiểu drizzle (KHÔNG sinh DDL) + service**
+- [x] **Step 4: Kiểu drizzle (KHÔNG sinh DDL) + service**
 
 ```ts
 // apps/core/src/modules/results/db/results-schema.ts
@@ -3612,12 +3612,12 @@ export function ensureResultPartitionsSql(months: number): string {
 }
 ```
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/results/`
 Expected: PASS 9 test.
 
-- [ ] **Step 6: Facade + commit**
+- [x] **Step 6: Facade + commit**
 
 ```ts
 // apps/core/src/modules/results/index.ts — append

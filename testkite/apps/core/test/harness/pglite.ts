@@ -43,6 +43,13 @@ export type SeededTeam = {
   readonly userId: string;
 };
 
+/** The three ids a result fixture hands back: results are keyed by run, written per job. */
+export type SeededCaseResult = {
+  readonly runId: string;
+  readonly jobRunId: string;
+  readonly caseResultId: string;
+};
+
 export type TestDb = {
   readonly db: TkDb;
   readonly raw: PGlite;
@@ -119,6 +126,23 @@ export type TestDb = {
     count: number,
     chainKeys?: readonly string[],
   ) => Promise<readonly string[]>;
+  /**
+   * Same as `seedJobs`, but also hands back the run those jobs hang off. A result row is keyed
+   * by RUN (that is what `latestCaseResults` reads), so a results test needs the run id that
+   * `seedJobs` keeps to itself.
+   */
+  readonly seedRunWithJobs: (
+    team: SeededTeam,
+    count: number,
+    chainKeys?: readonly string[],
+  ) => Promise<{ readonly runId: string; readonly jobIds: readonly string[] }>;
+  /**
+   * One `res_case_results` row landing on `startedAt` — the partition key. Written on the OWNER
+   * connection on purpose: these are the tests whose subject is the STORAGE (which partition a
+   * row lands in, what a child GRANT would leak), so the fixture must not itself depend on the
+   * tenant path it is being used to inspect.
+   */
+  readonly seedCaseResult: (team: SeededTeam, startedAt: Date) => Promise<SeededCaseResult>;
   /**
    * Moves a job's `heartbeat_at` `seconds` into the past — the only way to reach the
    * reaper's thresholds without making the test sleep for half a minute. `lease_expires_at`
@@ -229,18 +253,18 @@ async function seedRun(raw: PGlite, team: SeededTeam): Promise<string> {
   );
 }
 
-async function seedJobs(
+async function seedRunWithJobs(
   raw: PGlite,
   team: SeededTeam,
   count: number,
   chainKeys?: readonly string[],
-): Promise<readonly string[]> {
+): Promise<{ readonly runId: string; readonly jobIds: readonly string[] }> {
   const runId = await seedRun(raw, team);
-  const ids: string[] = [];
+  const jobIds: string[] = [];
   for (let i = 0; i < count; i += 1) {
     // queue_seq is deliberately left out: its DEFAULT nextval('job_runs_queue_seq') is part
     // of the queue contract, so a fixture that supplied its own value would hide a broken one.
-    ids.push(
+    jobIds.push(
       await insertReturningId(
         raw,
         "job_runs",
@@ -249,7 +273,37 @@ async function seedJobs(
       ),
     );
   }
-  return ids;
+  return { runId, jobIds };
+}
+
+async function seedJobs(
+  raw: PGlite,
+  team: SeededTeam,
+  count: number,
+  chainKeys?: readonly string[],
+): Promise<readonly string[]> {
+  return (await seedRunWithJobs(raw, team, count, chainKeys)).jobIds;
+}
+
+async function seedCaseResult(
+  raw: PGlite,
+  team: SeededTeam,
+  startedAt: Date,
+): Promise<SeededCaseResult> {
+  const { runId, jobIds } = await seedRunWithJobs(raw, team, 1);
+  const jobRunId = jobIds[0];
+  if (jobRunId === undefined) throw new Error("seedCaseResult: seedRunWithJobs returned no job");
+  // ISO 8601, not the Date object: the driver's own timestamp encoding is not the subject of
+  // any test here, and an ISO string is what timestamptz parses without ambiguity.
+  const caseResultId = await insertReturningId(
+    raw,
+    "res_case_results",
+    `INSERT INTO res_case_results
+       (team_id, run_id, job_run_id, case_id, chain_key, verdict, started_at, finished_at)
+     VALUES ($1, $2, $3, gen_random_uuid(), 'chain-0', 'passed', $4, $4) RETURNING id`,
+    [team.teamId, runId, jobRunId, startedAt.toISOString()],
+  );
+  return { runId, jobRunId, caseResultId };
 }
 
 /**
@@ -502,6 +556,9 @@ export async function makeTestDb(): Promise<TestDb> {
     seedClaimedJob: (team: SeededTeam) => seedClaimedJob(db, raw, team),
     seedJobs: (team: SeededTeam, count: number, chainKeys?: readonly string[]) =>
       seedJobs(raw, team, count, chainKeys),
+    seedRunWithJobs: (team: SeededTeam, count: number, chainKeys?: readonly string[]) =>
+      seedRunWithJobs(raw, team, count, chainKeys),
+    seedCaseResult: (team: SeededTeam, startedAt: Date) => seedCaseResult(raw, team, startedAt),
     ageHeartbeat: (jobRunId: string, seconds: number) => ageHeartbeat(raw, jobRunId, seconds),
     setAttempt: (teamId: string, attempt: number) => setAttempt(raw, teamId, attempt),
     markRunningWithDeadHeartbeat: (teamId: string) => markRunningWithDeadHeartbeat(raw, teamId),
