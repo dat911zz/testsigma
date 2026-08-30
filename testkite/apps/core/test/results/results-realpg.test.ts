@@ -60,7 +60,7 @@ describeRealPg("results on real Postgres (node-postgres types)", () => {
 
   beforeEach(async () => {
     await r.db.execute(sql`
-      TRUNCATE res_step_results, res_case_results, job_runs, orc_run_plans,
+      TRUNCATE res_step_results, res_case_results, res_case_result_keys, job_runs, orc_run_plans,
                orc_compile_diagnostics, orc_runs, quota_limits, memberships, projects,
                teams, users, organizations
       RESTART IDENTITY CASCADE`);

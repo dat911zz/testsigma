@@ -268,6 +268,80 @@ describe("MAX(attempt) read rule", () => {
     expect(head?.finishedAt?.toISOString()).toBe("2026-08-15T10:00:01.000Z");
   });
 
+  it("writes an attempt ONCE: the second call for the same (job, case, attempt) is a no-op", async () => {
+    // The MAX(attempt) rule stands on "one row per (job, case, attempt)". Nothing in the
+    // partitioned table can hold that key — a unique constraint there must contain the
+    // partition column `started_at`, which the CALLER supplies, so two writes a millisecond
+    // apart never collide. `res_case_result_keys` holds it instead, and this is the cheap,
+    // sequential half of the proof; the racing half is in
+    // test/concurrency/result-attempt-race.test.ts, where it needs real connections.
+    const base = new Date("2026-08-15T10:00:00.000Z");
+    const write = (verdict: "passed" | "failed", startedAt: Date) =>
+      t.asTeamCtx(a.teamId, (tx, ctx) =>
+        writeCaseResults(tx, ctx, {
+          runId,
+          jobRunId,
+          attempt: 1,
+          cases: [
+            caseInput({
+              caseId: CASE_ONE,
+              chainKey: "login",
+              verdict,
+              stepVerdict: verdict === "passed" ? "passed" : "failed",
+              startedAt,
+            }),
+          ],
+        }),
+      );
+
+    expect(await write("passed", base)).toEqual({ written: [CASE_ONE], duplicates: [] });
+    // Same attempt, a later clock, a DIFFERENT verdict — the shape a double-dispatch produces.
+    expect(await write("failed", new Date(base.getTime() + 1))).toEqual({
+      written: [],
+      duplicates: [CASE_ONE],
+    });
+
+    expect(await t.countRows("res_case_results"), "the second write landed nothing").toBe(1);
+    expect(await t.countRows("res_step_results")).toBe(1);
+    const rows = await t.asTeamCtx(a.teamId, (tx, ctx) => latestCaseResults(tx, ctx, runId));
+    // First writer wins, and it wins BY THE CLAIM — not because its timestamp sorted highest.
+    expect(rows.map((r) => ({ verdict: r.verdict, startedAt: r.startedAt.toISOString() }))).toEqual([
+      { verdict: "passed", startedAt: base.toISOString() },
+    ]);
+  });
+
+  it("refuses a case listed TWICE inside one call, without failing the call", async () => {
+    // A payload that names the same case twice is a caller bug, not a reason to lose the
+    // whole batch: the claim is taken inside this very transaction, so the second copy
+    // conflicts with the first one's own uncommitted key row.
+    const base = new Date("2026-08-15T10:00:00.000Z");
+    const out = await t.asTeamCtx(a.teamId, (tx, ctx) =>
+      writeCaseResults(tx, ctx, {
+        runId,
+        jobRunId,
+        attempt: 1,
+        cases: [
+          caseInput({
+            caseId: CASE_ONE,
+            chainKey: "login",
+            verdict: "passed",
+            stepVerdict: "passed",
+            startedAt: base,
+          }),
+          caseInput({
+            caseId: CASE_ONE,
+            chainKey: "login",
+            verdict: "failed",
+            stepVerdict: "failed",
+            startedAt: new Date(base.getTime() + 1),
+          }),
+        ],
+      }),
+    );
+    expect(out).toEqual({ written: [CASE_ONE], duplicates: [CASE_ONE] });
+    expect(await t.countRows("res_case_results")).toBe(1);
+  });
+
   it("reads another team's run back as nothing — 404, never 403", async () => {
     await writeTwoAttempts();
     const rows = await t.asTeamCtx(b.teamId, (tx, ctx) => latestCaseResults(tx, ctx, runId));
@@ -296,8 +370,11 @@ describe("MAX(attempt) read rule", () => {
         }),
       ),
     );
-    expect(msg).toMatch(/res_case_results_job_fk|foreign key/i);
+    // The refusal now arrives one statement earlier: the idempotency key carries the same
+    // composite FK into job_runs, so a foreign job is refused before a result row is attempted.
+    expect(msg).toMatch(/res_case_result_keys_job_fk|res_case_results_job_fk|foreign key/i);
     expect(await t.countRows("res_case_results")).toBe(0);
+    expect(await t.countRows("res_case_result_keys")).toBe(0);
   });
 
   it("writes nothing without a tenant context — L1 fail-closed", async () => {
@@ -324,5 +401,7 @@ describe("MAX(attempt) read rule", () => {
       ),
     ).rejects.toThrow(/Invalid TenantContext/);
     expect(await t.countRows("res_case_results")).toBe(0);
+    // The claim is the FIRST statement of the write path, so fail-closed has to cover it too.
+    expect(await t.countRows("res_case_result_keys")).toBe(0);
   });
 });

@@ -3320,10 +3320,15 @@ export interface StepResultInput {
   readonly screenshotArtifactId: string | null;
   readonly thumbhash: string | null;
 }
+// Review fix 30-08-2026: tra ve ket qua thay vi void — mot case bi tu choi boi khoa
+// idempotency (team, job, case, attempt) phai duoc noi ra, khong duoc nuot im lang.
+export interface WriteCaseResultsOutcome {
+  readonly written: readonly string[]; readonly duplicates: readonly string[];
+}
 export declare function writeCaseResults(tx: TkTx, ctx: TenantContext, input: {
   readonly runId: string; readonly jobRunId: string; readonly attempt: number;
   readonly cases: readonly CaseResultInput[];
-}): Promise<void>;
+}): Promise<WriteCaseResultsOutcome>;
 export declare function latestCaseResults(tx: TkTx, ctx: TenantContext, runId: string): Promise<readonly CaseResultRow[]>;
 export declare function latestStepResults(tx: TkTx, ctx: TenantContext, caseResultId: string): Promise<readonly StepResultRow[]>;
 ```
@@ -3630,6 +3635,46 @@ cd testkite && pnpm typecheck && pnpm --filter @testkite/core test
 git add testkite/apps/core/src/modules/results testkite/apps/core/drizzle testkite/apps/core/test/results
 git commit -m "M3-ORC T11: res_case_results/res_step_results partition thang + luat doc MAX(attempt)"
 ```
+
+> **Review fix (30-08-2026) — luật đọc `MAX(attempt)` đứng trên một nền DB KHÔNG bảo vệ; thêm
+> bảng khoá idempotency `res_case_result_keys` (migration TAG `m3_res_result_keys`).**
+> `UNIQUE (team_id, job_run_id, case_id, attempt, started_at)` ở Step 3 **luôn** phải chứa
+> `started_at` (Postgres từ chối unique key thiếu partition key), mà `started_at` là giá trị
+> **CALLER đưa vào** (`writeCaseResults` truyền thẳng `c.startedAt`). Hệ quả: hai lần ghi ĐỘC LẬP
+> cùng `(team, job, case, attempt)` chỉ khác nhau vài micro-giây ở `started_at` nên **không bao
+> giờ va chạm**. Đã đo lại bằng hai connection độc lập trên PostgreSQL thật: cả hai INSERT
+> attempt=1 đều commit (không 23505), sinh 2 dòng `res_case_results` + 2 dòng con, và
+> `latestCaseResults()` trả về dòng nào có `started_at` lớn hơn — verdict do đồng hồ hệ thống
+> chọn, im lặng. So với `orc_run_events` (T10) có `UNIQUE(team_id, job_run_id, attempt, seq)` +
+> `ON CONFLICT DO NOTHING` là khoá idempotency THẬT, T11 bản đầu không có gì tương đương.
+>
+> Sửa: thêm bảng **không partition** `res_case_result_keys` với
+> `PRIMARY KEY (team_id, job_run_id, case_id, attempt)` + composite FK `(team_id, job_run_id)`
+> → `job_runs` **ON DELETE CASCADE** (đây là HÀNG RÀO, không phải bằng chứng: nó là bảng res_ duy
+> nhất không có partition để DETACH nên phải sống/chết theo job) + RLS `tenant_isolation` +
+> GRANT `SELECT, INSERT` (append-only, `SELECT` là thứ `RETURNING` cần). `writeCaseResults` giành
+> khoá **trước tiên** bằng `INSERT ... ON CONFLICT (…) DO NOTHING RETURNING`, **trong cùng
+> transaction** với các dòng kết quả — không dùng `WHERE NOT EXISTS` (vị từ đọc snapshot lúc câu
+> lệnh BẮT ĐẦU, đúng lỗi đã vá ở relay outbox `c0c2f42`); PK không có cửa sổ đó: kẻ thua **chờ**
+> transaction thắng kết thúc rồi bị từ chối theo kết cục, không theo snapshot.
+>
+> Kiểu trả đổi `Promise<void>` → `Promise<WriteCaseResultsOutcome>`
+> (`{ written, duplicates }`, mỗi phần tử là `caseId`): trùng **không phải lỗi** (retry `complete`
+> sau timeout mạng là ca thường), nhưng cũng không được im lặng — T13 dùng `duplicates` để trả
+> lời trung thực thay vì giả vờ đã ghi. Chưa có caller nào ngoài test nên đổi kiểu = 0 dòng phải
+> sửa ở nơi khác.
+>
+> Test (đo ĐỎ thật trước khi sửa — bỏ đúng câu giành khoá thì 3 test đỏ lại):
+> `test/concurrency/result-attempt-race.test.ts` — 8 writer trên **8 connection thật** cùng lao
+> vào một `(job, case, attempt)`: đúng 1 `written`, 7 `duplicates`, đúng 1 dòng case + 1 dòng
+> step, và dòng sống sót thuộc về **kẻ giành được khoá** chứ không phải kẻ có đồng hồ lớn nhất
+> (bản cũ: 8 dòng). Kèm test "fence theo ATTEMPT" (retry attempt 2 vẫn ghi được), "hai case khác
+> nhau của cùng job không chặn nhau", và một test **đo lại chính lỗ hổng**: hai INSERT thô cùng
+> khoá, `started_at` cách nhau 1ms, Postgres nhận cả hai — lý do bảng khoá phải tồn tại được ĐO,
+> không phải được nhớ. Tầng PGlite thêm ca tuần tự (ghi lại cùng attempt = no-op) và ca "một case
+> xuất hiện hai lần trong CÙNG một call". `partition.test.ts` ghim PK/RLS/GRANT/FK-CASCADE của
+> bảng mới. Test đồng thời **bắt buộc** chạy trên Postgres thật: trên PGlite (một connection) nó
+> là XANH GIẢ.
 
 ---
 

@@ -167,15 +167,54 @@ describe("res_* monthly partitions", () => {
     expect(r.rows[0]).toMatchObject({ app: false, auth: false, pub: false });
   });
 
+  it("keeps the attempt key in a table that is allowed to hold it — res_case_result_keys", async () => {
+    // The constraint one line above is why this table exists: EVERY unique key on
+    // res_case_results must contain `started_at`, and `started_at` is a value the caller hands
+    // in, so "one row per (job, case, attempt)" is a rule the partitioned table CANNOT state.
+    // This one is not partitioned, so it can — and the primary key here says exactly that,
+    // with nothing else in it.
+    const r = await t.db.execute(sql`
+      SELECT pg_get_constraintdef(oid) def FROM pg_constraint
+      WHERE conrelid = 'res_case_result_keys'::regclass AND contype = 'p'`);
+    expect(r.rows.map((x) => String(x["def"]))).toEqual([
+      "PRIMARY KEY (team_id, job_run_id, case_id, attempt)",
+    ]);
+    // A fence with no tenant isolation would be a cross-tenant read of "which attempts exist".
+    const rls = await t.db.execute(sql`
+      SELECT relrowsecurity FROM pg_class WHERE relname = 'res_case_result_keys'`);
+    expect(rls.rows[0]?.["relrowsecurity"]).toBe(true);
+    // Append-only like the rows it fences: the app role may claim a key, never release one.
+    const priv = await t.db.execute(sql`
+      SELECT has_table_privilege('testkite_app', 'res_case_result_keys', 'SELECT') s,
+             has_table_privilege('testkite_app', 'res_case_result_keys', 'INSERT') i,
+             has_table_privilege('testkite_app', 'res_case_result_keys', 'UPDATE') u,
+             has_table_privilege('testkite_app', 'res_case_result_keys', 'DELETE') d,
+             has_table_privilege('testkite_app', 'res_case_result_keys', 'TRUNCATE') tr`);
+    expect(priv.rows[0]).toMatchObject({ s: true, i: true, u: false, d: false, tr: false });
+  });
+
+  it("ties a claimed key to the job it fences: deleting the job takes the key with it", async () => {
+    // The key table is a FENCE, not evidence, and it is the one result table with no partition
+    // to detach. Its lifetime therefore hangs off the job row: ON DELETE CASCADE is what stops
+    // it from being the single table in this module that grows forever.
+    const r = await t.db.execute(sql`
+      SELECT pg_get_constraintdef(oid) def FROM pg_constraint
+      WHERE conrelid = 'res_case_result_keys'::regclass AND contype = 'f'`);
+    expect(r.rows.map((x) => String(x["def"]))).toEqual([
+      "FOREIGN KEY (team_id, job_run_id) REFERENCES job_runs(team_id, id) ON DELETE CASCADE",
+    ]);
+  });
+
   it("columns in the hand-written SQL match the drizzle definitions EXACTLY (no drift)", async () => {
     // The DDL is hand-written and the drizzle types are declared separately, so nothing but
     // this test stops the two from quietly disagreeing.
-    const { resCaseResults, resStepResults } = await import(
+    const { resCaseResults, resStepResults, resCaseResultKeys } = await import(
       "../../src/modules/results/db/results-schema.js"
     );
     for (const [table, def] of [
       ["res_case_results", resCaseResults],
       ["res_step_results", resStepResults],
+      ["res_case_result_keys", resCaseResultKeys],
     ] as const) {
       const r = await t.db.execute(sql`
         SELECT column_name FROM information_schema.columns WHERE table_name = ${table}`);

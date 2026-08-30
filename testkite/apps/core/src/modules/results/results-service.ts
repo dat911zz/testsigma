@@ -8,7 +8,15 @@
  *
  * Writes are APPEND-ONLY, and not by convention: the request-path role holds SELECT and INSERT
  * on these two tables and nothing else (migration `m3_res_results`), so an attempt-2 row is the
- * only way to correct an attempt-1 row, and the DB is what refuses anything else.
+ * only way to CORRECT an attempt-1 row.
+ *
+ * That leaves the other half — nothing above stops a SECOND attempt-1 row from being appended
+ * next to the first, and MAX(attempt) has no answer when there are two. The partitioned table
+ * cannot state the rule itself: a unique constraint there must contain the partition column
+ * `started_at`, which is a value the CALLER hands in, so two independent writes a microsecond
+ * apart never collide (measured 2026-08-30 — see `m3_res_result_keys` and
+ * test/concurrency/result-attempt-race.test.ts). `res_case_result_keys` holds the real key
+ * instead, and `writeCaseResults` claims it in the same transaction as the rows.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -144,6 +152,32 @@ function toStepResultRow(row: SqlRow): StepResultRow {
   };
 }
 
+/**
+ * What one call actually stored. `duplicates` names the cases whose `(job, case, attempt)` was
+ * already claimed — the caller learns it wrote nothing for them instead of assuming it did.
+ */
+export interface WriteCaseResultsOutcome {
+  readonly written: readonly string[];
+  readonly duplicates: readonly string[];
+}
+
+/**
+ * Appends one attempt's results. An attempt is claimed EXACTLY ONCE, and the database is what
+ * enforces that: the first statement per case takes the primary key of `res_case_result_keys`,
+ * so a second writer racing on the same `(team, job, case, attempt)` blocks on that key and
+ * then loses it — it writes no case row and no step rows, and says so in `duplicates`.
+ *
+ * WHY THE CLAIM IS A ROW AND NOT A `WHERE NOT EXISTS`: a predicate is evaluated against a
+ * snapshot taken when the statement STARTS, so a writer that commits in between is invisible to
+ * it — the exact shape that published outbox events twice until 2026-08-30 (kernel/outbox
+ * relay, commit c0c2f42). A primary key has no such window: the loser waits for the winner's
+ * transaction to finish and is refused on its outcome, not on a snapshot.
+ *
+ * A duplicate is NOT an error. A `complete` call retried after a network timeout is the common
+ * case, and re-reporting the same attempt must stay a no-op rather than fail the whole batch.
+ * A duplicate that is NOT a retry means two workers believed they held the same attempt — a
+ * lease/epoch failure upstream (T8-T10) — and this is where it stops being silent.
+ */
 export async function writeCaseResults(
   tx: TkTx,
   ctx: TenantContext,
@@ -153,9 +187,23 @@ export async function writeCaseResults(
     readonly attempt: number;
     readonly cases: readonly CaseResultInput[];
   },
-): Promise<void> {
+): Promise<WriteCaseResultsOutcome> {
   const teamId = assertTenantContext(ctx);
+  const written: string[] = [];
+  const duplicates: string[] = [];
   for (const c of input.cases) {
+    // The claim, and the whole reason this transaction may go on to write anything. It also
+    // catches a case listed twice in ONE call: the second copy conflicts with the row this
+    // very transaction inserted a moment ago.
+    const claimed = rowsOf(await tx.execute(sql`
+      INSERT INTO res_case_result_keys (team_id, job_run_id, case_id, attempt)
+      VALUES (${teamId}, ${input.jobRunId}, ${c.caseId}, ${input.attempt})
+      ON CONFLICT (team_id, job_run_id, case_id, attempt) DO NOTHING
+      RETURNING case_id`));
+    if (claimed.length === 0) {
+      duplicates.push(c.caseId);
+      continue;
+    }
     const caseRow = rowsOf(await tx.execute(sql`
       INSERT INTO res_case_results (team_id, run_id, job_run_id, case_id, chain_key, attempt,
                                     verdict, duration_ms, started_at, finished_at)
@@ -188,7 +236,9 @@ export async function writeCaseResults(
           ${s.failureContext === null ? null : JSON.stringify(s.failureContext)}::jsonb,
           ${s.screenshotArtifactId}, ${s.thumbhash}, ${caseStartedAt})`);
     }
+    written.push(c.caseId);
   }
+  return { written, duplicates };
 }
 
 /**

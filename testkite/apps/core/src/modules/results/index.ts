@@ -22,9 +22,11 @@ export {
   type StepResultRow,
   type CaseVerdict,
   type StepVerdict,
+  type WriteCaseResultsOutcome,
 } from "./results-service.js";
 export {
   resCaseResults,
+  resCaseResultKeys,
   resStepResults,
   RESULT_VERDICTS,
   type ResultVerdict,

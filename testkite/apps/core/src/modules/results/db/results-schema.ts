@@ -34,6 +34,21 @@ export const resCaseResults = pgTable("res_case_results", {
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 });
 
+/**
+ * The idempotency key of a case result — the one thing `res_case_results` cannot hold itself.
+ * A unique constraint on a partitioned table must contain the partitioning column, and
+ * `started_at` comes from the caller, so "one row per (job, case, attempt)" is a rule only an
+ * UNPARTITIONED table can state. `writeCaseResults` claims a row here before it writes the
+ * result rows (migration `m3_res_result_keys`).
+ */
+export const resCaseResultKeys = pgTable("res_case_result_keys", {
+  teamId: uuid("team_id").notNull(),
+  jobRunId: uuid("job_run_id").notNull(),
+  caseId: uuid("case_id").notNull(),
+  attempt: integer("attempt").notNull(),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const resStepResults = pgTable("res_step_results", {
   teamId: uuid("team_id").notNull(),
   id: uuid("id").notNull().defaultRandom(),
