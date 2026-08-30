@@ -1,5 +1,6 @@
+import { hostname } from "node:os";
 import { describe, expect, it } from "vitest";
-import { parseEnv } from "./env.js";
+import { parseEnv, type KernelEnv } from "./env.js";
 
 const VALID = {
   NODE_ENV: "test",
@@ -8,6 +9,13 @@ const VALID = {
   DATABASE_APP_ROLE: "testkite_app",
   LOG_LEVEL: "info",
 } satisfies NodeJS.ProcessEnv;
+
+/** The parsed env, or a loud failure — an assertion made on a rejected parse proves nothing. */
+function envOf(raw: NodeJS.ProcessEnv): KernelEnv {
+  const r = parseEnv(raw);
+  if (!r.ok) throw new Error(`expected a valid env, got: ${r.issues.join(" | ")}`);
+  return r.env;
+}
 
 describe("parseEnv", () => {
   it("accepts a valid env and coerces PORT to a number", () => {
@@ -47,5 +55,34 @@ describe("parseEnv", () => {
   it("rejects PORT outside 1..65535", () => {
     expect(parseEnv({ ...VALID, PORT: "0" }).ok).toBe(false);
     expect(parseEnv({ ...VALID, PORT: "70000" }).ok).toBe(false);
+  });
+
+  it("runs the dispatcher by default, under this host's name", () => {
+    const env = envOf(VALID);
+    expect(env.DISPATCHER_ENABLED).toBe(true);
+    // The holder is what the dead-man alert and every "who leads?" answer will print, so an
+    // empty or duplicated identity is a debugging dead end.
+    expect(env.DISPATCHER_ID).toBe(hostname());
+    expect(env.DISPATCHER_ID.length).toBeGreaterThan(0);
+  });
+
+  it("reads DISPATCHER_ENABLED as a REAL boolean, so '0' and 'false' turn the loop off", () => {
+    // z.coerce.boolean() would answer `true` for both: every non-empty string is truthy, so a
+    // read-only replica told to keep its hands off the queue would quietly run a dispatcher.
+    for (const off of ["0", "false"]) {
+      expect(envOf({ ...VALID, DISPATCHER_ENABLED: off }).DISPATCHER_ENABLED, off).toBe(false);
+    }
+    for (const on of ["1", "true"]) {
+      expect(envOf({ ...VALID, DISPATCHER_ENABLED: on }).DISPATCHER_ENABLED, on).toBe(true);
+    }
+  });
+
+  it("refuses a DISPATCHER_ENABLED that is neither on nor off, instead of guessing", () => {
+    expect(parseEnv({ ...VALID, DISPATCHER_ENABLED: "yes" }).ok).toBe(false);
+    expect(parseEnv({ ...VALID, DISPATCHER_ENABLED: "" }).ok).toBe(false);
+  });
+
+  it("refuses an empty DISPATCHER_ID — an anonymous leader cannot be alerted on", () => {
+    expect(parseEnv({ ...VALID, DISPATCHER_ID: "" }).ok).toBe(false);
   });
 });

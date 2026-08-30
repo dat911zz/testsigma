@@ -102,6 +102,19 @@ export type TestDb = {
   /** Rewrites `attempt` on every job of a team — the shortcut to "one attempt left". */
   readonly setAttempt: (teamId: string, attempt: number) => Promise<void>;
   /**
+   * Hands every QUEUED job of a team to a worker that then died: `running`, with a heartbeat
+   * far past the reaper's dead threshold. The shortcut for a test whose subject is the SWEEP
+   * rather than the claim path — `dispatchPending` + `claimJobs` + `ageHeartbeat` would say
+   * the same thing in four statements.
+   */
+  readonly markRunningWithDeadHeartbeat: (teamId: string) => Promise<void>;
+  /**
+   * Expires the dispatcher lease as if its holder had stopped renewing. Writes only
+   * `expires_at`, so `holder`/`epoch` still name the leader a challenger has to take over
+   * FROM — which is what makes it usable as the dead-man fixture.
+   */
+  readonly expireLease: () => Promise<void>;
+  /**
    * Takes a job away from whoever holds it, the way the reaper will (M3 Task 6): one
    * `lease_epoch` bump, status untouched. Runs as the OWNER connection on purpose — this is
    * the fixture standing in for a component that does not exist yet, not a code path under
@@ -227,6 +240,33 @@ async function setAttempt(raw: PGlite, teamId: string, attempt: number): Promise
     attempt,
   ]);
   if (r.rows.length === 0) throw new Error(`setAttempt: team ${teamId} has no job_runs row`);
+}
+
+/** Four times the reaper's 30s dead threshold: nothing about this heartbeat is borderline. */
+const DEAD_HEARTBEAT_SECONDS = 120;
+
+async function markRunningWithDeadHeartbeat(raw: PGlite, teamId: string): Promise<void> {
+  const r = await raw.query(
+    `UPDATE job_runs
+        SET status = 'running',
+            worker_id = 'dead-worker',
+            started_at = COALESCE(started_at, now()),
+            lease_expires_at = now(),
+            heartbeat_at = now() - make_interval(secs => $2::double precision)
+      WHERE team_id = $1 AND status IN ('pending', 'dispatched')
+     RETURNING id`,
+    [teamId, DEAD_HEARTBEAT_SECONDS],
+  );
+  if (r.rows.length === 0) {
+    throw new Error(`markRunningWithDeadHeartbeat: team ${teamId} has no queued job_runs row`);
+  }
+}
+
+async function expireLease(raw: PGlite): Promise<void> {
+  const r = await raw.query(
+    `UPDATE orc_dispatcher_lease SET expires_at = now() - interval '1 second' RETURNING id`,
+  );
+  if (r.rows.length === 0) throw new Error("expireLease: nobody holds the dispatcher lease");
 }
 
 async function bumpEpoch(raw: PGlite, teamId: string, jobRunId: string): Promise<number> {
@@ -390,6 +430,8 @@ export async function makeTestDb(): Promise<TestDb> {
       seedJobs(raw, team, count, chainKeys),
     ageHeartbeat: (jobRunId: string, seconds: number) => ageHeartbeat(raw, jobRunId, seconds),
     setAttempt: (teamId: string, attempt: number) => setAttempt(raw, teamId, attempt),
+    markRunningWithDeadHeartbeat: (teamId: string) => markRunningWithDeadHeartbeat(raw, teamId),
+    expireLease: () => expireLease(raw),
     bumpEpoch: (teamId: string, jobRunId: string) => bumpEpoch(raw, teamId, jobRunId),
     seedRunnableCases: (team: SeededTeam, count: number, opts?: { readonly prereqCaseId?: string }) =>
       seedRunnableCases(db, raw, team, count, opts),

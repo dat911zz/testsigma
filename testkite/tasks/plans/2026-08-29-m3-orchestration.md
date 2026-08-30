@@ -2384,7 +2384,7 @@ export declare function startDispatcher(db: TkDb, opts: { readonly holder: strin
 export interface DispatcherState { holder: string; ticks: number; lease: DispatcherLease | null }
 ```
 
-- [ ] **Step 1: Viết test ĐỎ (tick là hàm thuần-về-thời-gian: gọi tay, không `setInterval` trong test)**
+- [x] **Step 1: Viết test ĐỎ (tick là hàm thuần-về-thời-gian: gọi tay, không `setInterval` trong test)**
 
 ```ts
 // apps/core/test/orchestration/dispatcher-loop.test.ts
@@ -2458,12 +2458,12 @@ describe("dispatcher tick", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/dispatcher-loop.test.ts`
 Expected: FAIL — module chưa tồn tại.
 
-- [ ] **Step 3: Cài đặt `loop.ts`**
+- [x] **Step 3: Cài đặt `loop.ts`**
 
 ```ts
 // apps/core/src/modules/orchestration/dispatcher/loop.ts
@@ -2579,7 +2579,7 @@ export function startDispatcher(
 
 `runDispatcherTickWithLimit` trong test = `runDispatcherTick(db, st, undefined, 1)`.
 
-- [ ] **Step 4: Biến env**
+- [x] **Step 4: Biến env**
 
 Thêm vào `envSchema` trong `apps/core/src/modules/kernel/env.ts` (thêm vào CUỐI object, không chèn giữa):
 
@@ -2590,12 +2590,12 @@ Thêm vào `envSchema` trong `apps/core/src/modules/kernel/env.ts` (thêm vào C
   DISPATCHER_ID: z.string().min(1).default(hostname()),
 ```
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/dispatcher-loop.test.ts`
 Expected: PASS 6 test.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd testkite && pnpm typecheck && pnpm --filter @testkite/core test
