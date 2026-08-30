@@ -5,7 +5,8 @@
  * ORCHESTRATION LOGIC and nothing else: that exactly one context is requested per chain, that
  * the context is closed on every exit path, that a step result / thrown value is mapped onto
  * the right verdict, that a `for` body runs once per frozen loop row, and that an unsupported
- * step kind is refused by name.
+ * step kind is refused by name, and that a `for` body binds its row's data into the args
+ * the verb receives.
  *
  * It is NOT evidence about a browser. On this fake, `close()` flips a boolean — it cancels
  * nothing. So the assertion "the context was closed" here means "the executor called close()",
@@ -16,7 +17,7 @@
  * chromium. A green run of this file is never evidence for any of that.
  */
 import { AssertionFailure, RetryableInfraError } from "@testkite/contract";
-import type { CasePlan, ChainPlan, RunPolicy, StepPlan } from "@testkite/run-compiler";
+import type { CasePlan, ChainPlan, DataRow, RunPolicy, StepPlan } from "@testkite/run-compiler";
 import type { VerbDefinition } from "@testkite/verb-kit";
 import { describe, expect, it, vi } from "vitest";
 import { FakeBrowserEngine } from "../../src/browser/fake-engine.js";
@@ -32,6 +33,32 @@ const policy: RunPolicy = {
 
 function actionStep(ordinal: number, opKey = "web.click"): StepPlan {
   return { kind: "action", ordinal, renderedSentence: `Click on button ${ordinal}`, groupPath: [], args: { element: "btn" }, opKey };
+}
+
+/** An action step with caller-chosen args — lets a test assert what the verb actually received. */
+function argsStep(ordinal: number, args: Record<string, string>): StepPlan {
+  return { kind: "action", ordinal, renderedSentence: `Step ${ordinal}`, groupPath: [], args, opKey: "web.click" };
+}
+
+/** A frozen loop row, shaped exactly as compiler phase 2 stamps it into the plan. */
+function row(label: string, values: Record<string, string>): DataRow {
+  return { label, expectedToFail: false, values };
+}
+
+function forStep(ordinal: number, rows: readonly DataRow[], children: readonly StepPlan[]): StepPlan {
+  return { kind: "for", ordinal, renderedSentence: "For each row", groupPath: [], args: {}, children, loopRows: rows };
+}
+
+/** Records every args map the verb was called with, so a test can compare them row by row. */
+function recorder(): { readonly seen: Record<string, string>[]; readonly execute: VerbDefinition["execute"] } {
+  const seen: Record<string, string>[] = [];
+  return {
+    seen,
+    execute: async (_ctx, args) => {
+      seen.push({ ...args });
+      return { ok: true };
+    },
+  };
 }
 
 function chainOf(steps: readonly StepPlan[]): ChainPlan {
@@ -144,6 +171,73 @@ describe("runChain", () => {
     const out = await runChain(chainOf([forStep]), policy, deps(engine, execute));
     expect(out.verdict).toBe("passed");
     expect(execute).toHaveBeenCalledTimes(3);
+  });
+
+  it("binds the CURRENT loop row into a for-body step's $data args", async () => {
+    const engine = new FakeBrowserEngine();
+    const rec = recorder();
+    const chain = chainOf([
+      forStep(1, [row("a", { user: "ann" }), row("b", { user: "bob" }), row("c", { user: "cat" })], [
+        argsStep(2, { element: "btn", user: "$data:user" }),
+      ]),
+    ]);
+    const out = await runChain(chain, policy, deps(engine, rec.execute));
+    expect(out.verdict).toBe("passed");
+    expect(rec.seen).toEqual([
+      { element: "btn", user: "ann" },
+      { element: "btn", user: "bob" },
+      { element: "btn", user: "cat" },
+    ]);
+  });
+
+  it("keeps a $data ref the loop row has no column for, exactly as the compiler does", async () => {
+    const engine = new FakeBrowserEngine();
+    const rec = recorder();
+    const chain = chainOf([forStep(1, [row("a", { user: "ann" })], [argsStep(2, { who: "$data:absent" })])]);
+    await runChain(chain, policy, deps(engine, rec.execute));
+    expect(rec.seen).toEqual([{ who: "$data:absent" }]);
+  });
+
+  it("never lets loop data reach a $secret ref, and never re-reads a substituted value", async () => {
+    const engine = new FakeBrowserEngine();
+    const rec = recorder();
+    const chain = chainOf([
+      forStep(1, [row("a", { pw: "leaked", user: "$secret:pw" })], [
+        argsStep(2, { pw: "$secret:pw", user: "$data:user" }),
+      ]),
+    ]);
+    await runChain(chain, policy, deps(engine, rec.execute));
+    // "$secret:pw" is untouched, and the value substituted for $data:user is NOT rescanned as a ref.
+    expect(rec.seen).toEqual([{ pw: "$secret:pw", user: "$secret:pw" }]);
+  });
+
+  it("substitutes a whole-string ref only, never a ref embedded in a longer string", async () => {
+    const engine = new FakeBrowserEngine();
+    const rec = recorder();
+    const chain = chainOf([forStep(1, [row("a", { user: "ann" })], [argsStep(2, { greet: "hello $data:user" })])]);
+    await runChain(chain, policy, deps(engine, rec.execute));
+    expect(rec.seen).toEqual([{ greet: "hello $data:user" }]);
+  });
+
+  it("lets an inner loop row shadow the outer one column by column", async () => {
+    const engine = new FakeBrowserEngine();
+    const rec = recorder();
+    const inner = forStep(2, [row("x", { user: "x" }), row("y", { user: "y" })], [
+      argsStep(3, { user: "$data:user", tenant: "$data:tenant" }),
+    ]);
+    const chain = chainOf([forStep(1, [row("outer", { user: "outer", tenant: "acme" })], [inner])]);
+    await runChain(chain, policy, deps(engine, rec.execute));
+    expect(rec.seen).toEqual([
+      { user: "x", tenant: "acme" },
+      { user: "y", tenant: "acme" },
+    ]);
+  });
+
+  it("leaves a $data ref outside any for body alone — the compiler already merged the case row", async () => {
+    const engine = new FakeBrowserEngine();
+    const rec = recorder();
+    await runChain(chainOf([argsStep(1, { user: "$data:user" })]), policy, deps(engine, rec.execute));
+    expect(rec.seen).toEqual([{ user: "$data:user" }]);
   });
 
   it("refuses an if/while/rest step with a NAMED fatal error (the explicit M4 boundary)", async () => {
