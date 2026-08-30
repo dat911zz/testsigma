@@ -21,3 +21,11 @@ export {
   runVerdict,
   runPin,
 } from "./db/run-schema.js";
+export {
+  startRun,
+  jobCost,
+  JOB_COST_MAX,
+  type StartRunInput,
+  type StartRunDeps,
+  type StartRunResult,
+} from "./run-service.js";

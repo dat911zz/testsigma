@@ -12,10 +12,24 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import type { StepInputDto } from "@testkite/contract";
 import { APP_ROLE, DISPATCH_ROLE, withTenant } from "../../src/modules/kernel/index.js";
 import type { TenantContext, TkDb, TkTx } from "../../src/modules/kernel/db/types.js";
+import { createCase, replaceSteps } from "../../src/modules/authoring/index.js";
 
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("../../drizzle", import.meta.url));
+
+/**
+ * The element id `seedCaseWithPendingLocator` puts on its only step. The elements module
+ * does not land before M4, so at phase 0 the element loader is an INJECTION PORT and the
+ * test's own `loadElements` decides what an element looks like: recognising this id and
+ * answering "no locator captured yet" is what makes the compiler raise
+ * `element_pending_locator` rather than `element_not_found`.
+ */
+export const PENDING_LOCATOR_ELEMENT_ID = "00000000-0000-4000-8000-00000000dead";
+
+/** Base URL of the environment every seeded project gets — phase 0 refuses a project without one. */
+export const SEEDED_BASE_URL = "https://app.testkite.test";
 
 /** One tenant plus the two ids every tenant-scoped fixture needs: a project and a member. */
 export type SeededTeam = {
@@ -70,6 +84,22 @@ export type TestDb = {
   readonly seedRun: (team: SeededTeam) => Promise<string>;
   /** One run plus `count` pending `job_runs` rows on it; returns the job ids in order. */
   readonly seedJobs: (team: SeededTeam, count: number) => Promise<readonly string[]>;
+  /**
+   * `count` independent cases that COMPILE — real verbs from the registry, an element on
+   * every action step, a nested `if` block, and the environment phase 0 needs. Each one is
+   * its own chain, so a run over the returned ids yields exactly `count` jobs; pass
+   * `prereqCaseId` to hang them off an existing case instead, which makes ONE longer chain.
+   */
+  readonly seedRunnableCases: (
+    team: SeededTeam,
+    count: number,
+    opts?: { readonly prereqCaseId?: string },
+  ) => Promise<readonly string[]>;
+  /**
+   * One case whose only step points at `PENDING_LOCATOR_ELEMENT_ID` — the shape that makes
+   * the compiler stop with `element_pending_locator` and no plan at all.
+   */
+  readonly seedCaseWithPendingLocator: (team: SeededTeam) => Promise<string>;
 };
 
 async function insertReturningId(
@@ -153,6 +183,107 @@ async function seedJobs(raw: PGlite, team: SeededTeam, count: number): Promise<r
   return ids;
 }
 
+/**
+ * The environment phase 0 loads for a project. Idempotent, because a test may seed cases
+ * more than once for the same team and the project only ever has the one dev environment.
+ */
+async function ensureEnvironment(raw: PGlite, team: SeededTeam): Promise<void> {
+  await raw.query(
+    `INSERT INTO pln_environments (team_id, project_id, name, base_url, status)
+     VALUES ($1, $2, 'dev', $3, 'active')
+     ON CONFLICT (team_id, project_id, name) DO NOTHING`,
+    [team.teamId, team.projectId, SEEDED_BASE_URL],
+  );
+}
+
+/** A case written through the REAL authoring path, so its revision payload is the real shape. */
+async function seedCase(
+  db: TkDb,
+  team: SeededTeam,
+  name: string,
+  steps: readonly StepInputDto[],
+  prereqCaseId?: string,
+): Promise<string> {
+  const ctx: TenantContext = { teamId: team.teamId };
+  const actor = { userId: team.userId };
+  const created = await withTenant(db, ctx, (tx) =>
+    createCase(tx, ctx, actor, {
+      projectId: team.projectId,
+      name,
+      isStepGroup: false,
+      ...(prereqCaseId === undefined ? {} : { prereqCaseId }),
+    }),
+  );
+  await withTenant(db, ctx, (tx) =>
+    replaceSteps(tx, ctx, actor, { caseId: created.id, expectedVersion: created.version, steps }),
+  );
+  return created.id;
+}
+
+async function seedRunnableCases(
+  db: TkDb,
+  raw: PGlite,
+  team: SeededTeam,
+  count: number,
+  opts?: { readonly prereqCaseId?: string },
+): Promise<readonly string[]> {
+  await ensureEnvironment(raw, team);
+  const ids: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    ids.push(
+      // Element ids are random per case: a chain must never share an element with another
+      // chain by accident, or a single broken element would make two chains fail together.
+      // The `if` block is not decoration — a flat list of action steps would never exercise
+      // the step TREE on the way from the authoring payload to the compiler.
+      await seedCase(
+        db,
+        team,
+        `Runnable ${String(i)} ${randomUUID().slice(0, 8)}`,
+        [
+          {
+            kind: "action",
+            renderedSentence: "Enter the QA account in the email field",
+            verbOpKey: "web.enter",
+            args: { value: "qa@testkite.test" },
+            elementId: randomUUID(),
+          },
+          {
+            kind: "if",
+            renderedSentence: "If the sign-in form is shown",
+            conditionExpected: ["SUCCESS"],
+            children: [
+              {
+                kind: "action",
+                renderedSentence: "Click on the sign-in button",
+                verbOpKey: "web.click",
+                elementId: randomUUID(),
+              },
+            ],
+          },
+        ],
+        opts?.prereqCaseId,
+      ),
+    );
+  }
+  return ids;
+}
+
+async function seedCaseWithPendingLocator(
+  db: TkDb,
+  raw: PGlite,
+  team: SeededTeam,
+): Promise<string> {
+  await ensureEnvironment(raw, team);
+  return seedCase(db, team, `Pending locator ${randomUUID().slice(0, 8)}`, [
+    {
+      kind: "action",
+      renderedSentence: "Click on the checkout button",
+      verbOpKey: "web.click",
+      elementId: PENDING_LOCATOR_ELEMENT_ID,
+    },
+  ]);
+}
+
 export async function makeTestDb(): Promise<TestDb> {
   const raw = await new PGlite();
   const db = drizzle(raw) as unknown as TkDb;
@@ -199,6 +330,9 @@ export async function makeTestDb(): Promise<TestDb> {
     seedTwoTeams: () => seedTwoTeams(raw),
     seedRun: (team: SeededTeam) => seedRun(raw, team),
     seedJobs: (team: SeededTeam, count: number) => seedJobs(raw, team, count),
+    seedRunnableCases: (team: SeededTeam, count: number, opts?: { readonly prereqCaseId?: string }) =>
+      seedRunnableCases(db, raw, team, count, opts),
+    seedCaseWithPendingLocator: (team: SeededTeam) => seedCaseWithPendingLocator(db, raw, team),
     asTeam: <T>(teamId: string, fn: (tx: TkDb) => PromiseLike<T>): Promise<T> =>
       asRole(APP_ROLE, teamId, fn),
     asTeamCtx: <T>(teamId: string, fn: (tx: TkTx, ctx: TenantContext) => Promise<T>): Promise<T> =>

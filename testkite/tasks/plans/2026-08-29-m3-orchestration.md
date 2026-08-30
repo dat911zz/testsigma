@@ -1169,7 +1169,7 @@ export declare function jobCost(stepCount: number): number;   // clamp(ceil(step
 ```
 - `loadRunEnvironment(tx: TkTx, ctx: TenantContext, projectId: string): Promise<EnvDto>` (planning facade).
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 ```ts
 // apps/core/test/orchestration/run-service.test.ts
@@ -1253,12 +1253,12 @@ describe("startRun — compiler phase 0", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/run-service.test.ts`
 Expected: FAIL — `Cannot find module '.../orchestration/run-service.js'`.
 
-- [ ] **Step 3: Facade môi trường của planning**
+- [x] **Step 3: Facade môi trường của planning**
 
 ```ts
 // apps/core/src/modules/planning/environment.ts
@@ -1291,7 +1291,7 @@ export async function loadRunEnvironment(tx: TkTx, ctx: TenantContext, projectId
 }
 ```
 
-- [ ] **Step 4: `run-service.ts`**
+- [x] **Step 4: `run-service.ts`**
 
 ```ts
 // apps/core/src/modules/orchestration/run-service.ts
@@ -1424,12 +1424,12 @@ function chainStepCount(chain: RunPlan["chains"][number]): number {
 
 và dùng `jobCost(chainStepCount(chain))`.
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/run-service.test.ts`
 Expected: PASS 6 test.
 
-- [ ] **Step 6: Facade + commit**
+- [x] **Step 6: Facade + commit**
 
 ```ts
 // apps/core/src/modules/orchestration/index.ts — append

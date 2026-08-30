@@ -12,3 +12,6 @@ export const MODULE = "planning" as const;
 // Public facade of planning. The M2 build only has the minimum needed for onboarding.
 export { plnEnvironments, plnEnvStatus } from "./db/schema.js";
 export { seedEnvironmentStubs, ONBOARD_ENV_NAMES } from "./onboarding.js";
+// Orchestration's phase 0 loads the run environment through here: authoring may not import
+// planning (wrong way round the DAG), so `env` reaches the snapshot as a parameter instead.
+export { loadRunEnvironment, EnvironmentNotFoundError } from "./environment.js";
