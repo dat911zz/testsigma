@@ -2627,6 +2627,21 @@ git commit -m "M3-ORC T8: dispatcher v1 FIFO — tick 250ms, fan-out 200, reap t
 
 Ba credential (bootstrap → worker token → run token) đúng như hợp đồng ở đầu plan. Cùng kỷ luật lưu trữ với `api_tokens` của M2: DB chỉ giữ SHA-256, prefix rõ để log gọi tên, hạn dùng **bắt buộc**.
 
+> **Ghi chú khi thực thi (30-08-2026) — bốn chỗ lệch so với block trong plan, đều đã đo:**
+> 1. **`touchWorker` trả `drain` khi 0 row**, không phải `continue`. Endpoint heartbeat đã xác thực
+>    worker token trên chính bảng này trước đó, nên 0 row nghĩa là worker bị xoá khỏi roster giữa
+>    chừng — "cứ chạy tiếp" là câu trả lời duy nhất không được phép đưa cho một máy mà control
+>    plane không còn biết. Có test riêng.
+> 2. **bytea đi qua `decode(<hex>, 'hex')`** thay vì bind thẳng Buffer: cùng một câu SQL thô phải
+>    chạy đúng trên cả node-postgres lẫn PGlite, và cách này không phụ thuộc serializer của driver.
+> 3. **`expect(dump).not.toContain(minted.secret.split("_")[2])` trong block của plan là SAI và chỉ
+>    XANH THẤT THƯỜNG**: base64url dùng `_` làm ký tự của chính nó, nên biểu thức đó có thể trả về
+>    một mẩu một ký tự (đo được: `"5"`) mà mọi bản dump JSON đều chứa. Đã thay bằng `secretBody()`
+>    tách phần thân sau prefix và bắt buộc dài ≥ 20.
+> 4. **`test/identity/api-tokens.test.ts` phải cập nhật danh sách đóng** của các bảng `testkite_auth`
+>    được đọc (thêm `orc_run_tokens`, 5 → 6 bảng). Đó chính là tripwire làm đúng việc: mọi GRANT mới
+>    cho role auth buộc phải chạm vào danh sách này mới xanh lại.
+
 **Files:**
 - Modify: `apps/core/src/modules/orchestration/db/fleet-schema.ts` (thêm `orc_workers`, `orc_run_tokens`)
 - Create: `apps/core/src/modules/orchestration/run-token.ts`
@@ -2662,7 +2677,7 @@ export declare function verifyRunToken(db: TkDb, secret: string, now: Date): Pro
 export declare function revokeRunTokensFor(tx: TkTx, ctx: TenantContext, jobRunId: string): Promise<void>;
 ```
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 ```ts
 // apps/core/test/orchestration/run-token.test.ts
@@ -2755,12 +2770,12 @@ describe("fleet credentials", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/run-token.test.ts`
 Expected: FAIL — module chưa tồn tại.
 
-- [ ] **Step 3: Schema (phần 2 của `fleet-schema.ts`)**
+- [x] **Step 3: Schema (phần 2 của `fleet-schema.ts`)**
 
 ```ts
 /**
@@ -2833,7 +2848,7 @@ export const orcRunTokens = pgTable(
 
 `customBytea` = đúng helper `bytea` mà `api_tokens` của M2 đang dùng (import từ `identity/db/schema.ts` nếu đã export; nếu chưa thì khai lại y hệt trong file này — không đổi kiểu cột).
 
-- [ ] **Step 4: `run-token.ts`**
+- [x] **Step 4: `run-token.ts`**
 
 ```ts
 // apps/core/src/modules/orchestration/run-token.ts
@@ -2987,7 +3002,7 @@ export async function revokeRunTokensFor(tx: TkTx, ctx: TenantContext, jobRunId:
 }
 ```
 
-- [ ] **Step 5: Migration + GRANT**
+- [x] **Step 5: Migration + GRANT**
 
 ```bash
 cd testkite/apps/core && pnpm db:generate --name=m3_run_tokens
@@ -3007,7 +3022,7 @@ GRANT SELECT, INSERT, UPDATE ON orc_run_tokens TO "testkite_app";
 GRANT SELECT, INSERT, UPDATE ON orc_workers TO "testkite_dispatch";
 ```
 
-- [ ] **Step 6: Chạy test XANH + commit**
+- [x] **Step 6: Chạy test XANH + commit**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/run-token.test.ts`
 Expected: PASS 9 test.

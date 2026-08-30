@@ -13,9 +13,14 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import type { StepInputDto } from "@testkite/contract";
-import { APP_ROLE, DISPATCH_ROLE, withTenant } from "../../src/modules/kernel/index.js";
+import { APP_ROLE, AUTH_ROLE, DISPATCH_ROLE, withTenant } from "../../src/modules/kernel/index.js";
 import type { TenantContext, TkDb, TkTx } from "../../src/modules/kernel/db/types.js";
 import { createCase, replaceSteps } from "../../src/modules/authoring/index.js";
+import {
+  claimJobs,
+  dispatchPending,
+  type ClaimedJobRow,
+} from "../../src/modules/orchestration/queue/job-queue.js";
 
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
@@ -80,6 +85,28 @@ export type TestDb = {
    * tenant is the ANSWER of the query, not its input. Mirrors `withDispatchRole()`.
    */
   readonly asDispatchRole: <T>(fn: (tx: TkDb) => PromiseLike<T>) => Promise<T>;
+  /**
+   * Run a block as the auth role: no `app.team_id`, because the tenant is what a credential
+   * lookup ANSWERS. Mirrors `withAuthRole()` — the role that may only SELECT the two tables
+   * the authentication path reads.
+   */
+  readonly asAuthRole: <T>(fn: (tx: TkDb) => PromiseLike<T>) => Promise<T>;
+  /** Row count of one table, read on the owner connection (RLS-free) — a fixture, not a subject. */
+  readonly countRows: (table: string) => Promise<number>;
+  /**
+   * Every row of one table, verbatim, on the owner connection. For assertions ABOUT THE
+   * STORAGE ITSELF ("this column never holds the secret"), which a tenant-scoped read could
+   * not make: RLS would hide the very row the test is trying to inspect.
+   */
+  readonly dumpTable: (table: string) => Promise<readonly Record<string, unknown>[]>;
+  /** Flips the drain flag the fleet heartbeat answers with — the operator action, without an operator. */
+  readonly setWorkerDrain: (workerId: string, drain: boolean) => Promise<void>;
+  /**
+   * One job taken all the way to `running` through the REAL queue path (dispatch + claim), so
+   * `attempt`/`lease_epoch` are what a worker would actually be holding. Anything minting a
+   * run token needs a job row that exists, since orc_run_tokens carries a composite FK to it.
+   */
+  readonly seedClaimedJob: (team: SeededTeam) => Promise<ClaimedJobRow>;
   /** One `orc_runs` row for a seeded team; returns its id. */
   readonly seedRun: (team: SeededTeam) => Promise<string>;
   /**
@@ -223,6 +250,49 @@ async function seedJobs(
     );
   }
   return ids;
+}
+
+/**
+ * Table names reach SQL as identifiers, which cannot be parameterised — so the harness only
+ * ever accepts a plain lowercase identifier and refuses anything else, instead of trusting
+ * every future caller to pass a literal.
+ */
+function assertTableName(table: string): string {
+  if (!/^[a-z_][a-z0-9_]*$/.test(table)) throw new Error(`unsafe table name: ${table}`);
+  return table;
+}
+
+async function countRows(raw: PGlite, table: string): Promise<number> {
+  const r = await raw.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM "${assertTableName(table)}"`,
+  );
+  return r.rows[0]?.n ?? 0;
+}
+
+async function dumpTable(raw: PGlite, table: string): Promise<readonly Record<string, unknown>[]> {
+  const r = await raw.query<Record<string, unknown>>(`SELECT * FROM "${assertTableName(table)}"`);
+  return r.rows;
+}
+
+async function setWorkerDrain(raw: PGlite, workerId: string, drain: boolean): Promise<void> {
+  const r = await raw.query(`UPDATE orc_workers SET drain = $2 WHERE id = $1 RETURNING id`, [
+    workerId,
+    drain,
+  ]);
+  if (r.rows.length === 0) throw new Error(`setWorkerDrain: no orc_workers row ${workerId}`);
+}
+
+async function seedClaimedJob(
+  db: TkDb,
+  raw: PGlite,
+  team: SeededTeam,
+): Promise<ClaimedJobRow> {
+  await seedJobs(raw, team, 1);
+  await dispatchPending(db, { limit: 1 });
+  const claimed = await claimJobs(db, { workerId: "seed-worker", lane: "batch", max: 1 });
+  const job = claimed[0];
+  if (job === undefined) throw new Error("seedClaimedJob: the job it had just seeded was not claimable");
+  return job;
 }
 
 async function ageHeartbeat(raw: PGlite, jobRunId: string, seconds: number): Promise<void> {
@@ -426,6 +496,10 @@ export async function makeTestDb(): Promise<TestDb> {
     },
     seedTwoTeams: () => seedTwoTeams(raw),
     seedRun: (team: SeededTeam) => seedRun(raw, team),
+    countRows: (table: string) => countRows(raw, table),
+    dumpTable: (table: string) => dumpTable(raw, table),
+    setWorkerDrain: (workerId: string, drain: boolean) => setWorkerDrain(raw, workerId, drain),
+    seedClaimedJob: (team: SeededTeam) => seedClaimedJob(db, raw, team),
     seedJobs: (team: SeededTeam, count: number, chainKeys?: readonly string[]) =>
       seedJobs(raw, team, count, chainKeys),
     ageHeartbeat: (jobRunId: string, seconds: number) => ageHeartbeat(raw, jobRunId, seconds),
@@ -444,5 +518,6 @@ export async function makeTestDb(): Promise<TestDb> {
       asRole(APP_ROLE, "", fn),
     asDispatchRole: <T>(fn: (tx: TkDb) => PromiseLike<T>): Promise<T> =>
       asRole(DISPATCH_ROLE, "", fn),
+    asAuthRole: <T>(fn: (tx: TkDb) => PromiseLike<T>): Promise<T> => asRole(AUTH_ROLE, "", fn),
   };
 }

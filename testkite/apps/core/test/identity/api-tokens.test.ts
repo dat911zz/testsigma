@@ -104,7 +104,9 @@ describe("api_tokens", () => {
     // grant catalog instead and match it against a named set: any future GRANT to this
     // role — intentional or not — has to touch this list to stay green.
     // (0016 grants api_tokens/memberships/users; 0019 adds idn_oidc_connectors +
-    // idn_oidc_login_states — 5 tables in total, see the migration comments.)
+    // idn_oidc_login_states; 0034 adds orc_run_tokens, because a fleet RUN TOKEN is verified
+    // on the same pre-tenant auth path as an api_token and hits the same deadlock — 6 tables
+    // in total, see the migration comments.)
     const grants = await t.raw.query<{ table_name: string; privilege_type: string }>(
       `SELECT table_name, privilege_type FROM information_schema.role_table_grants
        WHERE grantee = 'testkite_auth' AND table_schema = 'public'
@@ -112,7 +114,14 @@ describe("api_tokens", () => {
     );
     const tableNames = [...new Set(grants.rows.map((r) => r.table_name))].sort();
     expect(tableNames).toEqual(
-      ["api_tokens", "idn_oidc_connectors", "idn_oidc_login_states", "memberships", "users"].sort(),
+      [
+        "api_tokens",
+        "idn_oidc_connectors",
+        "idn_oidc_login_states",
+        "memberships",
+        "orc_run_tokens",
+        "users",
+      ].sort(),
     );
     // Every grant row is SELECT — no INSERT/UPDATE/DELETE snuck in anywhere in the set.
     expect(new Set(grants.rows.map((r) => r.privilege_type))).toEqual(new Set(["SELECT"]));
