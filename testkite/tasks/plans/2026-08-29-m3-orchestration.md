@@ -4825,14 +4825,14 @@ git commit -m "M3-ORC T15: wiring composition root (internal plane + dispatcher)
 
 ## Task 16 — Tick backlog M3
 
-- [ ] Trong `testkite/tasks/M3-orchestration-fleet.md`, tick các dòng thuộc **control plane** và ghi hash commit:
+- [x] Trong `testkite/tasks/M3-orchestration-fleet.md`, tick các dòng thuộc **control plane** và ghi hash commit:
   - `- [x] job_runs = queue of record ... (hash: <T2>)`
   - `- [x] Dispatcher v1 FIFO ... (hash: <T7,T8>)`
   - `- [x] Internal HTTP plane /internal ... (hash: <T13>)` — phần `/fleet` của worker do plan fleet tick
   - `- [x] Presigned PUT cho artifact (control plane) (hash: <T12>)` — trace/screenshot ring-buffer do plan fleet
   - `- [x] Results 3 tầng + SSE run status (hash: <T11,T14>)`
   - Dòng "Worker (apps/runner)" tick MỘT NỬA: phần lease/epoch phía server đã xong (T5, T6), phần vòng lặp worker thuộc plan fleet.
-- [ ] Commit: `M3-ORC T16: tick backlog M3 phan control plane`
+- [x] Commit: `M3-ORC T16: tick backlog M3 phan control plane`
 
 ---
 
