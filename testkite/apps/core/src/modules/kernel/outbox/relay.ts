@@ -100,25 +100,39 @@ export async function runRelayOnce(
       id = readId(row);
       const rec = toOutboxRecord(row, id);
       const done = await db.transaction(async (tx): Promise<boolean> => {
-        // Re-lock exactly this row; SKIP LOCKED so a second relay moves on to another row
-        // instead of queueing up to wait.
+        // TWO statements, in this order, and they must NOT be merged back into one.
         //
-        // NOT EXISTS MUST be repeated here, not just in the batch SELECT: the candidate list
-        // was fixed BEFORE any transaction, so it's an OLD snapshot. Another relay on the same
-        // consumer may already have published + COMMITted consumed for this row and RELEASED
-        // the lock while we were still processing earlier rows — in that case SKIP LOCKED
-        // doesn't skip (the row is unlocked) and we'd publish a second time. This statement runs in
-        // its own transaction, so its READ COMMITTED snapshot sees that commit ⇒ 0 rows ⇒ correctly skipped.
+        // 1. Take the row lock. SKIP LOCKED so a second relay moves on to another row instead
+        //    of queueing up to wait.
         const locked = rowsOf(
           await tx.execute(sql`
             SELECT o.id FROM krn_outbox o
             WHERE o.id = ${String(id)}
-              AND NOT EXISTS (
-                SELECT 1 FROM krn_outbox_consumed c
-                WHERE c.outbox_id = o.id AND c.consumer = ${opts.consumer})
             FOR UPDATE SKIP LOCKED`),
         );
-        if (locked.length === 0) return false; // another relay is holding it or already finished — skip
+        if (locked.length === 0) return false; // another relay is holding it right now — skip
+        // 2. ONLY NOW ask whether it was already consumed. The candidate list was fixed BEFORE
+        //    any transaction, so it is an OLD snapshot: another relay on the same consumer may
+        //    have published this row, COMMITted `consumed` and RELEASED the lock while we were
+        //    working through earlier rows.
+        //
+        //    Merging this check into the locking statement above (as this code did until
+        //    2026-08-30) publishes that row a SECOND time, and measured on PostgreSQL 16.13 it
+        //    really does: under READ COMMITTED a statement's snapshot is taken when the
+        //    statement STARTS, but its row lock is acquired after the qual has been evaluated.
+        //    A competing relay that commits in between is therefore invisible to the NOT EXISTS
+        //    while its lock is already gone — proven with `pg_sleep` inside the qual: the merged
+        //    form returns the row, the split form returns nothing.
+        //
+        //    Split, the check is safe: publishing requires holding this lock, and every relay
+        //    that held it committed `consumed` before releasing it, so a snapshot taken AFTER
+        //    the lock was granted sees that commit.
+        const consumed = rowsOf(
+          await tx.execute(sql`
+            SELECT 1 AS hit FROM krn_outbox_consumed
+            WHERE outbox_id = ${String(id)} AND consumer = ${opts.consumer}`),
+        );
+        if (consumed.length > 0) return false; // another relay already finished it — skip
         await publish(rec);
         await tx.execute(sql`
           INSERT INTO krn_outbox_consumed (outbox_id, consumer)
