@@ -671,7 +671,7 @@ git commit -m "M3-ORC T1: orc_runs + orc_run_plans + compile diagnostics (RLS, c
 - Consumes: `orcRuns` (Task 1), `appRole` (kernel).
 - Produces: `jobRuns` (drizzle table); `jobStatus`, `jobKind` (pgEnum); `DISPATCH_ROLE = "testkite_dispatch"`, `dispatchRole`; `withDispatchRole<T>(db: TkDb, fn: (tx: TkTx) => Promise<T>): Promise<T>`.
 
-- [ ] **Step 1: Viết test ĐỎ — RLS hai role + fail-closed + không được kế thừa role**
+- [x] **Step 1: Viết test ĐỎ — RLS hai role + fail-closed + không được kế thừa role**
 
 ```ts
 // apps/core/test/orchestration/job-runs-schema.test.ts
@@ -739,12 +739,12 @@ describe("job_runs — queue of record", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/job-runs-schema.test.ts`
 Expected: FAIL — `relation "job_runs" does not exist`.
 
-- [ ] **Step 3: Thêm role dispatch vào kernel**
+- [x] **Step 3: Thêm role dispatch vào kernel**
 
 Trong `apps/core/src/modules/kernel/db/schema.ts`, **ngay sau** khối `AUTH_ROLE` (cuối danh sách role, không chèn giữa):
 
@@ -783,7 +783,7 @@ export async function withDispatchRole<T>(db: TkDb, fn: (tx: TkTx) => Promise<T>
 }
 ```
 
-- [ ] **Step 4: Viết schema `job_runs`**
+- [x] **Step 4: Viết schema `job_runs`**
 
 ```ts
 // apps/core/src/modules/orchestration/db/job-schema.ts
@@ -868,7 +868,7 @@ export const jobRuns = pgTable(
 ).enableRLS();
 ```
 
-- [ ] **Step 5: Sinh migration + viết migration tay cho role/index/GRANT**
+- [x] **Step 5: Sinh migration + viết migration tay cho role/index/GRANT**
 
 ```bash
 cd testkite/apps/core && pnpm db:generate --name=m3_job_runs
@@ -909,12 +909,12 @@ GRANT SELECT, UPDATE ON "job_runs" TO "testkite_dispatch";
 
 Thêm entry `_journal.json` cho cả hai file.
 
-- [ ] **Step 6: Chạy test, xác nhận XANH**
+- [x] **Step 6: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/job-runs-schema.test.ts`
 Expected: PASS 7 test.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd testkite && pnpm typecheck && pnpm --filter @testkite/core test

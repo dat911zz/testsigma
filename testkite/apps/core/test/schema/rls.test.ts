@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../harness/pglite.js";
-import { APP_ROLE, AUTH_ROLE } from "../../src/modules/kernel/index.js";
+import { APP_ROLE, AUTH_ROLE, DISPATCH_ROLE } from "../../src/modules/kernel/index.js";
 
 let t: TestDb;
 let teamA = "";
@@ -113,7 +113,8 @@ describe("RLS L2.5", () => {
 
   it("policies use NULLIF — no policy directly casts current_setting", async () => {
     const r = await t.db.execute(sql`
-      SELECT policyname, qual, roles::text AS roles, cmd, with_check FROM pg_policies WHERE schemaname='public'`);
+      SELECT tablename, policyname, qual, roles::text AS roles, cmd, with_check
+      FROM pg_policies WHERE schemaname='public'`);
     expect(r.rows.length).toBeGreaterThanOrEqual(3);
     let tenantPolicies = 0;
     for (const row of r.rows) {
@@ -125,11 +126,24 @@ describe("RLS L2.5", () => {
         expect(String(row["qual"]), `policy ${String(row["policyname"])} is missing NULLIF`).toContain("NULLIF");
         continue;
       }
-      // The ONE permitted exception, and it's pinned down tightly: the `auth_lookup` policy
-      // of the authentication path (spike 2026-08-28) — it's USING (true) because at token
-      // lookup time the tenant is NOT YET known. In exchange it must belong only to
-      // testkite_auth, be SELECT-only, and have no with_check (⇒ it can write nothing).
-      expect(String(row["policyname"])).toBe("auth_lookup");
+      // Exactly TWO policies may skip the tenant predicate, and each is pinned down tightly
+      // here so a third one cannot appear unnoticed.
+      const policyName = String(row["policyname"]);
+      if (policyName === "dispatch_all") {
+        // The claim path (spike 2026-08-29): the dispatcher reads job_runs across every
+        // tenant because the tenant is the ANSWER of the claim query, not its input. In
+        // exchange it is confined to ONE table, belongs only to testkite_dispatch, and holds
+        // no INSERT/DELETE privilege (job-runs-schema.test.ts) — and testkite_dispatch is
+        // never granted to testkite_app, because permissive policies OR across inherited roles.
+        expect(String(row["tablename"])).toBe("job_runs");
+        expect(roles).toBe(`{${DISPATCH_ROLE}}`);
+        continue;
+      }
+      // The `auth_lookup` policy of the authentication path (spike 2026-08-28) — it's
+      // USING (true) because at token lookup time the tenant is NOT YET known. In exchange
+      // it must belong only to testkite_auth, be SELECT-only, and have no with_check
+      // (⇒ it can write nothing).
+      expect(policyName).toBe("auth_lookup");
       expect(roles).toBe(`{${AUTH_ROLE}}`);
       expect(String(row["cmd"])).toBe("SELECT");
       expect(row["with_check"]).toBeNull();

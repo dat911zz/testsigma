@@ -49,6 +49,21 @@ export const relayRole = pgRole(RELAY_ROLE);
 export const AUTH_ROLE = "testkite_auth" as const;
 export const authRole = pgRole(AUTH_ROLE);
 
+/**
+ * Role for the DISPATCH PATH (dispatcher tick + worker claim through /internal).
+ *
+ * It reads and updates job_runs ACROSS every tenant — that is inherent to a queue: the
+ * dispatcher does not know whose job is next until it looks. Two guardrails make that safe:
+ *   1. It has SELECT + UPDATE on job_runs and NOTHING else. It cannot create a job, cannot
+ *      read a case, a revision, a secret, or a result.
+ *   2. It is NEVER granted to testkite_app. Spike 2026-08-29 measured that permissive
+ *      policies are OR-ed across INHERITED roles: `GRANT testkite_dispatch TO testkite_app`
+ *      made a team-A session read all 5 rows of both teams. job-runs-schema.test.ts asserts
+ *      the membership does not exist.
+ */
+export const DISPATCH_ROLE = "testkite_dispatch" as const;
+export const dispatchRole = pgRole(DISPATCH_ROLE);
+
 export const krnOutbox = pgTable(
   "krn_outbox",
   {

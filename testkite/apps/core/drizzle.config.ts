@@ -12,6 +12,7 @@ export default defineConfig({
   schema: [
     "./src/modules/*/db/schema.ts",
     "./src/modules/orchestration/db/run-schema.ts",
+    "./src/modules/orchestration/db/job-schema.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",

@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 // Module boundary: kernel is the ROOT of the DAG (module-dag.json) — it may not import
 // any other module, identity included. That's why APP_ROLE lives in kernel itself, next to
 // RELAY_ROLE (guarded by: eslint-boundaries + test/arch/module-boundaries.test.ts).
-import { APP_ROLE, AUTH_ROLE } from "./schema.js";
+import { APP_ROLE, AUTH_ROLE, DISPATCH_ROLE } from "./schema.js";
 import { assertTenantContext } from "./repo.js";
 import type { TenantContext, TkDb, TkTx } from "./types.js";
 
@@ -38,6 +38,20 @@ export async function withAuthRole<T>(db: TkDb, fn: (tx: TkTx) => Promise<T>): P
   return db.transaction(async (tx) => {
     // AUTH_ROLE is our own compile-time constant, not user input.
     await tx.execute(sql.raw(`SET LOCAL ROLE ${AUTH_ROLE}`));
+    return fn(tx);
+  });
+}
+
+/**
+ * Transaction for the DISPATCH PATH: `SET LOCAL ROLE testkite_dispatch`, and deliberately
+ * does NOT set `app.team_id` — the tenant is the ANSWER of the claim query, not its input.
+ * Everything after the claim (writing results, minting a run token) runs through withTenant()
+ * with the team_id the claim just returned.
+ */
+export async function withDispatchRole<T>(db: TkDb, fn: (tx: TkTx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    // DISPATCH_ROLE is our own compile-time constant, not user input.
+    await tx.execute(sql.raw(`SET LOCAL ROLE ${DISPATCH_ROLE}`));
     return fn(tx);
   });
 }
