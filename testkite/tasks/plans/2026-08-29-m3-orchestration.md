@@ -1904,7 +1904,7 @@ export interface ReapResult {
 export declare function reapDeadLeases(db: TkDb, opts?: { readonly deadSeconds?: number }): Promise<ReapResult>;
 ```
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 ```ts
 // apps/core/test/orchestration/reaper.test.ts
@@ -1980,12 +1980,12 @@ describe("lease reaper", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/reaper.test.ts`
 Expected: FAIL — module chưa tồn tại.
 
-- [ ] **Step 3: Cài đặt `reaper.ts`**
+- [x] **Step 3: Cài đặt `reaper.ts`**
 
 ```ts
 // apps/core/src/modules/orchestration/queue/reaper.ts
@@ -2052,12 +2052,12 @@ export async function reapDeadLeases(
 }
 ```
 
-- [ ] **Step 4: Chạy test, xác nhận XANH**
+- [x] **Step 4: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/reaper.test.ts`
 Expected: PASS 5 test.
 
-- [ ] **Step 5: Test kill -9 trên Postgres thật**
+- [x] **Step 5: Test kill -9 trên Postgres thật**
 
 ```ts
 // apps/core/test/concurrency/lease-epoch-race.test.ts
@@ -2075,7 +2075,7 @@ describeRealPg("a worker dies mid-chain", () => {
 ```
 Viết đầy đủ theo cùng cấu trúc helper của Task 5 Step 5 (`seedTeamWithJobs` + `ageHeartbeat` chạy bằng SQL trực tiếp).
 
-- [ ] **Step 6: Chạy + commit**
+- [x] **Step 6: Chạy + commit**
 
 ```bash
 cd testkite && eval "$(scripts/test-pg.sh start)" && pnpm --filter @testkite/core test test/concurrency/; scripts/test-pg.sh stop

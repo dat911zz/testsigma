@@ -82,8 +82,25 @@ export type TestDb = {
   readonly asDispatchRole: <T>(fn: (tx: TkDb) => PromiseLike<T>) => Promise<T>;
   /** One `orc_runs` row for a seeded team; returns its id. */
   readonly seedRun: (team: SeededTeam) => Promise<string>;
-  /** One run plus `count` pending `job_runs` rows on it; returns the job ids in order. */
-  readonly seedJobs: (team: SeededTeam, count: number) => Promise<readonly string[]>;
+  /**
+   * One run plus `count` pending `job_runs` rows on it; returns the job ids in order.
+   * `chainKeys` names them, so a test that asserts on QUEUE ORDER can read the order it
+   * expects instead of mapping ids back to positions by hand.
+   */
+  readonly seedJobs: (
+    team: SeededTeam,
+    count: number,
+    chainKeys?: readonly string[],
+  ) => Promise<readonly string[]>;
+  /**
+   * Moves a job's `heartbeat_at` `seconds` into the past — the only way to reach the
+   * reaper's thresholds without making the test sleep for half a minute. `lease_expires_at`
+   * is left ALONE on purpose: the reaper is specified to read `heartbeat_at`, so an
+   * implementation that watched the lease deadline instead must go red here.
+   */
+  readonly ageHeartbeat: (jobRunId: string, seconds: number) => Promise<void>;
+  /** Rewrites `attempt` on every job of a team — the shortcut to "one attempt left". */
+  readonly setAttempt: (teamId: string, attempt: number) => Promise<void>;
   /**
    * Takes a job away from whoever holds it, the way the reaper will (M3 Task 6): one
    * `lease_epoch` bump, status untouched. Runs as the OWNER connection on purpose — this is
@@ -172,7 +189,12 @@ async function seedRun(raw: PGlite, team: SeededTeam): Promise<string> {
   );
 }
 
-async function seedJobs(raw: PGlite, team: SeededTeam, count: number): Promise<readonly string[]> {
+async function seedJobs(
+  raw: PGlite,
+  team: SeededTeam,
+  count: number,
+  chainKeys?: readonly string[],
+): Promise<readonly string[]> {
   const runId = await seedRun(raw, team);
   const ids: string[] = [];
   for (let i = 0; i < count; i += 1) {
@@ -183,11 +205,28 @@ async function seedJobs(raw: PGlite, team: SeededTeam, count: number): Promise<r
         raw,
         "job_runs",
         `INSERT INTO job_runs (team_id, run_id, chain_key) VALUES ($1, $2, $3) RETURNING id`,
-        [team.teamId, runId, `chain-${i}`],
+        [team.teamId, runId, chainKeys?.[i] ?? `chain-${i}`],
       ),
     );
   }
   return ids;
+}
+
+async function ageHeartbeat(raw: PGlite, jobRunId: string, seconds: number): Promise<void> {
+  const r = await raw.query(
+    `UPDATE job_runs SET heartbeat_at = now() - make_interval(secs => $2::double precision)
+      WHERE id = $1 RETURNING id`,
+    [jobRunId, seconds],
+  );
+  if (r.rows.length === 0) throw new Error(`ageHeartbeat: no job_runs row ${jobRunId}`);
+}
+
+async function setAttempt(raw: PGlite, teamId: string, attempt: number): Promise<void> {
+  const r = await raw.query(`UPDATE job_runs SET attempt = $2 WHERE team_id = $1 RETURNING id`, [
+    teamId,
+    attempt,
+  ]);
+  if (r.rows.length === 0) throw new Error(`setAttempt: team ${teamId} has no job_runs row`);
 }
 
 async function bumpEpoch(raw: PGlite, teamId: string, jobRunId: string): Promise<number> {
@@ -347,7 +386,10 @@ export async function makeTestDb(): Promise<TestDb> {
     },
     seedTwoTeams: () => seedTwoTeams(raw),
     seedRun: (team: SeededTeam) => seedRun(raw, team),
-    seedJobs: (team: SeededTeam, count: number) => seedJobs(raw, team, count),
+    seedJobs: (team: SeededTeam, count: number, chainKeys?: readonly string[]) =>
+      seedJobs(raw, team, count, chainKeys),
+    ageHeartbeat: (jobRunId: string, seconds: number) => ageHeartbeat(raw, jobRunId, seconds),
+    setAttempt: (teamId: string, attempt: number) => setAttempt(raw, teamId, attempt),
     bumpEpoch: (teamId: string, jobRunId: string) => bumpEpoch(raw, teamId, jobRunId),
     seedRunnableCases: (team: SeededTeam, count: number, opts?: { readonly prereqCaseId?: string }) =>
       seedRunnableCases(db, raw, team, count, opts),
