@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { isSqlRow, rowsOf, type SqlRow } from "../db/rows.js";
 import type { TkDb } from "../db/types.js";
 
 export type OutboxRecord = {
@@ -24,24 +25,8 @@ export type RelayResult = {
   readonly failed: number;
 };
 
-/** Guard, not a cast: `TkDb` is intentionally driver-agnostic so `execute()` returns `unknown`. */
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
-
-/**
- * Read `rows` off an `execute()` result without a blind cast. Both node-postgres and
- * PGlite return `{ rows: [...] }`; a different shape ⇒ throw immediately instead of reading garbage.
- */
-function rowsOf(result: unknown): readonly Record<string, unknown>[] {
-  if (!isRecord(result)) throw new Error("relay: query result is not an object");
-  const rows: unknown = result["rows"];
-  if (!Array.isArray(rows)) throw new Error("relay: query result is missing a rows array");
-  const list: readonly unknown[] = rows;
-  return list.filter(isRecord);
-}
-
 /** `krn_outbox.id` is bigserial — the driver returns string (pg) or number/bigint (PGlite). */
-function readId(row: Record<string, unknown>): bigint {
+function readId(row: SqlRow): bigint {
   const raw = row["id"];
   if (typeof raw === "bigint") return raw;
   if (typeof raw === "string" || typeof raw === "number") return BigInt(raw);
@@ -50,7 +35,7 @@ function readId(row: Record<string, unknown>): bigint {
 
 function toOutboxRecord(row: Record<string, unknown>, id: bigint): OutboxRecord {
   const payload = row["payload"];
-  if (!isRecord(payload)) {
+  if (!isSqlRow(payload)) {
     // Poison message: the writer always writes an object. Throwing here ⇒ the event counts
     // as failed, attempts increments, and it eventually falls out of the batch via maxAttempts — the relay never gets stuck.
     throw new Error(`relay: payload of event ${String(id)} is not a JSON object`);

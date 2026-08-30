@@ -20,3 +20,10 @@ export {
 export { auditEvents } from "./db/audit-schema.js";
 export { quotaLimits } from "./db/schema.js";
 export { seedQuotaDefaults } from "./onboarding.js";
+export { usageCounters } from "./db/usage-schema.js";
+export {
+  reserveRunSlot,
+  refundRunSlot,
+  QUOTA_METRIC_RUNS_PER_DAY,
+  type ReserveResult,
+} from "./quota.js";

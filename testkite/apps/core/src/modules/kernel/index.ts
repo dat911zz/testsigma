@@ -27,6 +27,9 @@ export {
 export { MissingTenantContextError, TenantRepo, assertTenantContext } from "./db/repo.js";
 export { createDb, type DbHandle } from "./db/client.js";
 export type { TenantContext, TkDb, TkTx } from "./db/types.js";
+// Raw-SQL result guards: `execute()` on the driver-agnostic TkDb/TkTx is typed `unknown`,
+// so every module that writes conditional SQL reads its RETURNING through these.
+export { firstRow, isSqlRow, rowsOf, type SqlRow } from "./db/rows.js";
 export { loadEnv, parseEnv, envSchema, type KernelEnv } from "./env.js";
 export { enqueueOutbox, type OutboxEvent } from "./outbox/writer.js";
 export {

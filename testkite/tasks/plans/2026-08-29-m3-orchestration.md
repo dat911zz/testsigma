@@ -938,7 +938,7 @@ Phase 0 phải **giữ chỗ** quota trước khi compile và **hoàn** lại kh
 **Interfaces:**
 - Produces: `usageCounters` (drizzle table); `reserveRunSlot(tx: TkTx, ctx: TenantContext, input: { now: Date; amount?: number }): Promise<{ granted: boolean; used: number; limit: number }>`; `refundRunSlot(tx: TkTx, ctx: TenantContext, input: { now: Date; amount?: number }): Promise<void>`; `QUOTA_METRIC_RUNS_PER_DAY = "runs_per_day"`.
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 ```ts
 // apps/core/test/governance/quota.test.ts
@@ -988,12 +988,12 @@ describe("run quota reserve/refund", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/governance/quota.test.ts`
 Expected: FAIL — `Cannot find module '.../governance/quota.js'`.
 
-- [ ] **Step 3: Schema + hàm**
+- [x] **Step 3: Schema + hàm**
 
 ```ts
 // apps/core/src/modules/governance/db/usage-schema.ts
@@ -1090,7 +1090,7 @@ export async function refundRunSlot(
 }
 ```
 
-- [ ] **Step 4: Migration**
+- [x] **Step 4: Migration**
 
 ```bash
 cd testkite/apps/core && pnpm db:generate --name=m3_usage_counters
@@ -1102,12 +1102,12 @@ TAG `m3_usage_counters_grants`:
 GRANT SELECT, INSERT, UPDATE ON usage_counters TO "testkite_app";
 ```
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/governance/quota.test.ts`
 Expected: PASS 4 test.
 
-- [ ] **Step 6: Facade + commit**
+- [x] **Step 6: Facade + commit**
 
 ```ts
 // apps/core/src/modules/governance/index.ts — append

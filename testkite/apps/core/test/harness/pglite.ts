@@ -12,8 +12,8 @@ import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { APP_ROLE, DISPATCH_ROLE } from "../../src/modules/kernel/index.js";
-import type { TkDb } from "../../src/modules/kernel/db/types.js";
+import { APP_ROLE, DISPATCH_ROLE, withTenant } from "../../src/modules/kernel/index.js";
+import type { TenantContext, TkDb, TkTx } from "../../src/modules/kernel/db/types.js";
 
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
@@ -43,6 +43,17 @@ export type TestDb = {
    * alone proves nothing.
    */
   readonly asTeam: <T>(teamId: string, fn: (tx: TkDb) => PromiseLike<T>) => Promise<T>;
+  /**
+   * Run a service function exactly the way a request does: inside `withTenant()` (its own
+   * transaction, `SET LOCAL ROLE`, `set_config('app.team_id', …, true)`) and with the
+   * matching `TenantContext` handed in. `asTeam` above is the raw-SQL sibling — use it to
+   * ASSERT what a tenant can see; use this one to CALL the code under test, so the L1
+   * fail-closed check in the service runs for real instead of being bypassed.
+   */
+  readonly asTeamCtx: <T>(
+    teamId: string,
+    fn: (tx: TkTx, ctx: TenantContext) => Promise<T>,
+  ) => Promise<T>;
   /**
    * Run a block as the app role with NO `app.team_id` at all — the fail-closed case.
    * A tenant predicate that forgets `NULLIF` turns the unset GUC (an EMPTY STRING, not
@@ -104,6 +115,11 @@ async function seedTwoTeams(raw: PGlite): Promise<readonly [SeededTeam, SeededTe
       teamId,
       userId,
     ]);
+    // Default quota limits, exactly like seedQuotaDefaults() does on the real onboarding
+    // path. Without the row a team is "never onboarded" and every quota reservation is
+    // refused, which would make anything downstream of phase 0 fail for a reason that has
+    // nothing to do with what the test is about.
+    await raw.query(`INSERT INTO quota_limits (team_id) VALUES ($1)`, [teamId]);
     return { teamId, projectId, userId };
   };
   return [await seedOne("a"), await seedOne("b")] as const;
@@ -185,6 +201,8 @@ export async function makeTestDb(): Promise<TestDb> {
     seedJobs: (team: SeededTeam, count: number) => seedJobs(raw, team, count),
     asTeam: <T>(teamId: string, fn: (tx: TkDb) => PromiseLike<T>): Promise<T> =>
       asRole(APP_ROLE, teamId, fn),
+    asTeamCtx: <T>(teamId: string, fn: (tx: TkTx, ctx: TenantContext) => Promise<T>): Promise<T> =>
+      withTenant(db, { teamId }, (tx) => fn(tx, { teamId })),
     asAppRoleWithoutTenant: <T>(fn: (tx: TkDb) => PromiseLike<T>): Promise<T> =>
       asRole(APP_ROLE, "", fn),
     asDispatchRole: <T>(fn: (tx: TkDb) => PromiseLike<T>): Promise<T> =>
