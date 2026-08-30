@@ -32,6 +32,8 @@ const IO_MODULES =
   "^(node:)?(fs|net|dns|tls|http|https|child_process|worker_threads|cluster|os|process|path|url|timers)(\\/|$)";
 const SERVICE_MODULES = "^(pg|pg-[^\\/]*|postgres|drizzle-orm|drizzle-kit|bullmq|ioredis|@testkite\\/core)(\\/|$)";
 const QUEUE_MODULES = "^(bullmq|ioredis)(\\/|$)";
+/** Twin of the runner's `no-restricted-imports` group — edit one, edit the other. */
+const RUNNER_FORBIDDEN_MODULES = "^(@testkite\\/core|pg|pg-[^\\/]*|postgres|drizzle-orm|drizzle-kit)(\\/|$)";
 
 /**
  * L1 isolation (blueprint §3). A raw `TkDb` carries NO tenant: it hasn't run
@@ -228,6 +230,45 @@ export default [
     ignores: ["**/apps/core/src/modules/**"],
     rules: {
       "no-restricted-syntax": ["error", rawDbQuery],
+    },
+  },
+  {
+    /**
+     * The runner is a SEPARATE PROCESS in a separate image (docs/SYSTEM_DESIGN.md §5). It talks
+     * to the control plane over internal HTTP only. Importing the core app would (a) drag the DB
+     * driver into the worker image, breaking the zero-credential rule, and (b) let a refactor
+     * silently reintroduce direct table access from a worker.
+     *
+     * `no-restricted-syntax` carries the twin regex for `await import(...)`, which
+     * `no-restricted-imports` cannot see (see the note on `dynamicImportOf` above) — the two
+     * lists must stay in sync.
+     */
+    files: ["**/apps/runner/src/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@testkite/core", "@testkite/core/*",
+                "pg", "pg-*", "postgres",
+                "drizzle-orm", "drizzle-orm/*", "drizzle-kit",
+              ],
+              message:
+                "The runner is zero-credential and process-separate: it must not import the core app or any DB driver. Talk to the control plane through src/control-plane-client.ts (docs/SYSTEM_DESIGN.md §5).",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: dynamicImportOf(RUNNER_FORBIDDEN_MODULES),
+          message:
+            "The runner is zero-credential and process-separate: `await import()` of the core app or a DB driver ships the same driver into the worker image. Talk to the control plane through src/control-plane-client.ts (docs/SYSTEM_DESIGN.md §5).",
+        },
+      ],
     },
   },
 ];

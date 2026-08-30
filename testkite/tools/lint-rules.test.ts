@@ -102,6 +102,22 @@ describe("queue only inside kernel", () => {
   });
 });
 
+describe("runner is process-separate and zero-credential", () => {
+  it("CATCHES @testkite/core and DB drivers imported from apps/runner/src", async () => {
+    const ids = await lintFixture("apps/runner/src/imports-forbidden.ts");
+    expect(ids.filter((r) => r === "no-restricted-imports")).toHaveLength(3);
+  });
+
+  it("CATCHES the dynamic form — `await import(\"@testkite/core\")` and `await import(\"pg\")`", async () => {
+    const ids = await lintFixture("apps/runner/src/imports-dynamic.ts");
+    expect(ids.filter((r) => r === "no-restricted-syntax")).toHaveLength(2);
+  });
+
+  it("ALLOWS the shared contract package, zod and node builtins", async () => {
+    expect(await lintFixture("apps/runner/src/imports-ok.ts")).toEqual([]);
+  });
+});
+
 describe("isolation L1 — no query builder on a raw DB handle", () => {
   it("CATCHES all five raw-handle queries in a module outside kernel", async () => {
     const ids = await lintFixture("apps/core/src/modules/authoring/raw-db-query.ts");

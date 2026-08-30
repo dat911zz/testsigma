@@ -76,7 +76,30 @@ importers:
         specifier: ^6.2.10
         version: 6.2.10
 
-  apps/runner: {}
+  apps/runner:
+    dependencies:
+      '@testkite/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
+      '@testkite/run-compiler':
+        specifier: workspace:*
+        version: link:../../packages/run-compiler
+      '@testkite/verb-kit':
+        specifier: workspace:*
+        version: link:../../packages/verb-kit
+      playwright-core:
+        specifier: 1.56.1
+        version: 1.56.1
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.1)(tsx@4.23.12)
 
   apps/ui: {}
 
@@ -2017,6 +2040,11 @@ packages:
 
   pino@10.3.1:
     resolution: {integrity: sha512-r34yH/GlQpKZbU1BvFFqOjhISRo1MNx1tWYsYvmj6KIRHSPMT2+yHOEb1SG6NMvRoHRF0a07kCOox/9yakl1vg==}
+    hasBin: true
+
+  playwright-core@1.56.1:
+    resolution: {integrity: sha512-hutraynyn31F+Bifme+Ps9Vq59hKuUCz7H1kDOcBs+2oGguKkWTU50bBWrtz34OUWmIwpBTWDxaRPXrIXkgvmQ==}
+    engines: {node: '>=18'}
     hasBin: true
 
   pluralize@8.0.0:
@@ -4121,6 +4149,8 @@ snapshots:
       safe-stable-stringify: 2.5.0
       sonic-boom: 4.2.1
       thread-stream: 4.2.0
+
+  playwright-core@1.56.1: {}
 
   pluralize@8.0.0: {}
 

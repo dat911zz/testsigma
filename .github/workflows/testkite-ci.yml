@@ -110,6 +110,9 @@ jobs:
       # i18n-code cleanup swept, PLUS the workspace's root-level config/scripts (also
       # code, just not under src/test) — eslint.config.mjs, any root *.ts config, the
       # scripts/ dir, and each app's vitest.config.ts / drizzle.config.ts.
+      # apps/runner/src + apps/runner/test joined the list at M3-fleet T1, when the runner
+      # stopped being a two-file stub: the fleet half of M3 is written here, and a tree that
+      # is not scanned is a tree that drifts back to Vietnamese one comment at a time.
       # packages/run-compiler/fixtures/ is deliberately OUT of scope here — it's compiler
       # test DATA (not src/), and its Vietnamese case/step names feed into the golden
       # contentHash, so translating it needs a dedicated, hash-verified golden regen
@@ -122,6 +125,7 @@ jobs:
           PATTERN='[àáảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬĐÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ]'
           TARGETS=(
             testkite/apps/core/src testkite/apps/core/test
+            testkite/apps/runner/src testkite/apps/runner/test
             testkite/packages/*/src testkite/tools
             testkite/*.mjs testkite/*.ts testkite/scripts
             testkite/apps/*/vitest.config.ts testkite/apps/*/drizzle.config.ts

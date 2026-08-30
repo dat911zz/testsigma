@@ -7,6 +7,20 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run",
+    "test:host": "TESTKITE_HOST_CGROUP=1 vitest run test/host",
+    "test:soak": "TESTKITE_SOAK=1 vitest run test/soak",
+    "verify:units": "bash ../../scripts/verify-units.sh"
+  },
+  "dependencies": {
+    "@testkite/contract": "workspace:*",
+    "@testkite/run-compiler": "workspace:*",
+    "@testkite/verb-kit": "workspace:*",
+    "playwright-core": "1.56.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "vitest": "^3.0.0"
   }
 }
