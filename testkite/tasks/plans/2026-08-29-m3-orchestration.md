@@ -933,7 +933,16 @@ Phase 0 phải **giữ chỗ** quota trước khi compile và **hoàn** lại kh
 - Create: `apps/core/src/modules/governance/quota.ts`
 - Create: `apps/core/drizzle/NNNN_m3_usage_counters_grants.sql` (viết tay)
 - Create: `apps/core/test/governance/quota.test.ts`
+- Create: `apps/core/test/concurrency/quota-race.test.ts` (bổ sung sau review — xem ghi chú dưới)
 - Modify: `apps/core/src/modules/governance/index.ts` (facade)
+
+> **Review fix (30-08-2026).** Bốn test PGlite ở Step 1 chạy **tuần tự** (`for` + `await`), mà
+> PGlite chỉ có MỘT kết nối wasm ⇒ không chứng minh được tính nguyên tử mà `reserveRunSlot` tuyên bố;
+> con số "8 reserve song song, limit 3 → 3 granted" ban đầu chỉ là spike thủ công, không có gì trong
+> suite giữ lại. Theo đúng quy ước repo (mỗi đảm bảo nguyên tử có một file `test/concurrency/*`),
+> thêm `test/concurrency/quota-race.test.ts`: Postgres thật, 8 kết nối thật, gate mở khi cả 8 đã BEGIN.
+> Đã đo ĐỎ thật: trả INSERT về `VALUES (...)` của bản nháp ⇒ `expected 1 to be 0`; tách thành
+> read-then-write ⇒ 2 test đỏ (`expected 8 to be 4`).
 
 **Interfaces:**
 - Produces: `usageCounters` (drizzle table); `reserveRunSlot(tx: TkTx, ctx: TenantContext, input: { now: Date; amount?: number }): Promise<{ granted: boolean; used: number; limit: number }>`; `refundRunSlot(tx: TkTx, ctx: TenantContext, input: { now: Date; amount?: number }): Promise<void>`; `QUOTA_METRIC_RUNS_PER_DAY = "runs_per_day"`.

@@ -1,8 +1,13 @@
 /**
  * Reserve BEFORE compiling, refund when compilation fails. The whole guarantee lives in one
- * statement: `ON CONFLICT DO UPDATE ... WHERE used + n <= limit RETURNING used`. Measured
- * 2026-08-29 with 8 concurrent reservations against a limit of 3: exactly 3 granted, 5
- * refused, 0 errors — no explicit locking, no read-then-write race.
+ * statement: `ON CONFLICT DO UPDATE ... WHERE used + n <= limit RETURNING used` — no explicit
+ * locking, no read-then-write race.
+ *
+ * That atomicity is PINNED BY A TEST, not by a one-off measurement:
+ * `test/concurrency/quota-race.test.ts` runs 8 genuinely parallel connections against real
+ * Postgres (the PGlite layer has ONE connection and would report a false green). Splitting
+ * this statement into a read-then-write pair, or reverting the INSERT arm to a bare
+ * `VALUES (...)`, both turn that suite red.
  */
 import { sql } from "drizzle-orm";
 import {

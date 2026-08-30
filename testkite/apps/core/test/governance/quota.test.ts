@@ -6,6 +6,11 @@
  * behaviour phase 0 leans on: the cap actually holds, a failed compile gives the slot
  * back, a retried refund cannot mint quota, and two teams never share a counter.
  *
+ * EVERYTHING HERE IS SEQUENTIAL. PGlite has ONE wasm connection, so nothing in this file
+ * says anything about the atomicity of that statement — a race assertion made here would be
+ * a false green. The parallel proof lives in `test/concurrency/quota-race.test.ts` (real
+ * Postgres, 8 real connections); the two files are meant to be changed together.
+ *
  * Deviations from the plan (Task 3 Step 1), all deliberate:
  *  - `beforeAll` + `reset()` instead of `beforeEach(makeTestDb)`. A fresh PGlite costs
  *    ~2.3s plus ~3.6s of migrations; the harness reset is ~2ms. Same shape as every
