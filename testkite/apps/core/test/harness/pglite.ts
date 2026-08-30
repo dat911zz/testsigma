@@ -85,6 +85,13 @@ export type TestDb = {
   /** One run plus `count` pending `job_runs` rows on it; returns the job ids in order. */
   readonly seedJobs: (team: SeededTeam, count: number) => Promise<readonly string[]>;
   /**
+   * Takes a job away from whoever holds it, the way the reaper will (M3 Task 6): one
+   * `lease_epoch` bump, status untouched. Runs as the OWNER connection on purpose — this is
+   * the fixture standing in for a component that does not exist yet, not a code path under
+   * test. Returns the new epoch.
+   */
+  readonly bumpEpoch: (teamId: string, jobRunId: string) => Promise<number>;
+  /**
    * `count` independent cases that COMPILE — real verbs from the registry, an element on
    * every action step, a nested `if` block, and the environment phase 0 needs. Each one is
    * its own chain, so a run over the returned ids yields exactly `count` jobs; pass
@@ -181,6 +188,17 @@ async function seedJobs(raw: PGlite, team: SeededTeam, count: number): Promise<r
     );
   }
   return ids;
+}
+
+async function bumpEpoch(raw: PGlite, teamId: string, jobRunId: string): Promise<number> {
+  const r = await raw.query<{ lease_epoch: number }>(
+    `UPDATE job_runs SET lease_epoch = lease_epoch + 1
+      WHERE team_id = $1 AND id = $2 RETURNING lease_epoch`,
+    [teamId, jobRunId],
+  );
+  const epoch = r.rows[0]?.lease_epoch;
+  if (epoch === undefined) throw new Error("bumpEpoch: no job_runs row matched");
+  return epoch;
 }
 
 /**
@@ -330,6 +348,7 @@ export async function makeTestDb(): Promise<TestDb> {
     seedTwoTeams: () => seedTwoTeams(raw),
     seedRun: (team: SeededTeam) => seedRun(raw, team),
     seedJobs: (team: SeededTeam, count: number) => seedJobs(raw, team, count),
+    bumpEpoch: (teamId: string, jobRunId: string) => bumpEpoch(raw, teamId, jobRunId),
     seedRunnableCases: (team: SeededTeam, count: number, opts?: { readonly prereqCaseId?: string }) =>
       seedRunnableCases(db, raw, team, count, opts),
     seedCaseWithPendingLocator: (team: SeededTeam) => seedCaseWithPendingLocator(db, raw, team),

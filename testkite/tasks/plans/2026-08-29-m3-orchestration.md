@@ -1490,7 +1490,7 @@ export declare function completeJob(tx: TkTx, ctx: TenantContext, input: {
 }): Promise<EpochOutcome<{ readonly requeued: boolean; readonly attempt: number; readonly leaseEpoch: number }>>;
 ```
 
-- [ ] **Step 1: Viết test ĐỎ (unit, PGlite — ngữ nghĩa epoch, KHÔNG phải tranh chấp)**
+- [x] **Step 1: Viết test ĐỎ (unit, PGlite — ngữ nghĩa epoch, KHÔNG phải tranh chấp)**
 
 ```ts
 // apps/core/test/orchestration/job-queue.test.ts
@@ -1598,12 +1598,12 @@ describe("job queue — lease and epoch", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/job-queue.test.ts`
 Expected: FAIL — module chưa tồn tại.
 
-- [ ] **Step 3: Cài đặt `job-queue.ts`**
+- [x] **Step 3: Cài đặt `job-queue.ts`**
 
 ```ts
 // apps/core/src/modules/orchestration/queue/job-queue.ts
@@ -1808,12 +1808,12 @@ export async function completeJob(
 }
 ```
 
-- [ ] **Step 4: Chạy test unit, xác nhận XANH**
+- [x] **Step 4: Chạy test unit, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/job-queue.test.ts`
 Expected: PASS 8 test.
 
-- [ ] **Step 5: Viết test tranh chấp THẬT (Postgres, không PGlite)**
+- [x] **Step 5: Viết test tranh chấp THẬT (Postgres, không PGlite)**
 
 ```ts
 // apps/core/test/concurrency/job-claim-race.test.ts
@@ -1865,7 +1865,7 @@ describeRealPg("job claim under real contention", () => {
 
 `seedTeamWithJobs(r, n)` là helper cục bộ của file test: insert org/team/project/user → `orc_runs` → n hàng `job_runs` `pending` (dùng `r.db.execute(sql…)` với role owner, không cần RLS).
 
-- [ ] **Step 6: Chạy trên Postgres thật, dán output vào PR**
+- [x] **Step 6: Chạy trên Postgres thật, dán output vào PR**
 
 ```bash
 cd testkite
@@ -1875,7 +1875,7 @@ scripts/test-pg.sh stop
 ```
 Expected: PASS 3 test. Không có biến env ⇒ `skipped`, không phải fail.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add testkite/apps/core/src/modules/orchestration/queue testkite/apps/core/test
