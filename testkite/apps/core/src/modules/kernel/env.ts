@@ -63,6 +63,31 @@ export const envSchema = z.object({
    * prints, so it must never be empty — and, per `defaultDispatcherId`, never be shared.
    */
   DISPATCHER_ID: z.string().min(1).default(defaultDispatcherId()),
+  /**
+   * The artifact store. REQUIRED, with no fallback: a control plane that cannot sign an upload
+   * URL accepts runs whose traces, screenshots and videos are silently dropped — a failure that
+   * only becomes visible days later, when someone opens a failed run and finds nothing. Failing
+   * at boot is the cheaper end of that trade.
+   *
+   * Only `S3_REGION` carries a default: MinIO ignores the region entirely but SigV4 still signs
+   * it, so `us-east-1` is the conventional filler rather than a deployment decision.
+   *
+   * The scheme check is a DELIBERATE ADDITION to the plan's bare `.url()`: WHATWG accepts
+   * `minio.internal:9000` as a URL whose SCHEME is `minio.internal` (measured on zod 3 —
+   * `.url()` is `new URL()`), and `new URL(...).host` on that is the empty string. The presigner
+   * signs the Host header, so the misconfiguration would not fail at boot at all — it would ship
+   * every worker a signature for a host nobody serves. Same shape, same reason, as DATABASE_URL.
+   */
+  S3_ENDPOINT: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith("http://") || u.startsWith("https://"), {
+      message: "S3_ENDPOINT must be an http:// or https:// origin — SigV4 signs the host",
+    }),
+  S3_REGION: z.string().min(1).default("us-east-1"),
+  S3_BUCKET_ARTIFACTS: z.string().min(1),
+  S3_ACCESS_KEY: z.string().min(1),
+  S3_SECRET_KEY: z.string().min(1),
 });
 
 export type KernelEnv = z.infer<typeof envSchema>;

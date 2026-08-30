@@ -15,6 +15,7 @@ export default defineConfig({
     "./src/modules/orchestration/db/job-schema.ts",
     "./src/modules/orchestration/db/fleet-schema.ts",
     "./src/modules/governance/db/usage-schema.ts",
+    "./src/modules/results/db/artifact-schema.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",

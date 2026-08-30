@@ -1,0 +1,13 @@
+-- The part drizzle-kit does NOT generate: GRANT (same pattern as 0026/0028/0030/0032/0034/0036).
+--
+-- UPDATE is granted here, and it is the ONE difference from `orc_run_events` next door. An
+-- event is a fact that happened; an artifact row has a LIFECYCLE: it is written `pending` when
+-- a URL is signed, and moves to `uploaded` when the worker reports the bytes landed (Task 13,
+-- from the `screenshot` event or the `artifacts[]` of `complete`). Without UPDATE that second
+-- half would need a second row, and "did this blob arrive?" would stop having one answer.
+--
+-- DELETE is NOT granted, deliberately. A `pending` row whose bytes never arrived is the record
+-- of a FAILED upload — exactly what an operator reads after a worker was killed mid-PUT — so
+-- the request path must not be able to tidy it away. Retention is a maintenance job for a role
+-- that does not serve requests.
+GRANT SELECT, INSERT, UPDATE ON "res_artifacts" TO "testkite_app";

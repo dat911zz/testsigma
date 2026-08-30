@@ -3707,7 +3707,7 @@ export declare function createArtifactUpload(tx: TkTx, ctx: TenantContext, input
 }, deps: S3Config): Promise<{ readonly artifactId: string; readonly url: string; readonly headers: Record<string, string>; readonly expiresAt: Date }>;
 ```
 
-- [ ] **Step 1: Viết test ĐỎ — đối chiếu test vector CHÍNH THỨC của AWS**
+- [x] **Step 1: Viết test ĐỎ — đối chiếu test vector CHÍNH THỨC của AWS**
 
 ```ts
 // apps/core/test/results/presign.test.ts
@@ -3764,12 +3764,12 @@ describe("artifact upload slot", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/results/presign.test.ts`
 Expected: FAIL — module chưa tồn tại.
 
-- [ ] **Step 3: `presign.ts`**
+- [x] **Step 3: `presign.ts`**
 
 ```ts
 // apps/core/src/modules/results/s3/presign.ts
@@ -3836,7 +3836,7 @@ export function presignS3Url(input: PresignInput): string {
 }
 ```
 
-- [ ] **Step 4: `res_artifacts` + `artifacts.ts`**
+- [x] **Step 4: `res_artifacts` + `artifacts.ts`**
 
 Bảng (migration TAG `m3_res_artifacts`, sinh bằng drizzle-kit từ `results/db/artifact-schema.ts`): `team_id, id, job_run_id, attempt, kind, object_key, content_type, size_bytes, sha256, status ('pending'|'uploaded'), created_at, uploaded_at`, `UNIQUE(team_id, id)`, composite FK `(team_id, job_run_id) -> job_runs`, index `(team_id, job_run_id, attempt)`, RLS `tenant_isolation`. GRANT viết tay: `GRANT SELECT, INSERT, UPDATE ON res_artifacts TO "testkite_app";`
 
@@ -3858,7 +3858,7 @@ function objectKey(teamId: string, jobRunId: string, attempt: number, artifactId
 
 `createArtifactUpload` = INSERT metadata (status `pending`) trong transaction của tenant → gọi `presignS3Url` → trả `{ artifactId, url, headers: { "Content-Type": contentType }, expiresAt }` (HTTP **200**, đúng như plan fleet giả định). Đánh dấu `uploaded` khi worker báo qua event `screenshot` hoặc mảng `artifacts[]` của `complete` (Task 13).
 
-- [ ] **Step 5: Biến env S3**
+- [x] **Step 5: Biến env S3**
 
 ```ts
   S3_ENDPOINT: z.string().url(),
@@ -3868,7 +3868,7 @@ function objectKey(teamId: string, jobRunId: string, attempt: number, artifactId
   S3_SECRET_KEY: z.string().min(1),
 ```
 
-- [ ] **Step 6: Chạy test XANH + commit**
+- [x] **Step 6: Chạy test XANH + commit**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/results/`
 Expected: PASS (4 presign + 4 artifacts + 9 của Task 11).

@@ -21,6 +21,10 @@ export {
   runVerdict,
   runPin,
 } from "./db/run-schema.js";
+// The queue of record. Exported because `res_artifacts` (results) carries a composite FK
+// (team_id, job_run_id) into it — the DAG allows results -> orchestration, and the FK is what
+// makes an artifact on another team's job unrepresentable rather than merely unchecked.
+export { jobRuns } from "./db/job-schema.js";
 export { orcDispatcherLease, orcWorkers, orcRunTokens, orcRunEvents } from "./db/fleet-schema.js";
 // The two credentials of a zero-credential worker. Exported through the facade because the
 // internal fleet plane (Task 13) authenticates with them and nothing else may reach past it.

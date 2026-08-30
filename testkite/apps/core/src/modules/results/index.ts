@@ -31,3 +31,20 @@ export {
   RESULT_VERDICTS,
   type ResultVerdict,
 } from "./db/results-schema.js";
+// The control-plane half of an artifact upload. The internal fleet plane (Task 13) is the only
+// caller: it signs a PUT, and the bytes never enter this process.
+export {
+  ARTIFACT_KINDS,
+  ARTIFACT_MAX_BYTES,
+  ARTIFACT_URL_TTL_SECONDS,
+  createArtifactUpload,
+  type ArtifactKind,
+  type ArtifactUploadSlot,
+  type CreateArtifactUploadInput,
+  type S3Config,
+} from "./artifacts.js";
+export {
+  resArtifacts,
+  ARTIFACT_STATUSES,
+  type ArtifactStatus,
+} from "./db/artifact-schema.js";

@@ -8,6 +8,10 @@ const VALID = {
   DATABASE_URL: "postgres://tk:pw@localhost:5432/testkite",
   DATABASE_APP_ROLE: "testkite_app",
   LOG_LEVEL: "info",
+  S3_ENDPOINT: "https://minio.internal:9000",
+  S3_BUCKET_ARTIFACTS: "tk-artifacts",
+  S3_ACCESS_KEY: "minio",
+  S3_SECRET_KEY: "minio-secret",
 } satisfies NodeJS.ProcessEnv;
 
 /** The parsed env, or a loud failure — an assertion made on a rejected parse proves nothing. */
@@ -28,7 +32,14 @@ describe("parseEnv", () => {
   });
 
   it("defaults PORT=8080, LOG_LEVEL=info, DATABASE_APP_ROLE=testkite_app", () => {
-    const r = parseEnv({ NODE_ENV: "test", DATABASE_URL: VALID.DATABASE_URL });
+    const r = parseEnv({
+      NODE_ENV: "test",
+      DATABASE_URL: VALID.DATABASE_URL,
+      S3_ENDPOINT: VALID.S3_ENDPOINT,
+      S3_BUCKET_ARTIFACTS: VALID.S3_BUCKET_ARTIFACTS,
+      S3_ACCESS_KEY: VALID.S3_ACCESS_KEY,
+      S3_SECRET_KEY: VALID.S3_SECRET_KEY,
+    });
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("unreachable");
     expect(r.env.PORT).toBe(8080);
@@ -40,8 +51,9 @@ describe("parseEnv", () => {
     const r = parseEnv({ NODE_ENV: "banana", PORT: "not-a-port" });
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error("unreachable");
-    // missing DATABASE_URL + bad NODE_ENV + bad PORT = 3 issues
-    expect(r.issues.length).toBe(3);
+    // bad NODE_ENV + bad PORT + the five REQUIRED variables this env leaves out
+    // (DATABASE_URL, S3_ENDPOINT, S3_BUCKET_ARTIFACTS, S3_ACCESS_KEY, S3_SECRET_KEY) = 7.
+    expect(r.issues.length).toBe(7);
     expect(r.issues.join("\n")).toContain("DATABASE_URL");
     expect(r.issues.join("\n")).toContain("NODE_ENV");
     expect(r.issues.join("\n")).toContain("PORT");
@@ -103,5 +115,25 @@ describe("parseEnv", () => {
 
   it("refuses an empty DISPATCHER_ID — an anonymous leader cannot be alerted on", () => {
     expect(parseEnv({ ...VALID, DISPATCHER_ID: "" }).ok).toBe(false);
+  });
+
+  it("refuses to boot without an artifact store, rather than dropping every trace", () => {
+    // No fallback on purpose: a control plane that cannot sign an upload URL still accepts
+    // runs, and the loss only surfaces days later when someone opens a failed run and finds
+    // no trace, no screenshot, no video.
+    for (const missing of ["S3_ENDPOINT", "S3_BUCKET_ARTIFACTS", "S3_ACCESS_KEY", "S3_SECRET_KEY"]) {
+      const raw: NodeJS.ProcessEnv = { ...VALID };
+      delete raw[missing];
+      expect(parseEnv(raw).ok, missing).toBe(false);
+    }
+    // An endpoint that is not a URL is the same class of mistake as a missing one: SigV4 signs
+    // the HOST, so `minio:9000` (no scheme) would produce a signature for a host nobody serves.
+    expect(parseEnv({ ...VALID, S3_ENDPOINT: "minio.internal:9000" }).ok).toBe(false);
+  });
+
+  it("defaults S3_REGION to us-east-1 — MinIO ignores it, SigV4 still signs it", () => {
+    expect(envOf(VALID).S3_REGION).toBe("us-east-1");
+    expect(envOf({ ...VALID, S3_REGION: "eu-central-1" }).S3_REGION).toBe("eu-central-1");
+    expect(parseEnv({ ...VALID, S3_REGION: "" }).ok).toBe(false);
   });
 });
