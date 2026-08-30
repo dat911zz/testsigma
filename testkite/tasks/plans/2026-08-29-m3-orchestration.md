@@ -2125,7 +2125,7 @@ export declare function releaseLease(db: TkDb, input: { readonly holder: string;
 export declare function readLease(db: TkDb): Promise<(DispatcherLease & { readonly lastTickAt: Date | null; readonly stale: boolean }) | null>;
 ```
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 ```ts
 // apps/core/test/orchestration/dispatcher-lease.test.ts
@@ -2176,12 +2176,12 @@ describe("dispatcher leader election", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/dispatcher-lease.test.ts`
 Expected: FAIL — module chưa tồn tại.
 
-- [ ] **Step 3: Schema `orc_dispatcher_lease`**
+- [x] **Step 3: Schema `orc_dispatcher_lease`**
 
 ```ts
 // apps/core/src/modules/orchestration/db/fleet-schema.ts  (part 1 of 3 — worker/token tables come in Task 9)
@@ -2219,7 +2219,7 @@ export const orcDispatcherLease = pgTable(
 );
 ```
 
-- [ ] **Step 4: `lease.ts`**
+- [x] **Step 4: `lease.ts`**
 
 ```ts
 // apps/core/src/modules/orchestration/dispatcher/lease.ts
@@ -2298,7 +2298,7 @@ export async function readLease(
 }
 ```
 
-- [ ] **Step 5: Migration + GRANT**
+- [x] **Step 5: Migration + GRANT**
 
 ```bash
 cd testkite/apps/core && pnpm db:generate --name=m3_dispatcher_lease
@@ -2312,12 +2312,12 @@ TAG `m3_dispatcher_lease_grants`:
 GRANT SELECT, INSERT, UPDATE ON orc_dispatcher_lease TO "testkite_dispatch";
 ```
 
-- [ ] **Step 6: Chạy test, xác nhận XANH**
+- [x] **Step 6: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/dispatcher-lease.test.ts`
 Expected: PASS 6 test.
 
-- [ ] **Step 7: Test failover trên Postgres thật (đo thời gian, không đoán)**
+- [x] **Step 7: Test failover trên Postgres thật (đo thời gian, không đoán)**
 
 ```ts
 // apps/core/test/concurrency/dispatcher-leader.test.ts
@@ -2346,7 +2346,7 @@ describeRealPg("dispatcher leadership on a real Postgres", () => {
 });
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 cd testkite && eval "$(scripts/test-pg.sh start)" && pnpm --filter @testkite/core test test/concurrency/dispatcher-leader.test.ts; scripts/test-pg.sh stop

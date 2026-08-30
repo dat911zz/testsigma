@@ -1,0 +1,13 @@
+-- The part drizzle-kit does NOT generate: GRANT (same pattern as 0026/0028/0030).
+--
+-- Fleet infrastructure, not tenant data: no RLS on this table, and therefore no tenant
+-- predicate to fall back on — the GRANT is the ONLY thing standing between a leaked
+-- request-path connection and the fleet's leadership row. So the request path gets NOTHING,
+-- not even SELECT: `testkite_app` must not be able to read who leads, and certainly not to
+-- appoint itself by writing the row.
+--
+-- INSERT is needed as well as UPDATE: election is one `INSERT ... ON CONFLICT DO UPDATE`, and
+-- on a cold cluster the very first candidate genuinely inserts the singleton row.
+-- No DELETE: leadership is handed over by expiring the row (releaseLease), never by removing
+-- it — a deleted row would erase the dead-man's last known holder and tick.
+GRANT SELECT, INSERT, UPDATE ON "orc_dispatcher_lease" TO "testkite_dispatch";
