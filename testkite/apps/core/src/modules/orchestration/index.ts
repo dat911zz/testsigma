@@ -12,3 +12,12 @@ export const MODULE = "orchestration" as const;
 // Public facade of orchestration. The M2 build only has the minimum needed for onboarding.
 export { egressPolicies, egressMode } from "./db/schema.js";
 export { seedEgressObserve, EGRESS_OBSERVE_DAYS } from "./onboarding.js";
+export {
+  orcRuns,
+  orcRunPlans,
+  orcCompileDiagnostics,
+  runLane,
+  runStatus,
+  runVerdict,
+  runPin,
+} from "./db/run-schema.js";

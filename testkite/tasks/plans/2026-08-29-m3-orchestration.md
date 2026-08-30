@@ -418,7 +418,7 @@ Bảng `job_runs` trỏ vào `orc_runs` bằng composite FK, nên run aggregate 
 **Interfaces:**
 - Produces: `orcRuns`, `orcRunPlans`, `orcCompileDiagnostics` (drizzle table); `runStatus`, `runVerdict`, `runLane` (pgEnum). Cột `orc_runs`: `teamId, id, projectId, lane, status, verdict, planHash, requestedBy, pin, startedAt, finishedAt, chainTotal, chainDone, createdAt`. Cột `orc_run_plans`: `teamId, id, runId, contentHash, planFormatVersion, plan (jsonb), createdAt`. Cột `orc_compile_diagnostics`: `teamId, id, runId, severity, code, caseId, stepOrdinal, message`.
 
-- [ ] **Step 1: Viết test ĐỎ cho hình dạng bảng + RLS**
+- [x] **Step 1: Viết test ĐỎ cho hình dạng bảng + RLS**
 
 ```ts
 // apps/core/test/orchestration/run-schema.test.ts
@@ -488,12 +488,12 @@ export type SeededTeam = { teamId: string; projectId: string; userId: string };
 async function seedTwoTeams(db: TkDb): Promise<[SeededTeam, SeededTeam]> { /* org, teams, projects, users, memberships */ }
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/run-schema.test.ts`
 Expected: FAIL — `relation "orc_runs" does not exist`.
 
-- [ ] **Step 3: Viết schema drizzle**
+- [x] **Step 3: Viết schema drizzle**
 
 ```ts
 // apps/core/src/modules/orchestration/db/run-schema.ts
@@ -614,7 +614,7 @@ export const orcCompileDiagnostics = pgTable(
 ).enableRLS();
 ```
 
-- [ ] **Step 4: Sinh migration + viết migration GRANT bằng tay**
+- [x] **Step 4: Sinh migration + viết migration GRANT bằng tay**
 
 ```bash
 cd testkite/apps/core && pnpm db:generate --name=m3_orc_runs
@@ -636,12 +636,12 @@ GRANT SELECT, INSERT ON orc_compile_diagnostics TO "testkite_app";
 
 Thêm entry vào `apps/core/drizzle/meta/_journal.json` (`idx` kế tiếp, `version: "7"`, `when` = epoch ms hiện tại, `tag` = tên file không đuôi, `breakpoints: true`).
 
-- [ ] **Step 5: Chạy test, xác nhận XANH**
+- [x] **Step 5: Chạy test, xác nhận XANH**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/run-schema.test.ts`
 Expected: PASS 4 test.
 
-- [ ] **Step 6: Export facade + commit**
+- [x] **Step 6: Export facade + commit**
 
 Thêm vào `apps/core/src/modules/orchestration/index.ts`:
 
