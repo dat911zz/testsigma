@@ -21,8 +21,22 @@
  * WebP: Playwright's screenshot API has no WebP option; CDP `Page.captureScreenshot` does (§5.2).
  * Measured on the same viewport: WebP q70 2 362B vs JPEG q70 6 392B vs Playwright JPEG q70 9 503B.
  *
- * The Chromium sandbox stays ON — never `--no-sandbox` (§5). The spike confirmed
- * chromium-headless-shell launches sandboxed in 1118ms.
+ * THE CHROMIUM SANDBOX (§5 spells it out: the chromium sandbox is ON, never `--no-sandbox`).
+ * This is an OS-level isolation decision, so it is enforced rather than assumed: playwright-core
+ * defaults `chromiumSandbox` to FALSE and appends `--no-sandbox` unless the option is exactly
+ * `true` (lib/server/chromium/chromium.js:288). A launch that simply omits the option therefore
+ * ships an UNSANDBOXED chromium. `resolveChromiumSandbox()` below makes `true` the default and
+ * makes the opposite impossible to reach by accident.
+ *
+ * The one legitimate exception is a root dev/CI box: chromium's zygote refuses to sandbox as
+ * root ("Running as root without --no-sandbox is not supported", zygote_host_impl_linux.cc:101,
+ * re-measured 2026-08-30), so a root launch either opts out explicitly or does not start at all.
+ * The opt-out is refused off root, which is where the fleet actually runs (worker container,
+ * uid 10001) — production cannot fall back to `--no-sandbox` even if a config says so.
+ *
+ * Correction of record: the 2026-08-29 spike reported "launch ms=1118 noSandbox=false". That
+ * reading was wrong — it recorded that the flag had not been passed BY US, not what chromium
+ * received. Reading the launched browser's `/proc/<pid>/cmdline` shows `--no-sandbox` present.
  */
 import type { OpContext } from "@testkite/verb-kit";
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
@@ -101,10 +115,50 @@ class PlaywrightHandle implements EngineContextHandle {
   }
 }
 
+/**
+ * `"on"` = chromium's OS-level sandbox, the only mode the fleet ever runs in.
+ * `"off-root-dev-only"` = the escape hatch for a root dev/CI box, where chromium refuses to
+ * sandbox at all. The name is the contract: it is accepted for uid 0 and nothing else.
+ */
+export type SandboxMode = "on" | "off-root-dev-only";
+
 export interface LaunchOptions {
   readonly traceDir: string;
   /** Overrides the bundled chromium-headless-shell; used by the container image. */
   readonly headlessShellPath?: string;
+  /** Defaults to `"on"`. Dropping the sandbox is never implicit — see `resolveChromiumSandbox`. */
+  readonly sandbox?: SandboxMode;
+}
+
+/**
+ * The sandbox decision, kept pure so it is provable without a browser — which matters because
+ * the box that runs CI is precisely the box that cannot launch a sandboxed chromium.
+ *
+ * Off root the opt-out THROWS instead of degrading: a worker container (uid 10001) that was
+ * somehow configured with `"off-root-dev-only"` must fail loudly at launch, not quietly run
+ * every tenant's untrusted page with `--no-sandbox`. An unknown uid (`process.getuid`
+ * unavailable) is treated as non-root for the same reason — refusing is the safe direction.
+ */
+export function resolveChromiumSandbox(mode: SandboxMode | undefined, uid: number): boolean {
+  if (mode === undefined || mode === "on") return true;
+  if (uid !== 0) {
+    throw new Error(
+      `chromium sandbox opt-out "off-root-dev-only" is accepted for uid 0 only, but this process runs as uid ${String(uid)}; ` +
+        "the fleet runs unprivileged (docs/SYSTEM_DESIGN.md §5) and must keep the OS sandbox on",
+    );
+  }
+  return false;
+}
+
+/** Printed on every unsandboxed launch: dropping OS isolation must never be a silent event. */
+export const UNSANDBOXED_LAUNCH_WARNING =
+  "[playwright-engine] chromium is launching WITHOUT its OS sandbox (--no-sandbox) because this " +
+  "process is root; this is a dev/CI-only mode and nothing measured under it says anything about " +
+  "the sandboxed fleet";
+
+/** uid of this process, or -1 where the platform has none — never treated as root. */
+function currentUid(): number {
+  return process.getuid?.() ?? -1;
 }
 
 export class PlaywrightBrowserEngine implements BrowserEngine {
@@ -245,8 +299,12 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
 }
 
 export async function launchPlaywrightEngine(options: LaunchOptions): Promise<PlaywrightBrowserEngine> {
+  // `chromiumSandbox` must be EXACTLY true or playwright appends `--no-sandbox` itself; passing
+  // it explicitly is the whole difference between §5's promise and an unsandboxed fleet.
+  const chromiumSandbox = resolveChromiumSandbox(options.sandbox, currentUid());
+  if (!chromiumSandbox) console.warn(UNSANDBOXED_LAUNCH_WARNING);
   const browser = await chromium.launch({
-    // NEVER --no-sandbox (§5). The 2026-08-29 spike confirmed the sandboxed launch works.
+    chromiumSandbox,
     ...(options.headlessShellPath === undefined
       ? { channel: "chromium-headless-shell" }
       : { executablePath: options.headlessShellPath }),

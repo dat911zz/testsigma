@@ -8,8 +8,9 @@ import { defineConfig } from "vitest/config";
  * `test/host/**` and `test/soak/**` are OUT of the default run and each is re-admitted by its
  * own env flag — the same flag its package.json script sets:
  *   - `test:host` (TESTKITE_HOST_CGROUP=1): cgroup v2 `memory.max`/`memory.events`, a negative
- *     `oom_score_adj` — mechanisms this sandbox provably cannot exercise (cgroup v1 hybrid, no
- *     CAP_SYS_RESOURCE), so they are proven on a real host and nowhere else.
+ *     `oom_score_adj`, and a chromium launched with its OS sandbox actually ON — mechanisms this
+ *     sandbox provably cannot exercise (cgroup v1 hybrid, no CAP_SYS_RESOURCE, and root, which
+ *     chromium's zygote refuses to sandbox), so they are proven on a real host and nowhere else.
  *   - `test:soak` (TESTKITE_SOAK=1): the 200-chain soak, minutes long by design.
  * The flag drives `exclude` rather than the script's file filter because a vitest CLI path
  * argument only NARROWS the include set — it cannot re-admit a file that `exclude` dropped, so
