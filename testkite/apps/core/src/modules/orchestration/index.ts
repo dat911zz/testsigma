@@ -21,7 +21,7 @@ export {
   runVerdict,
   runPin,
 } from "./db/run-schema.js";
-export { orcDispatcherLease, orcWorkers, orcRunTokens } from "./db/fleet-schema.js";
+export { orcDispatcherLease, orcWorkers, orcRunTokens, orcRunEvents } from "./db/fleet-schema.js";
 // The two credentials of a zero-credential worker. Exported through the facade because the
 // internal fleet plane (Task 13) authenticates with them and nothing else may reach past it.
 export {
@@ -36,6 +36,16 @@ export {
   type RunTokenScope,
   type WorkerTokenScope,
 } from "./run-token.js";
+// The worker's narration. The internal fleet plane (Task 13) records it and the SSE stream
+// (Task 14) replays it; `RUN_EVENT_KINDS` is the closed enum both of them validate against.
+export {
+  RUN_EVENT_KINDS,
+  readRunEvents,
+  recordRunEvent,
+  type RecordEventInput,
+  type RunEventKind,
+  type StoredRunEvent,
+} from "./events.js";
 export {
   startRun,
   jobCost,

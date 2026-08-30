@@ -246,6 +246,20 @@
       "when": 1788090645001,
       "tag": "0034_m3_run_tokens_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788093251809,
+      "tag": "0035_m3_run_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788093263809,
+      "tag": "0036_m3_run_events_grants",
+      "breakpoints": true
     }
   ]
 }

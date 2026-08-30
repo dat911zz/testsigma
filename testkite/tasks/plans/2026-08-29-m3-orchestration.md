@@ -3079,7 +3079,7 @@ export interface StoredRunEvent {
 }
 ```
 
-- [ ] **Step 1: Viết test ĐỎ**
+- [x] **Step 1: Viết test ĐỎ**
 
 ```ts
 // apps/core/test/orchestration/events.test.ts
@@ -3147,12 +3147,12 @@ describe("run events", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test, xác nhận ĐỎ**
+- [x] **Step 2: Chạy test, xác nhận ĐỎ**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/events.test.ts`
 Expected: FAIL — module chưa tồn tại.
 
-- [ ] **Step 3: Schema (phần 3 của `fleet-schema.ts`) + `events.ts`**
+- [x] **Step 3: Schema (phần 3 của `fleet-schema.ts`) + `events.ts`**
 
 ```ts
 /**
@@ -3266,7 +3266,7 @@ export async function readRunEvents(
 }
 ```
 
-- [ ] **Step 4: Migration + GRANT**
+- [x] **Step 4: Migration + GRANT**
 
 ```bash
 cd testkite/apps/core && pnpm db:generate --name=m3_run_events
@@ -3279,7 +3279,7 @@ TAG `m3_run_events_grants`:
 GRANT SELECT, INSERT ON orc_run_events TO "testkite_app";
 ```
 
-- [ ] **Step 5: Chạy test XANH + commit**
+- [x] **Step 5: Chạy test XANH + commit**
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/orchestration/events.test.ts`
 Expected: PASS 5 test.

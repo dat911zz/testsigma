@@ -1,7 +1,7 @@
 /**
- * Fleet infrastructure tables. Parts 1-3: `orc_dispatcher_lease` (leadership as a ROW, on
- * purpose), plus the two credentials a zero-credential worker holds — `orc_workers` and
- * `orc_run_tokens`. `orc_run_events` joins this file in Task 10.
+ * Fleet infrastructure tables. Parts 1-4: `orc_dispatcher_lease` (leadership as a ROW, on
+ * purpose), the two credentials a zero-credential worker holds — `orc_workers` and
+ * `orc_run_tokens` — and `orc_run_events`, the narration those credentials buy the right to write.
  *
  * Why not pg_advisory_lock (spike 2026-08-29 §3, numbers measured in this sandbox):
  *  - invisible: pg_locks cannot say WHO holds it, since when, or when it last ticked, and the
@@ -31,6 +31,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgPolicy,
   pgTable,
   smallint,
@@ -151,5 +152,78 @@ export const orcRunTokens = pgTable(
     }),
     // The auth path: SELECT only, NO withCheck => this role can write nothing.
     pgPolicy("auth_lookup", { as: "permissive", for: "select", to: authRole, using: sql`true` }),
+  ],
+).enableRLS();
+
+/**
+ * The closed set of things a worker may say, published verbatim in the fleet contract. It lives
+ * HERE, next to the table, so the CHECK constraint below is BUILT from it: the type and the
+ * column cannot drift, and adding an eighth kind is one edit plus one migration.
+ */
+export const RUN_EVENT_KINDS = [
+  "chain_started",
+  "case_started",
+  "case_finished",
+  "step_started",
+  "step_finished",
+  "screenshot",
+  "infra_error",
+] as const;
+export type RunEventKind = (typeof RUN_EVENT_KINDS)[number];
+
+/** Compile-time constants only — `sql.raw` is what inlines them into the DDL drizzle-kit emits. */
+const runEventKindList = RUN_EVENT_KINDS.map((k) => `'${k}'`).join(",");
+
+/**
+ * `orc_run_events` — the worker's narration of a chain. Idempotency is a UNIQUE constraint,
+ * not application logic: (team_id, job_run_id, attempt, seq) + ON CONFLICT DO NOTHING.
+ * Measured 2026-08-29: a replayed seq inserts 0 rows, and a replay carrying a DIFFERENT payload
+ * also inserts 0 rows — the first write wins, so a confused (or malicious) worker cannot
+ * rewrite what already happened.
+ *
+ * `attempt` is part of the key because attempt 2 legitimately starts its narration at seq 1
+ * again; without it, the retry would look like a pile of duplicates and vanish.
+ *
+ * `kind` is a CHECK over the SAME closed seven the contract publishes, not free text: the value
+ * comes straight off the wire from a process running untrusted browser automation, and the zod
+ * schema at the edge (Task 13) is the first line of defence, not the only one. A CHECK rather
+ * than a pgEnum on purpose — adding an eighth kind is then one migration, with no `ALTER TYPE`
+ * to coordinate against readers still running the old image.
+ */
+export const orcRunEvents = pgTable(
+  "orc_run_events",
+  {
+    teamId: uuid("team_id").notNull(),
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobRunId: uuid("job_run_id").notNull(),
+    attempt: integer("attempt").notNull(),
+    seq: integer("seq").notNull(),
+    kind: text("kind").notNull(),
+    payload: jsonb("payload").notNull().default({}),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("orc_run_events_team_id_unique").on(t.teamId, t.id),
+    // This UNIQUE is BOTH the idempotency key and the read index: its btree is
+    // (team_id, job_run_id, attempt, seq), which is exactly what the SSE replay seeks on. The
+    // plan's block also asked for a separate `orc_run_events_team_job_idx` over the same four
+    // columns in the same order — a byte-identical duplicate, and this is the highest-volume
+    // insert path in the system (one row per step), so it was dropped rather than paying for
+    // a second btree on every event.
+    unique("orc_run_events_seq_unique").on(t.teamId, t.jobRunId, t.attempt, t.seq),
+    foreignKey({
+      name: "orc_run_events_job_fk",
+      columns: [t.teamId, t.jobRunId],
+      foreignColumns: [jobRuns.teamId, jobRuns.id],
+    }),
+    check("orc_run_events_seq_check", sql`${t.seq} >= 1`),
+    check("orc_run_events_kind_check", sql`${t.kind} IN (${sql.raw(runEventKindList)})`),
+    pgPolicy("tenant_isolation", {
+      as: "permissive",
+      for: "all",
+      to: appRole,
+      using: tenantPredicate,
+      withCheck: tenantPredicate,
+    }),
   ],
 ).enableRLS();
