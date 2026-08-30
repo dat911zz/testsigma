@@ -27,8 +27,8 @@
 | 5 | App đích chịu tải | **Thoải mái (app prod hàng triệu user)** | Giữ nguyên sizing 24–66 context; yêu cầu còn lại: pool tài khoản test lease per-chain |
 | 6 | Ngôn ngữ UI | **Song ngữ vi+en, i18n từ đầu** | +2–3 tuần setup i18n (M3–M4 phần UI); câu verb NLP giữ tiếng Anh khớp catalog, nhãn UI song ngữ |
 | 7 | Auth | **SSO + email nội bộ** | Email/password + **generic OIDC connector**; IdP đã chốt 28-08-2026: **Keycloak self-host** (dev/test dùng mock OIDC in-process vì sandbox không Docker; CI cân nhắc Keycloak service container) |
-| 9 | Env đích chạy test | **Staging/test trước, không vào production** (chốt 28-08-2026) | Egress allowlist trỏ staging; pool tài khoản test lease-per-chain (mỗi chain mượn 1 tài khoản, trả khi kết thúc kể cả lỗi); muốn chạy vào prod phải mở lại quyết định kèm chính sách egress riêng |
 | 8 | Retention | **Kết quả test VĨNH VIỄN; ảnh/artifact tối đa 30 ngày** | Đổi so blueprint (90d full): res_* rows giữ mãi → partition theo tháng bắt buộc từ v1 + rollup summaries; lifecycle object store: mọi ảnh/trace ≤30d (failure cũng vậy — `failure_context` JSON trong DB là bản ghi debug vĩnh viễn) |
+| 9 | Env đích chạy test | **Staging/test trước, không vào production** (chốt 28-08-2026) | Egress allowlist trỏ staging; pool tài khoản test lease-per-chain (mỗi chain mượn 1 tài khoản, trả khi kết thúc kể cả lỗi); muốn chạy vào prod phải mở lại quyết định kèm chính sách egress riêng |
 
 ## Tóm tắt điều hành
 
