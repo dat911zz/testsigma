@@ -4717,24 +4717,55 @@ git commit -m "M3-ORC T14: route /v1/runs (trigger/get/abort) + SSE trang thai r
 
 ## Task 15 — Wiring composition root, fixture L3, gate CI
 
+> **Ghi chú thực thi (30-08-2026) — 5 lệch so với văn bản step, mỗi cái một lý do.**
+>
+> 1. **Step 1–2 đã xanh sẵn, nên test ĐỎ của đợt này nằm chỗ khác.** Fixture `runId` đã vào từ
+>    T14 (`c71bfa7`) cùng lúc với `...orchestrationRoutes`, nên bộ L3 không bao giờ đỏ ở đây.
+>    KHÔNG thêm `BODY_FIXTURES["triggerRun"]`: cả `coverage.test.ts` lẫn `cross-tenant.test.ts`
+>    chỉ nhắm route CÓ path param, mà `POST /v1/runs` không có id nào để chéo — thêm vào là một
+>    dòng chết. Lỗ hổng thật mà bộ L3 không thấy là: **nó chạy trên `test/harness/http.ts`, chứ
+>    không phải trên wiring thật**, và composition root chưa từng đăng ký `orchestrationRoutes`
+>    (chỉ harness có). Nên test ĐỎ của T15 là `test/http/composition-root.test.ts`, gọi thẳng
+>    `buildApp` trên Postgres thật; một trong 6 test của nó khẳng định MỌI descriptor trong
+>    `ROUTES` được chính app production phục vụ.
+> 2. **`dispatcherMetrics()` nhận `app.log`** thay vì không tham số: hook nào ghi bằng `console`
+>    là bỏ qua pino và `LOG_LEVEL`, đúng lúc cần nhất (dead-man). `onTick` chạy 4 lần/giây nên
+>    chỉ log tick CÓ LÀM VIỆC — cụm rảnh sẽ đẻ ~350k dòng/ngày và chôn mất hai dòng đáng đọc.
+> 3. **`main.ts` cài `installShutdownHandlers`** (file mới `src/http/shutdown.ts` + test riêng).
+>    Không có nó thì hook `onClose` của Step 3 KHÔNG BAO GIỜ chạy: Node kết liễu tiến trình ngay
+>    khi nhận SIGTERM, nên mọi lần deploy sẽ để lại lease của một tiến trình đã chết và fleet
+>    không có dispatcher cho tới khi hết TTL — đúng điều dòng comment "next process leads
+>    immediately" tuyên bố là không xảy ra.
+> 4. **Env `FLEET_BOOTSTRAP_TOKEN` BẮT BUỘC, `min(32)`.** Nó là credential DUY NHẤT gác
+>    `POST /internal/fleet/workers/register`, mà register cố ý không bị rate-limit (chỉ `claim`
+>    bị), và thứ nó phát ra là worker token — thứ claim job của MỌI team. Có default nghĩa là
+>    công bố secret dùng chung trong repo này.
+> 5. **Gate CI: chỉ thêm một, và SỬA một cái đang hỏng.** Gate ngôn ngữ và gate browser đã có
+>    từ trước và mạnh hơn bản viết trong step, nên không nhân bản. Nhưng gate browser cũ
+>    (`grep -rE "playwright|puppeteer|chromium" apps/core/src`) **tự khớp chính comment
+>    "IMAGE RULE ... finding chromium fails the build" trong `apps/core/src/main.ts`** ⇒ `exit 1`
+>    ⇒ job `build-and-test` đỏ bất kể code sạch hay bẩn (kiểm chứng bằng lệnh HEAD nguyên văn).
+>    Bản mới grep **module specifier có ngoặc kép** (import thật, không phải chữ trong comment)
+>    và soi thêm `apps/core/package.json` — dependency mới là thứ thực sự nhét binary vào image.
+
 **Files:**
 - Modify: `apps/core/src/composition-root.ts`, `apps/core/src/main.ts`
 - Modify: `apps/core/test/isolation/fixtures.ts`
 - Modify: `.github/workflows/testkite-ci.yml`
 - Modify: `apps/core/test/harness/http.ts` (đăng ký `orchestrationRoutes`)
 
-- [ ] **Step 1: Test ĐỎ — L3 cross-tenant phủ route mới**
+- [x] **Step 1: Test ĐỎ — L3 cross-tenant phủ route mới**
 
 Thêm fixture cho `runId` vào `RESOURCE_FIXTURES` và body mẫu cho `triggerRun` vào `BODY_FIXTURES` (`test/isolation/fixtures.ts`). Bộ `coverage.test.ts` sẵn có sẽ ĐỎ ngay khi `ROUTES` có route mới mà chưa có fixture — đó chính là test đỏ của bước này.
 
 Run: `cd testkite && pnpm --filter @testkite/core test test/isolation/`
 Expected: FAIL — `add a fixture to test/isolation/fixtures.ts` liệt kê `getRun -> runId`, `abortRun -> runId`, `streamRun -> runId`.
 
-- [ ] **Step 2: Thêm fixture, chạy lại**
+- [x] **Step 2: Thêm fixture, chạy lại**
 
 Expected: PASS — bộ L3 tự sinh test "token B + id A ⇒ 404" cho cả 4 route mới.
 
-- [ ] **Step 3: Wiring composition root**
+- [x] **Step 3: Wiring composition root**
 
 ```ts
 // apps/core/src/composition-root.ts — ONE block, appended at the end of buildApp
@@ -4760,7 +4791,7 @@ Expected: PASS — bộ L3 tự sinh test "token B + id A ⇒ 404" cho cả 4 ro
 
 Env mới: `INTERNAL_PORT` (default 8081), `INTERNAL_HOST` (default `127.0.0.1` — không nghe ra ngoài trừ khi khai báo rõ), `FLEET_BOOTSTRAP_TOKEN` (bootstrap token của host, dùng đúng cho `register`).
 
-- [ ] **Step 4: Gate CI**
+- [x] **Step 4: Gate CI**
 
 Thêm vào `.github/workflows/testkite-ci.yml`, job `build-and-test`:
 
@@ -4781,7 +4812,7 @@ Thêm vào `.github/workflows/testkite-ci.yml`, job `build-and-test`:
           ! grep -rq "playwright\|chromium" testkite/apps/core/package.json
 ```
 
-- [ ] **Step 5: Verify toàn bộ + commit**
+- [x] **Step 5: Verify toàn bộ + commit**
 
 ```bash
 cd testkite && pnpm typecheck && pnpm lint && pnpm --filter @testkite/core test

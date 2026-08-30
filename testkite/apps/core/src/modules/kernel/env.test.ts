@@ -12,6 +12,7 @@ const VALID = {
   S3_BUCKET_ARTIFACTS: "tk-artifacts",
   S3_ACCESS_KEY: "minio",
   S3_SECRET_KEY: "minio-secret",
+  FLEET_BOOTSTRAP_TOKEN: "tkb_a_bootstrap_token_of_real_length",
 } satisfies NodeJS.ProcessEnv;
 
 /** The parsed env, or a loud failure — an assertion made on a rejected parse proves nothing. */
@@ -39,6 +40,7 @@ describe("parseEnv", () => {
       S3_BUCKET_ARTIFACTS: VALID.S3_BUCKET_ARTIFACTS,
       S3_ACCESS_KEY: VALID.S3_ACCESS_KEY,
       S3_SECRET_KEY: VALID.S3_SECRET_KEY,
+      FLEET_BOOTSTRAP_TOKEN: VALID.FLEET_BOOTSTRAP_TOKEN,
     });
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("unreachable");
@@ -51,9 +53,10 @@ describe("parseEnv", () => {
     const r = parseEnv({ NODE_ENV: "banana", PORT: "not-a-port" });
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error("unreachable");
-    // bad NODE_ENV + bad PORT + the five REQUIRED variables this env leaves out
-    // (DATABASE_URL, S3_ENDPOINT, S3_BUCKET_ARTIFACTS, S3_ACCESS_KEY, S3_SECRET_KEY) = 7.
-    expect(r.issues.length).toBe(7);
+    // bad NODE_ENV + bad PORT + the six REQUIRED variables this env leaves out
+    // (DATABASE_URL, S3_ENDPOINT, S3_BUCKET_ARTIFACTS, S3_ACCESS_KEY, S3_SECRET_KEY,
+    // FLEET_BOOTSTRAP_TOKEN) = 8.
+    expect(r.issues.length).toBe(8);
     expect(r.issues.join("\n")).toContain("DATABASE_URL");
     expect(r.issues.join("\n")).toContain("NODE_ENV");
     expect(r.issues.join("\n")).toContain("PORT");
@@ -135,5 +138,41 @@ describe("parseEnv", () => {
     expect(envOf(VALID).S3_REGION).toBe("us-east-1");
     expect(envOf({ ...VALID, S3_REGION: "eu-central-1" }).S3_REGION).toBe("eu-central-1");
     expect(parseEnv({ ...VALID, S3_REGION: "" }).ok).toBe(false);
+  });
+
+  it("puts the fleet plane on its own port, bound to loopback unless an operator says otherwise", () => {
+    // The fleet plane authenticates workers, not tenants: reaching it is already most of an
+    // attack. Two defaults keep it off the internet by ACCIDENT-PROOF construction — a port of
+    // its own (so a public ingress pointed at PORT never forwards to it) and a loopback bind
+    // (so a host with no network policy still refuses everything off-box). Opening it up has to
+    // be a written decision in the deployment, never the absence of one.
+    const env = envOf(VALID);
+    expect(env.INTERNAL_PORT).toBe(8081);
+    expect(env.INTERNAL_PORT).not.toBe(env.PORT);
+    expect(env.INTERNAL_HOST).toBe("127.0.0.1");
+    const custom = envOf({ ...VALID, INTERNAL_PORT: "9091", INTERNAL_HOST: "10.0.0.4" });
+    expect(custom.INTERNAL_PORT).toBe(9091);
+    expect(custom.INTERNAL_HOST).toBe("10.0.0.4");
+  });
+
+  it("rejects an INTERNAL_PORT outside 1..65535 and an empty INTERNAL_HOST", () => {
+    expect(parseEnv({ ...VALID, INTERNAL_PORT: "0" }).ok).toBe(false);
+    expect(parseEnv({ ...VALID, INTERNAL_PORT: "70000" }).ok).toBe(false);
+    expect(parseEnv({ ...VALID, INTERNAL_PORT: "http" }).ok).toBe(false);
+    expect(parseEnv({ ...VALID, INTERNAL_HOST: "" }).ok).toBe(false);
+  });
+
+  it("refuses to boot without a fleet bootstrap token, and refuses a short one", () => {
+    // It is the ONLY credential guarding `POST /internal/fleet/workers/register`, and that
+    // endpoint is not rate-limited (only `claim` is), so a guessable value is a guessable
+    // worker identity — and a worker identity claims jobs of every team. There is no default
+    // for the same reason there is none for S3: a fallback here would be a shared secret
+    // published in this repository.
+    const raw: NodeJS.ProcessEnv = { ...VALID };
+    delete raw["FLEET_BOOTSTRAP_TOKEN"];
+    expect(parseEnv(raw).ok).toBe(false);
+    expect(parseEnv({ ...VALID, FLEET_BOOTSTRAP_TOKEN: "" }).ok).toBe(false);
+    expect(parseEnv({ ...VALID, FLEET_BOOTSTRAP_TOKEN: "tkb_short" }).ok).toBe(false);
+    expect(envOf(VALID).FLEET_BOOTSTRAP_TOKEN).toBe(VALID.FLEET_BOOTSTRAP_TOKEN);
   });
 });

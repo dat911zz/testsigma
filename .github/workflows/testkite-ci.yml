@@ -50,6 +50,20 @@ jobs:
         working-directory: testkite
         run: pnpm openapi:check
 
+      # `/internal/fleet` là mặt phẳng RIÊNG: Fastify riêng, cổng riêng, credential của fleet
+      # chứ không phải token tenant. Nó cố ý KHÔNG nằm trong `ROUTES`
+      # (packages/contract/src/routes/index.ts) nên không bao giờ được sinh ra ở đây. Gate này
+      # grep BYTE đã commit — một tầng dưới test đơn vị trong openapi.test.ts — nên bắt được cả
+      # trường hợp ai đó sửa tay openapi.json.
+      - name: Gate — /internal must not leak into the public OpenAPI
+        working-directory: testkite
+        run: |
+          if grep -n '"/internal' packages/contract/openapi.json; then
+            echo "::error::/internal/fleet escaped into openapi.json (see the line above). The fleet plane is not part of the tenant API: keep INTERNAL_ROUTES out of the ROUTES array in packages/contract/src/routes/index.ts."
+            exit 1
+          fi
+          echo "OpenAPI gate: no /internal path in the published spec."
+
       # DAG 12 module + compiler PURE + queue chỉ trong kernel: ba luật này trước B1–B3
       # chỉ nằm trong comment. Từ đây `pnpm lint` là thứ chặn chúng ở CI.
       - name: Gate — kiến trúc (DAG 12 module, compiler PURE, queue chỉ trong kernel)
@@ -71,9 +85,25 @@ jobs:
         working-directory: testkite
         run: pnpm lint:cycles
 
+      # Hai nguồn, hai lệnh.
+      #  - SOURCE: một MODULE SPECIFIER có ngoặc kép, tức một import thật. Bản cũ grep chuỗi
+      #    trần nên tự khớp chính comment "IMAGE RULE ... finding chromium fails the build"
+      #    trong apps/core/src/main.ts (kiểm chứng 30-08-2026: grep khớp ⇒ `exit 1` ⇒ job đỏ
+      #    bất kể code sạch hay bẩn — một gate luôn đỏ là một gate không ai đọc nữa).
+      #  - MANIFEST: một dependency được khai báo — chính nó mới là thứ nhét binary vào image,
+      #    kể cả khi chưa dòng nào import. `--include` của grep lọc cả file chỉ đích danh trên
+      #    dòng lệnh, nên package.json phải là lệnh riêng.
       - name: Gate — no browser in API image (apps/core must stay browser-free)
         run: |
-          grep -rE "playwright|puppeteer|chromium" testkite/apps/core/src --include='*.ts' && exit 1 || true
+          if grep -rEn "['\"](playwright|puppeteer|chromium)[a-z0-9@/.-]*['\"]" testkite/apps/core/src --include='*.ts'; then
+            echo "::error::apps/core imports a browser driver (line above). Running tests is a capability of the fleet (apps/runner), never of the API image."
+            exit 1
+          fi
+          if grep -En "playwright|puppeteer|chromium" testkite/apps/core/package.json; then
+            echo "::error::apps/core declares a browser dependency. A declared dependency ships in the image whether or not a single line imports it."
+            exit 1
+          fi
+          echo "Browser gate: clean."
 
       # Language rule (CLAUDE.md Luật 4 + the i18n-code cleanup pass): source code and
       # tests are English; Vietnamese stays confined to docs/. Scans the same 4 trees the

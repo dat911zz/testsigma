@@ -52,6 +52,9 @@ export async function buildHttpApp(deps: HttpDeps): Promise<TkApp> {
   // hook only sees routes registered after it.
   const registered: { method: string; url: string; hasDescriptor: boolean }[] = [];
   app.decorate("tkRegisteredRoutes", registered);
+  // Declared here, set only by the composition root: a test app has no fleet plane, and `null`
+  // says so honestly instead of leaving the property missing behind a type that promises it.
+  app.decorate("tkFleet", null);
   app.addHook("onRoute", (opts) => {
     const methods = Array.isArray(opts.method) ? opts.method : [opts.method];
     const cfg = opts.config;

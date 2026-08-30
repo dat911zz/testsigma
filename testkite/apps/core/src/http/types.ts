@@ -112,5 +112,13 @@ declare module "fastify" {
   interface FastifyInstance {
     /** Every route the router is serving + whether that route has a contract descriptor. */
     tkRegisteredRoutes: { method: string; url: string; hasDescriptor: boolean }[];
+    /**
+     * The fleet plane (`/internal/fleet`), which is a SECOND Fastify instance on a port of its
+     * own — `null` on every app that has none, which is every app but the one the composition
+     * root builds. It hangs here so that closing the public app closes the fleet plane with it:
+     * two servers with two independent lifecycles is how a deploy ends up with a port still
+     * bound by a process whose database pool is already gone.
+     */
+    tkFleet: FastifyInstance | null;
   }
 }

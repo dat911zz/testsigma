@@ -62,6 +62,19 @@ describe("OpenAPI paths", () => {
     }
   });
 
+  it("never publishes an /internal path — the fleet plane is not part of the tenant API", () => {
+    // `/internal/fleet` is a SEPARATE Fastify app on a SEPARATE port, authenticated by fleet
+    // credentials rather than tenant tokens. Publishing it would hand every reader of the
+    // public spec the shape of the worker protocol, and would put it in front of any tooling
+    // that generates clients (or ingress rules) from this document. INTERNAL_ROUTES is
+    // deliberately not merged into ROUTES; this asserts the CONSEQUENCE, at the byte level the
+    // CI gate greps, so the mistake fails on a developer's machine first.
+    const doc = buildOpenApiDocument();
+    const published = Object.keys(doc.paths ?? {}).filter((path) => path.startsWith("/internal"));
+    expect(published, "the fleet plane escaped into the public OpenAPI document").toEqual([]);
+    expect(serializeOpenApiDocument()).not.toContain('"/internal');
+  });
+
   it("an auth=required route declares the bearer securityScheme", () => {
     const doc = buildOpenApiDocument();
     expect(doc.components?.securitySchemes?.["bearerAuth"]).toBeDefined();

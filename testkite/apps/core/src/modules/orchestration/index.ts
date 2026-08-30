@@ -84,6 +84,10 @@ export {
 // way authoring submits its case routes — the SSE route hijacks its reply, which the shell's
 // `registrations` path (always ending in `reply.send()`) cannot express.
 export { orchestrationRoutes, type OrchestrationRoutesDeps } from "./routes.js";
+// The background loop. Exported because the composition root is what STARTS it — one loop per
+// API replica, with the leader election deciding which of them actually dispatches — and what
+// stops it on shutdown, releasing the lease instead of making the successor wait out the TTL.
+export { startDispatcher, type DispatcherHooks, type TickResult } from "./dispatcher/loop.js";
 export {
   activeRunStreamCount,
   SSE_HEARTBEAT_MS,

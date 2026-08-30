@@ -64,6 +64,30 @@ export const envSchema = z.object({
    */
   DISPATCHER_ID: z.string().min(1).default(defaultDispatcherId()),
   /**
+   * The fleet plane (`/internal/fleet`) is a SEPARATE Fastify instance on a port of its own, so
+   * these two defaults are the first line of defence around it — before any token check.
+   *
+   * A distinct PORT means a public ingress pointed at `PORT` can never forward to a worker
+   * endpoint, whatever the path. A LOOPBACK bind means a host with no network policy at all
+   * still refuses every connection from off-box. Exposing the plane beyond the host therefore
+   * has to be a written decision in the deployment (`INTERNAL_HOST=0.0.0.0`), never the
+   * absence of one.
+   */
+  INTERNAL_PORT: z.coerce.number().int().min(1).max(65_535).default(8081),
+  INTERNAL_HOST: z.string().min(1).default("127.0.0.1"),
+  /**
+   * The host credential of `runnerd`, accepted by exactly ONE endpoint
+   * (`POST /internal/fleet/workers/register`) and compared against its SHA-256 in constant time.
+   *
+   * REQUIRED, with no default, for the same reason as the S3 keys and then some: a fallback
+   * value would be a shared secret published in this repository, and register is the endpoint
+   * that hands out worker tokens — the credential that claims jobs of EVERY team. `min(32)`
+   * because register is deliberately not rate-limited (only `claim` is, per the fleet
+   * contract), so the only thing standing between a reachable port and a worker identity is
+   * how expensive the token is to guess.
+   */
+  FLEET_BOOTSTRAP_TOKEN: z.string().min(32),
+  /**
    * The artifact store. REQUIRED, with no fallback: a control plane that cannot sign an upload
    * URL accepts runs whose traces, screenshots and videos are silently dropped — a failure that
    * only becomes visible days later, when someone opens a failed run and finds nothing. Failing
