@@ -25,8 +25,7 @@ const enc = (s: string): string =>
     (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 
-export interface PresignInput {
-  readonly method: "PUT" | "GET";
+interface PresignCommon {
   /** Origin of the object store, e.g. `https://minio.internal:9000`. */
   readonly endpoint: string;
   /** Empty when the bucket is already part of the endpoint host (virtual-hosted style). */
@@ -38,6 +37,29 @@ export interface PresignInput {
   readonly expiresSeconds: number;
   readonly now: Date;
 }
+
+/**
+ * A PUT signs the SHAPE OF THE BODY as well as its address, and the two fields are REQUIRED by
+ * the type rather than optional: a caller that forgets them would otherwise hand out a blank
+ * cheque. `content-length` is the one that matters — the ticket endpoint refuses to sign a size
+ * over the per-artifact cap, and that refusal is worth nothing if the holder of the resulting
+ * URL can PUT any number of bytes to the same key. `content-type` is signed because the
+ * metadata row already claims one, so a PUT that disagrees stores a blob the results page
+ * cannot render.
+ *
+ * A GET signs `host` alone: there is no body to describe, and signing a `content-length` a
+ * reader never sends would make every download unverifiable. That is also why the AWS test
+ * vector — a GET — still matches this implementation byte for byte.
+ */
+export type PresignInput = PresignCommon &
+  (
+    | { readonly method: "GET" }
+    | {
+        readonly method: "PUT";
+        readonly contentLength: number;
+        readonly contentType: string;
+      }
+  );
 
 export function presignS3Url(input: PresignInput): string {
   const url = new URL(input.endpoint);
@@ -59,12 +81,30 @@ export function presignS3Url(input: PresignInput): string {
   const date = amzDate.slice(0, 8);
   const scope = `${date}/${input.region}/s3/aws4_request`;
 
+  /**
+   * SigV4 sorts signed headers BY NAME and joins them `name:value\n`. The order is not a
+   * detail: it is part of the string that gets hashed, so writing them in any other order
+   * produces a well-formed URL carrying a signature the store cannot reconstruct.
+   * "content-length" < "content-type" < "host" is that sorted order, spelled out here rather
+   * than sorted at runtime so the canonical form is readable next to the test that pins it.
+   */
+  const signedHeaders: readonly (readonly [string, string])[] =
+    input.method === "PUT"
+      ? [
+          ["content-length", String(input.contentLength)],
+          ["content-type", input.contentType],
+          ["host", host],
+        ]
+      : [["host", host]];
+  const signedHeaderNames = signedHeaders.map(([name]) => name).join(";");
+  const canonicalHeaders = signedHeaders.map(([name, value]) => `${name}:${value}\n`).join("");
+
   const query: Record<string, string> = {
     "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
     "X-Amz-Credential": `${input.accessKey}/${scope}`,
     "X-Amz-Date": amzDate,
     "X-Amz-Expires": String(input.expiresSeconds),
-    "X-Amz-SignedHeaders": "host",
+    "X-Amz-SignedHeaders": signedHeaderNames,
   };
   const canonicalQuery = Object.keys(query)
     .sort()
@@ -74,8 +114,8 @@ export function presignS3Url(input: PresignInput): string {
     input.method,
     canonicalPath,
     canonicalQuery,
-    `host:${host}\n`,
-    "host",
+    canonicalHeaders,
+    signedHeaderNames,
     "UNSIGNED-PAYLOAD",
   ].join("\n");
   const stringToSign = [

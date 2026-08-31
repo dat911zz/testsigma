@@ -26,8 +26,11 @@
  * The size ceiling (`ARTIFACT_MAX_SIZE_BYTES`) is deliberately NOT re-checked here: the ticket
  * endpoint refuses to sign anything above it, so no presigned target can exist for an oversized
  * body, and the screenshot ring applies the same gate before it even asks (`presignRejection`).
- * A zero-byte body IS checked, because that one is producible locally — a capture or a trace that
- * yielded nothing — and it would store an artifact the contract says cannot exist.
+ * What IS checked is that the body matches the length that was signed — the ceiling only travels
+ * onto the wire because `content-length` is one of the headers the presigned PUT covers, so a
+ * body of a different size is a request no signature describes. A zero-byte body is checked for
+ * its own reason: that one is producible locally — a capture or a trace that yielded nothing —
+ * and it would store an artifact the contract says cannot exist.
  */
 import { ARTIFACT_KIND_VALUES, FatalInfraError, RetryableInfraError } from "@testkite/contract";
 
@@ -121,17 +124,28 @@ export class HttpArtifactUploader implements ArtifactUploader {
  * signed headers and then adding a `"Content-Type"` key leaves a target signed as `content-type`
  * carrying BOTH entries, which undici serialises as one comma-joined value ("text/plain,
  * text/plain") that no signature covers. `Headers.set` collapses by name the way the wire does.
+ *
+ * Both signed headers are sent. `content-length` is written from the body actually being sent
+ * rather than copied from the target — `assertSendable` has already refused the case where the
+ * two disagree, so this is the same number, stated by the side that cannot be wrong about it.
  */
 function mergeHeaders(request: UploadRequest): Headers {
   const headers = new Headers(request.target.headers);
   headers.set("content-type", request.contentType);
+  headers.set("content-length", String(request.body.length));
   return headers;
 }
 
 /**
- * Local refusals — things the far end would answer with a 4xx we do not retry, caught here where
- * the message can still name the cause. A signed `Content-Type` is part of what the signature
- * covers, so sending a different one buys a 403 that reads like an expired URL.
+ * Local refusals — requests that are not the request the control plane signed, caught here where
+ * the message can still name the cause instead of being spent as four attempts against a
+ * rejection nobody can read.
+ *
+ * The control plane signs a PUT over `content-length;content-type;host` (see the ticket
+ * endpoint's presigner), so BOTH of those values are part of what the signature describes: a PUT
+ * carrying a different media type, or a different number of bytes, is a request no signature
+ * covers. What a particular object store answers in that case is its own business — the reason
+ * to stop here is that the worker knows the request is wrong before sending it.
  */
 function assertSendable(request: UploadRequest): void {
   if (request.body.length === 0) {
@@ -140,18 +154,29 @@ function assertSendable(request: UploadRequest): void {
     );
   }
 
-  const signed = signedContentType(request.target.headers);
+  const signedType = signedHeader(request.target.headers, "content-type");
   const sending = request.contentType.trim().toLowerCase();
-  if (signed !== null && signed !== sending) {
+  if (signedType !== null && signedType.toLowerCase() !== sending) {
     throw new FatalInfraError(
-      `${request.kind} artifact upload would send Content-Type "${request.contentType}" against a target signed for "${signed}" — the signature covers that header, so the object store would answer 403 as if the url had expired`,
+      `${request.kind} artifact upload would send Content-Type "${request.contentType}" against a target signed for "${signedType}" — the signed headers are content-length;content-type;host, so this is not the request the control plane signed`,
+    );
+  }
+
+  const signedLength = signedHeader(request.target.headers, "content-length");
+  if (signedLength !== null && Number(signedLength) !== request.body.length) {
+    throw new FatalInfraError(
+      `${request.kind} artifact upload would send ${request.body.length} bytes against a target signed for ${signedLength} — the signed headers are content-length;content-type;host, so the per-artifact ceiling the ticket endpoint enforced applies to this body and this body only`,
     );
   }
 }
 
-function signedContentType(headers: Readonly<Record<string, string>>): string | null {
-  for (const [name, value] of Object.entries(headers)) {
-    if (name.toLowerCase() === "content-type") return value.trim().toLowerCase();
+/** Case-insensitive lookup over the signed headers, trimmed the way a header value is read. */
+function signedHeader(
+  headers: Readonly<Record<string, string>>,
+  name: string,
+): string | null {
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === name) return value.trim();
   }
   return null;
 }

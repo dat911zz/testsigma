@@ -19,6 +19,7 @@ import {
   createArtifactUpload,
   type ArtifactKind,
 } from "../../src/modules/results/artifacts.js";
+import { presignS3Url } from "../../src/modules/results/s3/presign.js";
 
 /** The store this suite signs against. No network is involved — a signature is arithmetic. */
 const S3 = {
@@ -111,8 +112,36 @@ describe("artifact upload slot", () => {
     expect(slot.url).toContain(`X-Amz-Expires=${String(ARTIFACT_URL_TTL_SECONDS)}`);
     expect(slot.url.startsWith(`${S3.endpoint}/${S3.bucket}/`)).toBe(true);
     expect(slot.url).toContain(String(row["object_key"]));
-    // The worker is told which Content-Type to send, because the metadata row already claims it.
-    expect(slot.headers).toEqual({ "Content-Type": "application/zip" });
+    // Both headers are SIGNED, so the worker is not being advised, it is being told what the
+    // signature already covers: a PUT that sends anything else is a request the store cannot
+    // verify. `X-Amz-SignedHeaders` is the half of that statement that lives in the URL.
+    expect(slot.headers).toEqual({
+      "Content-Type": "application/zip",
+      "Content-Length": "3304",
+    });
+    expect(slot.url).toContain("X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost");
+    /*
+     * The size ceiling is only worth something if it survives the handoff: refusing to sign a
+     * size over the cap is decorative if the URL that IS signed lets the holder PUT a different
+     * number of bytes to the same key. Re-deriving the whole URL from the stored key and the
+     * stored size is how that is stated exactly — a handler that signed `0`, or the wrong
+     * content type, produces a different signature and this line goes red.
+     */
+    expect(slot.url).toBe(
+      presignS3Url({
+        method: "PUT",
+        endpoint: S3.endpoint,
+        bucket: S3.bucket,
+        key: String(row["object_key"]),
+        region: S3.region,
+        accessKey: S3.accessKey,
+        secretKey: S3.secretKey,
+        expiresSeconds: ARTIFACT_URL_TTL_SECONDS,
+        contentLength: Number(row["size_bytes"]),
+        contentType: String(row["content_type"]),
+        now: NOW,
+      }),
+    );
   });
 
   it("puts the team id in the object key so a leaked key cannot name another tenant's object", async () => {

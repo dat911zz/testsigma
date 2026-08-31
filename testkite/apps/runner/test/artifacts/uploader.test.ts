@@ -17,10 +17,15 @@ import { ARTIFACT_KIND_VALUES, FatalInfraError, RetryableInfraError } from "@tes
 import { describe, expect, it, vi } from "vitest";
 import { HttpArtifactUploader, type PresignedTarget, RecordingUploader } from "../../src/artifacts/uploader.js";
 
+/**
+ * What the ticket endpoint actually hands back: BOTH signed headers. The control plane signs a
+ * PUT over `content-length;content-type;host`, so these two values are not advice — they are
+ * the request the signature describes. `zip()` is three bytes, hence the "3".
+ */
 const target: PresignedTarget = {
   url: "https://minio.internal/bucket/trace.zip?X-Amz-Signature=abc",
   method: "PUT",
-  headers: { "Content-Type": "application/zip" },
+  headers: { "Content-Type": "application/zip", "Content-Length": "3" },
 };
 
 const ok = (): Response => new Response(null, { status: 200 });
@@ -43,6 +48,9 @@ describe("HttpArtifactUploader", () => {
     expect(init?.body).toEqual(zip());
     const headers = new Headers(init?.headers);
     expect(headers.get("content-type")).toBe("application/zip");
+    // The second signed header. Sending the content type but not the length would be a request
+    // the store cannot verify against the signature it was handed.
+    expect(headers.get("content-length")).toBe("3");
     // Zero-credential: nothing that looks like an object-store credential may be added here.
     expect(headers.get("authorization")).toBeNull();
     expect(headers.get("x-amz-credential")).toBeNull();
@@ -147,7 +155,7 @@ describe("HttpArtifactUploader", () => {
     await uploader.upload({ kind: "log", target: bare, body: zip(), contentType: "text/plain" });
     await uploader.upload({
       kind: "log",
-      target: { url: target.url, method: "PUT", headers: { "content-TYPE": "TEXT/plain" } },
+      target: { url: target.url, method: "PUT", headers: { "content-TYPE": "TEXT/plain", "CONTENT-length": "3" } },
       body: zip(),
       contentType: "text/plain",
     });
@@ -155,6 +163,51 @@ describe("HttpArtifactUploader", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     const sent = fetchImpl.mock.calls.map(([, init]) => new Headers(init?.headers).get("content-type"));
     expect(sent).toEqual(["text/plain", "text/plain"]);
+  });
+
+  /**
+   * The size ceiling lives in the control plane, which refuses to sign anything over it — and
+   * the signature is what carries that refusal onto the wire, because `content-length` is one of
+   * the headers it covers. A body that is not the size the ticket named is therefore a request
+   * nobody signed, and the worker must say so HERE, where the message can name the cause, rather
+   * than spend four attempts on a rejection whose reason is invisible.
+   *
+   * NOTE ON WHAT THIS DOES *NOT* PROVE: `fetch` is a stub, so this says nothing about how a real
+   * object store answers an unsigned mismatch. The claim is about the signature's contents; the
+   * far end's behaviour is host-pilot evidence.
+   */
+  it("refuses to PUT a body whose length differs from the signed content-length", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => ok());
+    const uploader = new HttpArtifactUploader({ fetchImpl, sleep: noSleep });
+
+    const error = await uploader
+      .upload({
+        kind: "trace",
+        // Signed for three bytes, handed nine.
+        target,
+        body: Buffer.from("nine byte"),
+        contentType: "application/zip",
+      })
+      .catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(FatalInfraError);
+    expect(error).toMatchObject({ retryable: false });
+    expect((error as Error).message).toMatch(/9/);
+    expect((error as Error).message).toMatch(/3/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("sends the body's own length when the target carries no signed content-length", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => ok());
+    const bare: PresignedTarget = { url: target.url, method: "PUT", headers: {} };
+    await new HttpArtifactUploader({ fetchImpl, sleep: noSleep }).upload({
+      kind: "log",
+      target: bare,
+      body: Buffer.from("nine byte"),
+      contentType: "text/plain",
+    });
+    const call = fetchImpl.mock.calls.at(0);
+    if (call === undefined) throw new Error("fetch was never called");
+    expect(new Headers(call[1]?.headers).get("content-length")).toBe("9");
   });
 });
 

@@ -109,8 +109,14 @@ function violatesForeignKey(err: unknown, constraint: string): boolean {
  * `kind` and `sizeBytes` are re-checked here even though the route validates them with zod
  * (Task 13). This is a MODULE API and the values arrive from a process running untrusted
  * browser automation: the edge schema is the first line of defence, the CHECK constraints on
- * the table are the last, and this is the one that refuses to SIGN — an unchecked size is a
- * URL that lets one run fill the store.
+ * the table are the last, and this is the one that refuses to SIGN.
+ *
+ * The refusal has teeth because the size is IN the signature: the PUT is signed over
+ * `content-length;content-type;host`, so the URL handed back names one number of bytes and one
+ * media type, and a request carrying different ones is not the request that was signed. Without
+ * that binding the ceiling would only ever have been a suggestion — the same URL would accept
+ * any body at all. (What a given store DOES with an unsigned mismatch is its own affair; the
+ * statement made here is about the signature, and end-to-end behaviour is host-pilot evidence.)
  */
 export async function createArtifactUpload(
   tx: TkTx,
@@ -172,11 +178,19 @@ export async function createArtifactUpload(
       accessKey: deps.accessKey,
       secretKey: deps.secretKey,
       expiresSeconds: ARTIFACT_URL_TTL_SECONDS,
+      // Signed, not merely recorded: the size the metadata row claims is the size the URL is
+      // good for, and the content type the results page will render is the one it is good for.
+      contentLength: input.sizeBytes,
+      contentType: input.contentType,
       now: input.now,
     }),
-    // The worker is told which Content-Type to send because the metadata row already claims it;
-    // a PUT that disagrees stores a blob the results page cannot render.
-    headers: { "Content-Type": input.contentType },
+    // Exactly the headers the signature covers, spelled the way the wire spells them. The worker
+    // is not being advised here — sending anything else produces a request the store cannot
+    // verify against the signature it was given.
+    headers: {
+      "Content-Type": input.contentType,
+      "Content-Length": String(input.sizeBytes),
+    },
     expiresAt: new Date(input.now.getTime() + ARTIFACT_URL_TTL_SECONDS * 1_000),
   };
 }

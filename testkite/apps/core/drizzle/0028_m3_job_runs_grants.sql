@@ -19,7 +19,9 @@ CREATE INDEX "job_runs_pending_idx" ON "job_runs" ("priority" DESC, "queue_seq")
 -- Worker claim: always lane-scoped, so lane leads here.
 CREATE INDEX "job_runs_ready_idx" ON "job_runs" ("lane", "priority" DESC, "queue_seq") WHERE "status" = 'dispatched';
 --> statement-breakpoint
--- Reaper: measured 0.010ms on the same 20k rows.
+-- Reaper. NOTE: this indexed `lease_expires_at`, which the reaper never filters on — both of
+-- its statements read `heartbeat_at`. Corrected in 0042, which drops this index and recreates
+-- it on `heartbeat_at`; the 0.010ms measured here was of a lookup the sweep does not perform.
 CREATE INDEX "job_runs_lease_idx" ON "job_runs" ("lease_expires_at") WHERE "status" = 'running';
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON "job_runs" TO "testkite_app";

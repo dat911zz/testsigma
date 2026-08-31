@@ -153,6 +153,19 @@ export interface InternalTestApp {
   caseResultCount: (jobRunId: string) => Promise<number>;
   artifactStatuses: (jobRunId: string) => Promise<readonly string[]>;
   sampleStep: () => SampleStep;
+  /**
+   * Simulates `seconds` of elapsed time for the fleet plane by rewinding every deadline it has
+   * stamped so far. Moving the rows back is the only way to age a lease here: the plane reads
+   * `now()` from the DATABASE (that is the whole point of `heartbeat_at`), so there is no clock
+   * to inject, and a test that actually slept would take minutes to say anything.
+   *
+   * Only the two tables that carry a DEADLINE are touched — the job lease and the run token.
+   * The worker token's own 24h TTL is untouched on purpose: a test about the run credential
+   * must not be able to pass by accidentally renewing the worker one.
+   */
+  rewindFleetClock: (seconds: number) => Promise<void>;
+  /** `expires_at` of the live run token for a job — the value a heartbeat is supposed to move. */
+  runTokenExpiry: (jobRunId: string) => Promise<Date>;
 }
 
 type Shared = { readonly t: TestDb; readonly app: FastifyInstance };
@@ -318,6 +331,32 @@ export async function makeInternalTestApp(): Promise<InternalTestApp> {
       durationMs: 91,
       renderedSentence: "Click Login",
     }),
+    rewindFleetClock: async (seconds: number): Promise<void> => {
+      await t.raw.query(
+        `UPDATE job_runs
+            SET heartbeat_at = heartbeat_at - make_interval(secs => $1::double precision),
+                lease_expires_at = lease_expires_at - make_interval(secs => $1::double precision),
+                started_at = started_at - make_interval(secs => $1::double precision)
+          WHERE status = 'running'`,
+        [seconds],
+      );
+      await t.raw.query(
+        `UPDATE orc_run_tokens
+            SET expires_at = expires_at - make_interval(secs => $1::double precision)`,
+        [seconds],
+      );
+    },
+    runTokenExpiry: async (jobRunId: string): Promise<Date> => {
+      const r = await t.raw.query<{ expires_at: string | Date }>(
+        `SELECT expires_at FROM orc_run_tokens
+          WHERE job_run_id = $1 AND revoked_at IS NULL
+          ORDER BY created_at DESC, id DESC LIMIT 1`,
+        [jobRunId],
+      );
+      const value = r.rows[0]?.expires_at;
+      if (value === undefined) throw new Error(`runTokenExpiry: no live token for ${jobRunId}`);
+      return value instanceof Date ? value : new Date(value);
+    },
   };
 }
 

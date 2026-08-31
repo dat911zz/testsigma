@@ -100,7 +100,10 @@ describe("job_runs — queue of record", () => {
     expect(
       defs.some((d) => /\(lane, priority DESC, queue_seq\).*WHERE \(status = 'dispatched'/.test(d)),
     ).toBe(true);
-    expect(defs.some((d) => /\(lease_expires_at\).*WHERE \(status = 'running'/.test(d))).toBe(true);
+    // The reaper's index leads with `heartbeat_at` (corrected in 0042): both of its statements
+    // filter on the last proof of life, never on the deadline the owner agreed to. The shape is
+    // asserted in full by schema-0042.test.ts; here it is the third of the three.
+    expect(defs.some((d) => /\(heartbeat_at\).*WHERE \(status = 'running'/.test(d))).toBe(true);
   });
 
   it("cannot attach a job to another team's run", async () => {

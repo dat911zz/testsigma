@@ -138,6 +138,20 @@ export const orcRunTokens = pgTable(
     unique("orc_run_tokens_team_id_unique").on(t.teamId, t.id),
     index("orc_run_tokens_team_job_idx").on(t.teamId, t.jobRunId, t.attempt),
     uniqueIndex("orc_run_tokens_hash_uidx").on(t.tokenHash),
+    /*
+     * ONE LIVE CREDENTIAL PER LEASE, enforced by the database rather than by the claim path.
+     * A lease is `(job_run, attempt, lease_epoch)` and every ownership change bumps the epoch,
+     * so a second live token on the same triple can only mean the claim path minted twice — and
+     * that is precisely the state in which a fenced worker keeps writing under a token nobody
+     * thought to revoke.
+     *
+     * PARTIAL, on `revoked_at IS NULL`, and that is not a detail: revoking is a TOMBSTONE, not
+     * a delete (the history of who held what stays readable), so a total unique key would make
+     * re-minting after a revoke impossible. Only LIVE rows are constrained. Added in 0042.
+     */
+    uniqueIndex("orc_run_tokens_live_uidx")
+      .on(t.teamId, t.jobRunId, t.attempt, t.leaseEpoch)
+      .where(sql`revoked_at IS NULL`),
     foreignKey({
       name: "orc_run_tokens_job_fk",
       columns: [t.teamId, t.jobRunId],

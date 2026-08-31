@@ -41,6 +41,7 @@ import {
   readRunPlan,
   recordRunEvent,
   registerWorker,
+  renewRunTokenTtl,
   revokeRunTokensFor,
   touchWorker,
   RUN_TOKEN_TTL_SLACK_SECONDS,
@@ -366,13 +367,26 @@ export function internalRoutes(deps: {
       assertEpochMatchesToken(body.leaseEpoch, scope);
       const ctx: TenantContext = { teamId: scope.teamId };
       const renewed = unwrap(
-        await withTenant(db, ctx, (tx) =>
-          heartbeatJob(tx, ctx, {
+        await withTenant(db, ctx, async (tx) => {
+          const outcome = await heartbeatJob(tx, ctx, {
             jobRunId: scope.jobRunId,
             epoch: body.leaseEpoch,
             now: new Date(),
-          }),
-        ),
+          });
+          // The credential is renewed WITH the lease, in the same transaction and off the same
+          // deadline: `expires_at` is stamped once at claim time, so a chain that outlives the
+          // claim by more than 90s would otherwise keep a valid lease and lose the token it
+          // holds it with. Skipped when the heartbeat matched nothing — a fenced, cancelled or
+          // finished job must not have its worker's credential extended.
+          if (outcome.ok) {
+            await renewRunTokenTtl(tx, ctx, {
+              jobRunId: scope.jobRunId,
+              leaseEpoch: body.leaseEpoch,
+              leaseExpiresAt: outcome.value.leaseExpiresAt,
+            });
+          }
+          return outcome;
+        }),
       );
       // `cancel` never reaches here: a cancelled run answers 410 JOB_CANCELLED, which is the
       // stronger statement. `drain` is a host-level decision and is answered by the WORKER

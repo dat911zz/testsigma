@@ -6,7 +6,6 @@ import { sql } from "drizzle-orm";
 import {
   check,
   date,
-  index,
   integer,
   pgPolicy,
   pgTable,
@@ -30,8 +29,13 @@ export const usageCounters = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    /*
+     * The PRIMARY KEY is the read index too. There was a second `usage_counters_team_idx` over
+     * the same three columns in the same order — byte-for-byte the btree Postgres already builds
+     * for the key — so it doubled the write cost of every quota reservation and answered no
+     * query the PK could not. Dropped in 0042; `schema-0042.test.ts` reads `pg_indexes` back.
+     */
     primaryKey({ columns: [t.teamId, t.metric, t.windowStart] }),
-    index("usage_counters_team_idx").on(t.teamId, t.metric, t.windowStart),
     check("usage_counters_used_check", sql`${t.used} >= 0`),
     pgPolicy("tenant_isolation", {
       as: "permissive",

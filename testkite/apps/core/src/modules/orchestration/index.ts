@@ -33,6 +33,7 @@ export {
   WORKER_TOKEN_TTL_HOURS,
   mintRunToken,
   registerWorker,
+  renewRunTokenTtl,
   revokeRunTokensFor,
   touchWorker,
   verifyRunToken,

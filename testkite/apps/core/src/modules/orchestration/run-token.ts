@@ -18,6 +18,7 @@ import { sql } from "drizzle-orm";
 import {
   assertTenantContext,
   firstRow,
+  rowsOf,
   withAuthRole,
   withDispatchRole,
   type TenantContext,
@@ -269,9 +270,59 @@ export async function verifyRunToken(
 }
 
 /**
- * Called whenever ownership of a job changes — reap, cancel, complete: the token dies with the
- * lease. Belt and braces alongside the epoch fence, and the cheaper of the two for the worker,
- * which then gets a 401 on its next call instead of discovering the loss on a mutation.
+ * Pushes a live run token's expiry out to the lease deadline the heartbeat just wrote, plus the
+ * same slack the claim used. Called in the SAME transaction as `heartbeatJob`, from the job
+ * heartbeat handler, and nowhere else.
+ *
+ * It is not a nicety, for exactly the reason `touchWorker` renews the worker token: `expires_at`
+ * is stamped once at claim time as `lease_expires_at + 60s`, i.e. 90 seconds after the claim,
+ * while the lease itself is renewed by every heartbeat and a chain's budget reaches 900s.
+ * Without this, a worker that is still the rightful owner of a running job — beating every 5s,
+ * holding a real browser context — loses its credential a minute and a half in, and every call
+ * from there is a 401 that tells it to exit and re-register over a job running perfectly.
+ *
+ * The fence is `lease_epoch`, not just the job id: a worker that was reaped mid-flight carries
+ * an older epoch, so its heartbeat matches zero rows in `job_runs` and can therefore never reach
+ * here — and if it somehow did, this UPDATE would match nothing either. `revoked_at IS NULL`
+ * keeps a revoked token dead: renewal extends a live credential, it never resurrects one.
+ *
+ * Returns how many tokens were renewed, so a caller (or a test) can tell "renewed" from
+ * "matched nothing" instead of assuming.
+ */
+export async function renewRunTokenTtl(
+  tx: TkTx,
+  ctx: TenantContext,
+  input: {
+    readonly jobRunId: string;
+    readonly leaseEpoch: number;
+    readonly leaseExpiresAt: Date;
+  },
+): Promise<number> {
+  const teamId = assertTenantContext(ctx);
+  const expiresAt = new Date(
+    input.leaseExpiresAt.getTime() + RUN_TOKEN_TTL_SLACK_SECONDS * 1000,
+  );
+  const renewed = rowsOf(
+    await tx.execute(sql`
+      UPDATE orc_run_tokens SET expires_at = ${tsOf(expiresAt)}
+       WHERE team_id = ${teamId} AND job_run_id = ${input.jobRunId}
+         AND lease_epoch = ${input.leaseEpoch} AND revoked_at IS NULL
+      RETURNING id`),
+  );
+  return renewed.length;
+}
+
+/**
+ * The ONE production call site is the infra-requeue branch of `internalComplete`: ownership has
+ * just moved to the next attempt, so the credential minted for the old one dies with the lease
+ * it named. Belt and braces alongside the epoch fence, and the cheaper of the two for the
+ * worker, which then gets a 401 on its next call instead of discovering the loss on a mutation.
+ *
+ * Deliberately NOT called on the terminal path (a `complete` is delivered at least once, and a
+ * retry must read 410 JOB_TERMINAL rather than 401) and NOT called by the reaper, which runs on
+ * the dispatch role with no tenant in hand: a reaped job's token is fenced by its epoch and
+ * lapses on its own TTL, since the heartbeat that would have renewed it stops matching rows.
+ * `revokeRunTokensFor call sites` in run-token-ttl.test.ts is the tripwire for this sentence.
  *
  * Tenant-scoped like every other request-path write, so revoking is something only the owning
  * team's context can do; another team's call matches zero rows and says nothing about whether
