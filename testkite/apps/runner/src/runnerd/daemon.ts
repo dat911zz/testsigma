@@ -109,6 +109,15 @@ export class Runnerd {
     }
   }
 
+  /**
+   * The interval stays REF'd on purpose, and `unref()` here would be fatal: `runnerd/main.ts` has
+   * a synchronous body, opens no listening socket (commands ride back on the heartbeat response —
+   * see the header) and registers only signal handlers, which Node does not count towards keeping
+   * the loop alive. This timer is therefore the ONLY thing holding the daemon's process open; an
+   * unref'd one made `runnerd.service` log "runnerd up" and exit 0 before its first register, a
+   * clean exit systemd's `Restart=on-failure` would not even restart. `stop()` is what releases
+   * it, so a ref'd interval costs nothing at shutdown (`test/runnerd/daemon-liveness.test.ts`).
+   */
   start(): void {
     if (this.#timer !== null) return;
     this.#timer = setInterval(() => {
@@ -122,7 +131,6 @@ export class Runnerd {
         this.#inFlight = false;
       });
     }, this.#intervalMs);
-    this.#timer.unref?.();
   }
 
   stop(): void {
