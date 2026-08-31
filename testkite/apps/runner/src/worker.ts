@@ -34,7 +34,7 @@
  * soak. Every payload is still built by the CONTRACT'S OWN schemas inside `control-plane-client.ts`,
  * so a shape this worker cannot legally express fails at compile time rather than in production.
  */
-import { infraErrorSchema, UnauthorizedError } from "@testkite/contract";
+import { infraErrorSchema, UnauthorizedError, type FieldMap } from "@testkite/contract";
 import type { ChainPlan, ScreenshotPolicy } from "@testkite/run-compiler";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm } from "node:fs/promises";
@@ -232,6 +232,35 @@ function settledVerdict(chainVerdict: ChainOutcome["verdict"], cancelled: boolea
   if (cancelled) return "cancelled";
   return chainVerdict === "infra_error" ? null : chainVerdict;
 }
+
+/**
+ * Which field of the wire DTO comes from which field of the executor's outcome — the direction
+ * that just gained two fields in D1 (`execSeq`, `loopPath`), and the easiest place to drop a
+ * third. `#completedSteps` is the body this table describes.
+ *
+ * EXPORTED, not file-local: a type-level guard cannot prove the body copies what the table names,
+ * so apps/runner/test/arch/field-map-drops.test.ts pins the set of `null` entries — and that test
+ * has to live in THIS app, because no test in apps/core can resolve this module (the two apps are
+ * peers with no dependency between them).
+ */
+export const COMPLETED_STEP_FIELDS = {
+  caseId: "caseId",
+  ordinal: "ordinal",
+  execSeq: "execSeq",
+  loopPath: "loopPath",
+  status: "status",
+  durationMs: "durationMs",
+  renderedSentence: "renderedSentence",
+  // Built here rather than copied: the executor reports a `message`, the wire wants a context
+  // object, and only a failed step gets one.
+  failureContext: "message",
+  // Translated, not copied: the executor knows a content hash, the plane wants the artifact id
+  // the upload came back with.
+  screenshotArtifactId: "screenshotSha256",
+  // TODO(M4): no ThumbHash encoder in this image, so the field travels as an explicit null
+  // instead of being implied by the contract default.
+  thumbhash: null,
+} satisfies FieldMap<CompletedStep, StepOutcome>;
 
 export class Worker {
   readonly #deps: WorkerDeps;
@@ -566,6 +595,9 @@ export class Worker {
    * LAST sentence written won the key and the report narrated the wrong step. The executor holds
    * the plan node at emission time and now carries the sentence on the outcome itself, which
    * needs no key at all.
+   *
+   * `COMPLETED_STEP_FIELDS` above is the fence around this mapping: a field added to the wire DTO
+   * makes that table incomplete and `pnpm typecheck` fails naming it.
    */
   #completedSteps(
     steps: readonly StepOutcome[],

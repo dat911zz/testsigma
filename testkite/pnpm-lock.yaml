@@ -75,6 +75,9 @@ importers:
       jose:
         specifier: ^6.2.10
         version: 6.2.10
+      typescript:
+        specifier: ~5.7.3
+        version: 5.7.3
 
   apps/runner:
     dependencies:

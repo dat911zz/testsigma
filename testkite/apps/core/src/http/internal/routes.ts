@@ -29,6 +29,7 @@ import {
   UnauthorizedError,
   ValidationFailedError,
   workerHeartbeatRequestSchema,
+  type FieldMap,
   type InternalRouteDescriptor,
 } from "@testkite/contract";
 import { withTenant, type KernelEnv, type TenantContext, type TkDb } from "../../modules/kernel/index.js";
@@ -180,6 +181,32 @@ function withExecSeq(steps: readonly CompletedStep[]): readonly IdentifiedStep[]
   }
   return identified;
 }
+
+/**
+ * Which wire field of a step lands where in a `res_step_results` row.
+ *
+ * `Src` is `IdentifiedStep`, the type `toCaseResults` actually consumes, not the raw wire
+ * `CompletedStep`: the key set is the same today, and naming the real parameter type keeps the
+ * table honest if `IdentifiedStep` ever gains a field of its own.
+ *
+ * EXPORTED because a type-level guard cannot prove the mapping below copies what this table
+ * names; apps/core/test/arch/adapter-guard.test.ts pins the one `null` entry so a second drop
+ * would have to edit a test as well.
+ */
+export const STEP_RESULT_FIELDS = {
+  // Consumed by the grouping below — one res_case_results row per caseId — so it is deliberately
+  // absent from the step row, where it would repeat on every step of the case.
+  caseId: null,
+  ordinal: "ordinal",
+  execSeq: "execSeq",
+  loopPath: "loopPath",
+  status: "verdict",
+  durationMs: "durationMs",
+  renderedSentence: "renderedSentence",
+  failureContext: "failureContext",
+  screenshotArtifactId: "screenshotArtifactId",
+  thumbhash: "thumbhash",
+} satisfies FieldMap<IdentifiedStep, StepResultInput>;
 
 /**
  * The worker reports a FLAT list of steps carrying their own caseId; `res_case_results` wants

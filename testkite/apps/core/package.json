@@ -25,6 +25,7 @@
     "@electric-sql/pglite": "^0.5.8",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.10",
-    "jose": "^6.2.10"
+    "jose": "^6.2.10",
+    "typescript": "~5.7.3"
   }
 }

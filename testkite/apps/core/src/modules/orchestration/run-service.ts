@@ -13,12 +13,19 @@
  */
 import { sql } from "drizzle-orm";
 import type {
+  ActionStepDto,
   AuthoredCaseDto,
   AuthoredStepDto,
   CompileDiagnosticDto,
   CompileSnapshotDto,
+  FieldMap,
+  ForStepDto,
+  IfStepDto,
+  RestStepDto,
   RunChainDto,
   RunStatusDto,
+  StepGroupStepDto,
+  WhileStepDto,
 } from "@testkite/contract";
 import {
   compileRun,
@@ -369,6 +376,92 @@ export async function abortRun(
 }
 
 /**
+ * The field maps for the three adapters below.
+ *
+ * The switch in `toAuthoredStep` is exhaustive on `kind`, so a NEW KIND turns the compiler red on
+ * its own. Nothing was watching the other axis — a new FIELD on a kind that already exists — and
+ * because every destination field is optional, dropping one compiles fine and shows up as missing
+ * data in a report, months later. `FieldMap` is that second axis: every DTO field, optional ones
+ * included, must appear in the table below or `satisfies` fails and names it.
+ *
+ * EXPORTED because a type-level guard cannot prove the function BODY copies what the table names.
+ * apps/core/test/arch/adapter-guard.test.ts pins the set of `null` entries — the shape a
+ * deliberate drop takes — so dropping a field silently would have to edit a test as well. That set
+ * is empty for these three adapters: everything the DTO carries crosses the boundary.
+ */
+export const ADAPTER_FIELD_MAPS = {
+  compileSnapshot: {
+    teamId: "teamId",
+    projectId: "projectId",
+    targetCaseIds: "targetCaseIds",
+    cases: "cases",
+    elements: "elements",
+    dataProfiles: "dataProfiles",
+    env: "env",
+  } satisfies FieldMap<CompileSnapshotDto, CompileSnapshot>,
+
+  authoredCase: {
+    id: "id",
+    revisionId: "revisionId",
+    name: "name",
+    isStepGroup: "isStepGroup",
+    prereqCaseId: "prereqCaseId",
+    dataProfileId: "dataProfileId",
+    steps: "steps",
+  } satisfies FieldMap<AuthoredCaseDto, AuthoredCase>,
+
+  /**
+   * One table per union member: the DTO's fields differ by `kind`, so a single table would be
+   * either too wide (accepting a field on a variant that has none) or too narrow. `AuthoredStep`
+   * is one interface with every kind-specific field optional, so `keyof Dst` is the same union
+   * for all six.
+   */
+  authoredStep: {
+    action: {
+      kind: "kind",
+      ordinal: "ordinal",
+      renderedSentence: "renderedSentence",
+      verbOpKey: "verbOpKey",
+      args: "args",
+      elementId: "elementId",
+    } satisfies FieldMap<ActionStepDto, AuthoredStep>,
+    stepGroup: {
+      kind: "kind",
+      ordinal: "ordinal",
+      renderedSentence: "renderedSentence",
+      stepGroupCaseId: "stepGroupCaseId",
+    } satisfies FieldMap<StepGroupStepDto, AuthoredStep>,
+    if: {
+      kind: "kind",
+      ordinal: "ordinal",
+      renderedSentence: "renderedSentence",
+      conditionExpected: "conditionExpected",
+      children: "children",
+    } satisfies FieldMap<IfStepDto, AuthoredStep>,
+    for: {
+      kind: "kind",
+      ordinal: "ordinal",
+      renderedSentence: "renderedSentence",
+      loopDataProfileId: "loopDataProfileId",
+      children: "children",
+    } satisfies FieldMap<ForStepDto, AuthoredStep>,
+    while: {
+      kind: "kind",
+      ordinal: "ordinal",
+      renderedSentence: "renderedSentence",
+      maxIterations: "maxIterations",
+      children: "children",
+    } satisfies FieldMap<WhileStepDto, AuthoredStep>,
+    rest: {
+      kind: "kind",
+      ordinal: "ordinal",
+      renderedSentence: "renderedSentence",
+      args: "args",
+    } satisfies FieldMap<RestStepDto, AuthoredStep>,
+  },
+} as const;
+
+/**
  * `CompileSnapshotDto` (contract) and `CompileSnapshot` (compiler) describe the same data,
  * but the contract writes every optional as `?: T | undefined` — the shape zod infers — while
  * the compiler writes `?: T`. Under `exactOptionalPropertyTypes` those are NOT assignable, so
@@ -379,6 +472,10 @@ export async function abortRun(
  * optional in only when it holds a value is also what keeps an explicit `undefined` out of the
  * plan — the compiler hashes an absent field and an `undefined` one identically, but only
  * because `canonicalJson` drops it; nothing downstream should have to rely on that.
+ *
+ * The fence around the rebuild is `ADAPTER_FIELD_MAPS` right above: a field added to the DTO
+ * makes the table incomplete and `pnpm typecheck` fails naming it, instead of the field quietly
+ * arriving as `undefined` on the other side.
  */
 function toCompileSnapshot(dto: CompileSnapshotDto): CompileSnapshot {
   const cases: Record<string, AuthoredCase> = {};
