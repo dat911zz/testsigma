@@ -24,6 +24,15 @@ export {
   RELAY_ROLE,
   relayRole,
 } from "./db/schema.js";
+// Deployment-level isolation: which LOGIN roles hold the four roles above, and how. RLS says
+// nothing about that, and the answer is what decides whether a forgotten `withTenant` fails
+// closed or reads every tenant — see db/role-separation.ts.
+export {
+  TESTKITE_SUB_ROLES,
+  roleSeparationViolations,
+  type RoleSeparationViolation,
+  type RoleSeparationViolationKind,
+} from "./db/role-separation.js";
 export { MissingTenantContextError, TenantRepo, assertTenantContext } from "./db/repo.js";
 export { createDb, type DbHandle } from "./db/client.js";
 export type { TenantContext, TkDb, TkTx } from "./db/types.js";

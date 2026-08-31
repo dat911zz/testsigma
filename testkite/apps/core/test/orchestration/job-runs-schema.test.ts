@@ -79,6 +79,13 @@ describe("job_runs — queue of record", () => {
 
   it("does NOT grant the dispatch role to the app role (permissive policies OR across inherited roles)", async () => {
     // Spike 2026-08-29: granting testkite_dispatch to testkite_app made team A see all 5 rows.
+    //
+    // ONE EDGE of the invariant, kept here because it runs on PGlite: a dev box without
+    // Postgres still gets this much. It is blind to the two shapes that matter most in a real
+    // deployment — a LOGIN role inheriting both, and any violation reached through an
+    // intermediate role (this direct-edge query returns 0 for a two-hop grant, measured
+    // 2026-08-31). The full invariant — transitive closure, per-grant inheritance,
+    // superuser/BYPASSRLS logins — is test/schema/role-separation.test.ts, on real Postgres.
     const r = await t.db.execute(sql`
       SELECT count(*)::int n FROM pg_auth_members m
       JOIN pg_roles granted ON granted.oid = m.roleid

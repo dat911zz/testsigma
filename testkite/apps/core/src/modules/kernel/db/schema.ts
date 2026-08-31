@@ -60,6 +60,15 @@ export const authRole = pgRole(AUTH_ROLE);
  *      policies are OR-ed across INHERITED roles: `GRANT testkite_dispatch TO testkite_app`
  *      made a team-A session read all 5 rows of both teams. job-runs-schema.test.ts asserts
  *      the membership does not exist.
+ *
+ * Guardrail 2 is ONE EDGE of the invariant, not all of it. The second dangerous edge is a
+ * LOGIN role that INHERITS both roles: measured 2026-08-31, such a login reads every team's
+ * job_runs on any statement that forgets `SET ROLE`, and neither policy nor GRANT can see it —
+ * it is a property of the DEPLOYMENT's role graph, and a two-hop grant hides it from a
+ * direct-edge query entirely. The full invariant (transitive closure, per-grant inheritance,
+ * superuser/BYPASSRLS logins) lives in `role-separation.ts` and is asserted against a real
+ * cluster by `test/schema/role-separation.test.ts`; how to grant it correctly is
+ * `testkite/docs/runbook-db-roles.md` + `scripts/grant-db-roles.sql`.
  */
 export const DISPATCH_ROLE = "testkite_dispatch" as const;
 export const dispatchRole = pgRole(DISPATCH_ROLE);
