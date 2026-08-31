@@ -387,6 +387,19 @@ Milestone M2 (Identity/RBAC/audit/token + Authoring/revision/review — đườn
 - NIT-32 — `client_secret` plaintext là nợ kỹ thuật đã ghi tường minh tại chỗ (`identity/db/schema.ts` ~220); envelope encryption thuộc module `sec_` của M4, không vá lẻ trong polish.
 - SEC-audit-read-all-unwired — permission `audit:read:all` (HIGH_RISK, break-glass) hiện chỉ tồn tại trong `permissions.ts` + test, chưa route nào dùng — vô hiệu ở tầng thực thi, không phải lỗ hổng khai thác được; route break-glass đọc audit cross-team thuộc phạm vi mở rộng governance M4, ghi vào backlog để ma trận RBAC không bị đọc nhầm là "đã có kiểm soát này".
 
+### 10.2. M3 — bài học kiến trúc từ polish wave (31-08-2026, chi tiết ở `testkite/tasks/M3-polish-report.md`)
+
+M3 (orchestration + fleet) dạy đúng một điều lặp lại dưới nhiều mặt nạ: **lớp lỗi đắt nhất không nằm trong logic nghiệp vụ mà ở tầng dưới nó — DB, tiến trình, đồng hồ, gate — và tầng đó chỉ lộ ra khi bị đo bằng thứ thật.** Tám luật rút ra, giữ cho M4→M9:
+
+- **Vị từ đọc snapshot, khoá mới độc quyền.** Mọi `NOT EXISTS`/`WHERE NOT EXISTS` gộp chung với `FOR UPDATE` đều có cửa sổ đua: câu lệnh tính vị từ trên snapshot lúc BẮT ĐẦU rồi mới giành khoá. Luật: **giành khoá trước (`INSERT … ON CONFLICT DO NOTHING`, hoặc tách hai câu), hỏi sau** (`c0c2f42`, `91ce28d`).
+- **Test đồng thời trên PGlite là FALSE GREEN** — một kết nối wasm thì "song song" chỉ là xếp hàng. Mọi khẳng định nguyên tử phải có file `test/concurrency/*` trên Postgres thật, nhiều `pg.Pool` độc lập, `warmPool` + gate mở khi tất cả đã BEGIN, và phải **đột biến bản đang chạy** để chứng minh test đỏ được.
+- **Danh tính phải duy nhất theo TIẾN TRÌNH, không theo host.** `holder = me` là RENEW chứ không phải giành quyền, nên hostname trùng ⇒ split-brain **vĩnh viễn** với epoch đứng yên — không phải cửa sổ tự sửa (`8b08b68`).
+- **Credential có TTL phải có đường gia hạn nằm cùng transaction với lease nó bám vào.** TTL đóng dấu một lần đo "thời gian kể từ restart", không đo thời gian im lặng — và cửa sổ trượt phải chứng minh cả hai vế: gia hạn khi còn thở, **chết đúng hạn khi ngừng thở** (`b873258`, `e4d2028`).
+- **Một trần chỉ tồn tại nếu nó nằm trong chữ ký / trong constraint.** Trần kiểm ở tầng ứng dụng rồi ký một URL không ràng buộc, hoặc luật đọc `MAX(attempt)` đứng trên một unique key chứa cột do caller đưa vào, đều là lời khuyên chứ không phải cưỡng chế (`e4d2028`, `91ce28d`).
+- **Gate xanh mà không đo gì tệ hơn không có gate.** Mỗi gate phải có **negative control** chạy trước nó; và phải kiểm chính cơ chế "xanh giả": regex neo sai, `vitest run` trên file skip hết vẫn exit 0, `systemd-analyze verify` exit 0 kể cả khi in lỗi, grep hỏng trả stdout rỗng làm `[ "" -ne N ]` tự lỗi ⇒ self-check báo "đạt" (`95f1c26`).
+- **Test trên FAKE về nguyên tắc mù với cả một lớp lỗi** — ref/unref của handle thật, argv thật của browser, cgroup thật. Vì vậy mọi khẳng định phải ghi rõ **CI chứng minh gì / chỉ host thật chứng minh được gì**, và tài liệu không được nói ngược code (`c469779`, `1eb21bd`).
+- **Test khẳng định đại lượng nó không điều khiển là flaky theo thiết kế** — đồng hồ tường, `sleep` cứng. Tiêm đồng hồ qua cổng, hoặc poll tới trần đã đo. Dự án này đã trả giá: một test dán nhãn "flaky" từng che giấu một race THẬT suốt 2 milestone (`0ba1d18`, `96a38ab`).
+
 ---
 
 ## Phụ lục A — File đáng chú ý nhất
