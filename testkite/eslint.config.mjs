@@ -34,6 +34,15 @@ const SERVICE_MODULES = "^(pg|pg-[^\\/]*|postgres|drizzle-orm|drizzle-kit|bullmq
 const QUEUE_MODULES = "^(bullmq|ioredis)(\\/|$)";
 /** Twin of the runner's `no-restricted-imports` group — edit one, edit the other. */
 const RUNNER_FORBIDDEN_MODULES = "^(@testkite\\/core|pg|pg-[^\\/]*|postgres|drizzle-orm|drizzle-kit)(\\/|$)";
+/**
+ * Shared by `BROWSER_DRIVER_IMPORTS` and its `await import()` twin below — one string, so the
+ * static and dynamic forms cannot drift apart. The SCOPED alternative is spelled out rather
+ * than left to a bare `playwright` prefix: `@playwright/test` puts the scope first, so any
+ * pattern anchored on the driver name never sees it (the same hole the CI browser gates carried
+ * until 31-08-2026).
+ */
+const BROWSER_DRIVER_MODULES =
+  "^(playwright|playwright-[^\\/]*|@playwright\\/[^\\/]*|puppeteer|puppeteer-[^\\/]*)(\\/|$)";
 
 /**
  * L1 isolation (blueprint §3). A raw `TkDb` carries NO tenant: it hasn't run
@@ -64,6 +73,47 @@ const rawDbQuery = {
   selector: `MemberExpression[property.name=/${DB_QUERY_ENTRYPOINTS}/]:matches([object.name=/${RAW_DB_RECEIVER}/], [object.property.name=/${RAW_DB_RECEIVER}/])`,
   message:
     "L1 isolation: building a query on a raw DB handle is forbidden — the raw handle has neither an app role nor app.team_id, so RLS filters nothing. Go through withTenant(db, ctx, tx => …) or TenantRepo (docs/SYSTEM_DESIGN.md §3).",
+};
+
+/**
+ * The runner's two bans, hoisted to constants because TWO blocks now configure these rules for
+ * runner files. Flat config REPLACES a rule's options rather than merging them, so the browser
+ * adapter's override has to restate every ban it still wants — sharing the objects is what stops
+ * the override from silently becoming a hole in the zero-credential rule as well.
+ */
+const RUNNER_ZERO_CREDENTIAL_IMPORTS = {
+  group: [
+    "@testkite/core", "@testkite/core/*",
+    "pg", "pg-*", "postgres",
+    "drizzle-orm", "drizzle-orm/*", "drizzle-kit",
+  ],
+  message:
+    "The runner is zero-credential and process-separate: it must not import the core app or any DB driver. Talk to the control plane through src/control-plane-client.ts (docs/SYSTEM_DESIGN.md §5).",
+};
+const RUNNER_ZERO_CREDENTIAL_DYNAMIC = {
+  selector: dynamicImportOf(RUNNER_FORBIDDEN_MODULES),
+  message:
+    "The runner is zero-credential and process-separate: `await import()` of the core app or a DB driver ships the same driver into the worker image. Talk to the control plane through src/control-plane-client.ts (docs/SYSTEM_DESIGN.md §5).",
+};
+/**
+ * `regex`, not `group`, and it is the SAME string the dynamic twin uses — which is the point:
+ * the two copies can no longer drift because there is only one copy.
+ *
+ * `group` was measured wrong here on 31-08-2026: its patterns are gitignore-style and match any
+ * PATH SEGMENT, so `playwright-*` flagged `import { launchPlaywrightEngine } from
+ * "./browser/playwright-engine.js"` — a relative import of the adapter, i.e. exactly the
+ * architecture this rule is meant to protect. A rule that fires on correct code is a rule that
+ * gets deleted. The regex is anchored with `^`, so only a bare module specifier can match.
+ */
+const BROWSER_DRIVER_IMPORTS = {
+  regex: BROWSER_DRIVER_MODULES,
+  message:
+    "Only src/browser/playwright-engine.ts may import a browser driver. Everywhere else in the runner drives the browser through the BrowserEngine port, so swapping or faking the driver stays a one-file change (docs/SYSTEM_DESIGN.md §5).",
+};
+const BROWSER_DRIVER_DYNAMIC = {
+  selector: dynamicImportOf(BROWSER_DRIVER_MODULES),
+  message:
+    "Only src/browser/playwright-engine.ts may import a browser driver — `await import(\"playwright-core\")` loads the very same driver into the very same file. Go through the BrowserEngine port (docs/SYSTEM_DESIGN.md §5).",
 };
 
 export default [
@@ -242,33 +292,35 @@ export default [
      * `no-restricted-syntax` carries the twin regex for `await import(...)`, which
      * `no-restricted-imports` cannot see (see the note on `dynamicImportOf` above) — the two
      * lists must stay in sync.
+     *
+     * The second ban is the BROWSER DRIVER. "playwright-engine.ts is the only file that touches
+     * Playwright" was written as a comment and measured true by grep, which is exactly the state
+     * the other twelve architecture rules here were promoted out of: a property nothing enforces
+     * is a property that holds until the first hurried diff.
      */
     files: ["**/apps/runner/src/**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
-        {
-          patterns: [
-            {
-              group: [
-                "@testkite/core", "@testkite/core/*",
-                "pg", "pg-*", "postgres",
-                "drizzle-orm", "drizzle-orm/*", "drizzle-kit",
-              ],
-              message:
-                "The runner is zero-credential and process-separate: it must not import the core app or any DB driver. Talk to the control plane through src/control-plane-client.ts (docs/SYSTEM_DESIGN.md §5).",
-            },
-          ],
-        },
+        { patterns: [RUNNER_ZERO_CREDENTIAL_IMPORTS, BROWSER_DRIVER_IMPORTS] },
       ],
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector: dynamicImportOf(RUNNER_FORBIDDEN_MODULES),
-          message:
-            "The runner is zero-credential and process-separate: `await import()` of the core app or a DB driver ships the same driver into the worker image. Talk to the control plane through src/control-plane-client.ts (docs/SYSTEM_DESIGN.md §5).",
-        },
-      ],
+      "no-restricted-syntax": ["error", RUNNER_ZERO_CREDENTIAL_DYNAMIC, BROWSER_DRIVER_DYNAMIC],
+    },
+  },
+  {
+    /**
+     * THE adapter — the one file the rule above exists to carve out. Keyed to the exact path,
+     * not to `browser/`, so a second driver-aware file next to it is still caught.
+     *
+     * It restates the zero-credential ban rather than inheriting it: flat config overwrites a
+     * rule's options wholesale, so an override that listed nothing would hand this file a free
+     * pass on `pg` and `@testkite/core` too. `tools/lint-rules.test.ts` holds a fixture for
+     * precisely that mistake.
+     */
+    files: ["**/apps/runner/src/browser/playwright-engine.ts"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [RUNNER_ZERO_CREDENTIAL_IMPORTS] }],
+      "no-restricted-syntax": ["error", RUNNER_ZERO_CREDENTIAL_DYNAMIC],
     },
   },
 ];

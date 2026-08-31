@@ -97,9 +97,33 @@ jobs:
       #  - MANIFEST: một dependency được khai báo — chính nó mới là thứ nhét binary vào image,
       #    kể cả khi chưa dòng nào import. `--include` của grep lọc cả file chỉ đích danh trên
       #    dòng lệnh, nên package.json phải là lệnh riêng.
+      #  - SCOPE: bản 31-08-2026 neo tên driver NGAY SAU dấu nháy, nên `import test from
+      #    "@playwright/test"` (scope `@playwright/` đứng trước) lọt qua — đo thực nghiệm:
+      #    pattern cũ khớp 1/3 dạng xấu, pattern mới khớp 3/3. Một gate im lặng không phân biệt
+      #    được với một cây sạch, nên NEGATIVE CONTROL chạy TRƯỚC khi quét cây thật: pattern
+      #    nào không còn bắt cả ba dạng đã biết thì tự tố cáo ngay tại đây.
       - name: Gate — no browser in API image (apps/core must stay browser-free)
         run: |
-          if grep -rEn "['\"](playwright|puppeteer|chromium)[a-z0-9@/.-]*['\"]" testkite/apps/core/src --include='*.ts'; then
+          set -euo pipefail
+          SPECIFIER="['\"](@?[a-z0-9@/.-]*)(playwright|puppeteer|chromium)[a-z0-9@/.-]*['\"]"
+          KNOWN_BAD=$(cat <<'SAMPLE'
+          import test from "@playwright/test";
+          import { chromium } from "playwright-core";
+          const pw = require("@playwright/test");
+          SAMPLE
+          )
+          # String comparison, never `-ne`: an unparseable regex makes grep exit 2 with EMPTY
+          # stdout, and `[ "" -ne 3 ]` is itself an ERROR (exit 2), which an `if` reads as
+          # false — the self-check would then print "passed" for a pattern that matches
+          # nothing. Measured 31-08-2026 while writing this step. `!=` is fail-closed: empty,
+          # "0" and "2" all differ from "3".
+          HITS=$(printf '%s\n' "$KNOWN_BAD" | grep -cE "$SPECIFIER" || true)
+          if [ "$HITS" != "3" ]; then
+            echo "::error::Browser-gate self-check FAILED: the pattern matched '$HITS' of the 3 known-bad import forms (empty means grep could not even parse it). Fix the pattern before trusting a clean scan — a gate that matches nothing looks exactly like a clean tree."
+            exit 1
+          fi
+          echo "Browser gate self-check: pattern matches all 3 known-bad forms."
+          if grep -rEn "$SPECIFIER" testkite/apps/core/src --include='*.ts'; then
             echo "::error::apps/core imports a browser driver (line above). Running tests is a capability of the fleet (apps/runner), never of the API image."
             exit 1
           fi
@@ -121,10 +145,34 @@ jobs:
       # A name-grep would paint both red forever, and a permanently red gate is a gate nobody reads.
       # Measured both ways 31-08-2026: 0 hits across apps/core/src + packages/*/src, 2 hits in
       # apps/runner/src/browser/playwright-engine.ts (so the pattern does find a real import).
+      #
+      # Cùng lỗ hổng SCOPE như step trên: bản cũ neo `playwright` ngay sau dấu nháy nên
+      # `import test from "@playwright/test"` và `require("@playwright/test")` đi lọt (đo
+      # 31-08-2026: 1/3). Negative control ở đầu step chạy pattern trên 5 dòng mẫu — 3 dạng
+      # xấu + 2 decoy HỢP LỆ có thật trong cây (comment `// TODO(M4)` của verb-kit và literal
+      # `"chromium-headless-shell"` của run-compiler) — và đòi ĐÚNG 3 hit: thiếu thì gate mù,
+      # thừa thì gate đỏ vĩnh viễn. Cả hai đều là gate không ai đọc nữa.
       - name: Gate — playwright only in the runner image
         run: |
           set -euo pipefail
-          IMPORTS='^\s*(import|export)[^\x22\x27]*[\x22\x27](playwright|puppeteer)[a-z0-9@/.-]*[\x22\x27]|(import|require)\(\s*[\x22\x27](playwright|puppeteer)'
+          IMPORTS='^\s*(import|export)[^\x22\x27]*[\x22\x27]@?[a-z0-9@.-]*/?(playwright|puppeteer)[a-z0-9@/.-]*[\x22\x27]|(import|require)\(\s*[\x22\x27]@?[a-z0-9@.-]*/?(playwright|puppeteer)'
+          SAMPLE=$(cat <<'SAMPLE'
+          import test from "@playwright/test";
+          import { chromium } from "playwright-core";
+          const pw = require("@playwright/test");
+          // TODO(M4): import type { Page } from "playwright-core"
+          const engine = "chromium-headless-shell";
+          SAMPLE
+          )
+          # `!=` and not `-ne`, for the reason spelled out in the step above: an empty $HITS
+          # from a grep that could not parse the pattern would make `[ "$HITS" -ne 3 ]` error
+          # out, and an erroring test reads as "condition false", i.e. as a pass.
+          HITS=$(printf '%s\n' "$SAMPLE" | grep -cP "$IMPORTS" || true)
+          if [ "$HITS" != "3" ]; then
+            echo "::error::Runner-only browser gate self-check FAILED: the pattern matched '$HITS' of the sample's 5 lines, expected exactly the 3 real imports (the other 2 lines are legitimate text that merely names a driver; an empty count means grep could not parse the pattern). Fix the pattern before trusting a clean scan."
+            exit 1
+          fi
+          echo "Runner-only browser gate self-check: 3 real imports caught, 2 decoys ignored."
           if grep -rPn "$IMPORTS" testkite/apps/core/src testkite/packages/*/src --include='*.ts'; then
             echo "::error::A browser driver is imported outside apps/runner (line above). Driving a browser is a capability of the fleet image only."
             exit 1
@@ -170,6 +218,9 @@ jobs:
       # apps/runner/src + apps/runner/test joined the list at M3-fleet T1, when the runner
       # stopped being a two-file stub: the fleet half of M3 is written here, and a tree that
       # is not scanned is a tree that drifts back to Vietnamese one comment at a time.
+      # apps/runner/deploy joined at the M3 polish wave for exactly that reason: the systemd
+      # units and runner-manifest.json ARE the fleet's production configuration — code by any
+      # useful definition — and they were the last unscanned tree under apps/.
       # packages/run-compiler/fixtures/ is deliberately OUT of scope here — it's compiler
       # test DATA (not src/), and its Vietnamese case/step names feed into the golden
       # contentHash, so translating it needs a dedicated, hash-verified golden regen
@@ -182,7 +233,7 @@ jobs:
           PATTERN='[àáảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬĐÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ]'
           TARGETS=(
             testkite/apps/core/src testkite/apps/core/test
-            testkite/apps/runner/src testkite/apps/runner/test
+            testkite/apps/runner/src testkite/apps/runner/test testkite/apps/runner/deploy
             testkite/packages/*/src testkite/tools
             testkite/*.mjs testkite/*.ts testkite/scripts
             testkite/apps/*/vitest.config.ts testkite/apps/*/drizzle.config.ts
@@ -238,6 +289,12 @@ jobs:
       # PostgreSQL 17 là ENGINE CÓ THẨM QUYỀN. PGlite (18.x wasm) chỉ là vòng lặp
       # nhanh cho dev; lệch hành vi giữa hai bên thì tin job này.
       TESTKITE_TEST_PG_URL: postgres://postgres:testkite@127.0.0.1:5432/testkite
+      # Không có URL ⇒ `describeRealPg` skip. Trên máy dev đó là đúng; ở ĐÂY nó là thảm hoạ
+      # im lặng: 12 file test/concurrency in ra chữ "skipped" và job vẫn XANH, tức job tồn tại
+      # để chứng minh tranh chấp khoá lại không chứng minh gì. Biến này khai báo Ý ĐỊNH, và
+      # `resolveRealPgMode` (apps/core/test/harness/realpg.ts) NÉM LỖI thay vì skip khi URL
+      # rỗng — tự chứng bằng test/harness/realpg-mode.test.ts.
+      TESTKITE_REQUIRE_PG: '1'
     steps:
       - uses: actions/checkout@v4
       - run: corepack enable
@@ -291,6 +348,34 @@ jobs:
       - name: Install chromium-headless-shell
         working-directory: testkite
         run: pnpm --filter @testkite/runner exec playwright-core install --with-deps chromium-headless-shell
+      # NƠI DUY NHẤT bất biến sandbox được nghiệm thu. `test/host/**` bị `vitest.config.ts`
+      # loại khỏi mọi lần chạy mặc định và chỉ được nhận lại bởi `TESTKITE_HOST_CGROUP=1` —
+      # biến mà script `test:host` tự đặt và trước đợt polish M3 KHÔNG job nào từng đặt, kể cả
+      # nightly ⇒ `test/host/chromium-sandbox.test.ts` chưa từng chạy trong bất kỳ pipeline nào.
+      #
+      # Nó phải chạy Ở ĐÂY và không ở đâu khác: dev/CI mặc định chạy uid 0, mà zygote của
+      # chromium TỪ CHỐI sandbox dưới root, nên `launchPlaywrightEngine` phải thêm
+      # `--no-sandbox`. Runner của GitHub chạy non-root — đúng hình thái production (uid 10001,
+      # docs/SYSTEM_DESIGN.md §5) — nên chỉ ở đây mới đọc được `/proc/<pid>/cmdline` của một
+      # lần launch MẶC ĐỊNH và khẳng định `--no-sandbox` VẮNG MẶT. Đừng tuyên bố ngược ở nơi
+      # khác: ngoài job này, "chromium có sandbox" là một giả định chưa ai đo.
+      #
+      # Đứng TRƯỚC soak: soak mất vài phút, và một sandbox hỏng là tin xấu phải biết ngay.
+      # Bằng chứng cần thấy ở nightly kế tiếp: số test của `test/host` > 0.
+      #
+      # Chốt uid ĐI KÈM, không phải trang trí: `chromium-sandbox.test.ts` tự skip khi uid = 0,
+      # và `vitest run` trên một file skip hết vẫn exit 0. Không có chốt này thì một runner đổi
+      # sang root sẽ biến step thành đúng thứ cả lô fix này đang dẹp — một gate xanh im lặng
+      # chẳng chứng minh gì. Đo cục bộ 31-08-2026 (sandbox này chạy root): 9 test, skip cả 9.
+      - name: Host-shape tests (chromium sandbox, cgroup v2)
+        working-directory: testkite
+        run: |
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then
+            echo "::error::This step runs as uid 0, so test/host/chromium-sandbox.test.ts skips itself and the step would pass while proving nothing. The sandbox invariant is only observable off root — keep this job on a non-root runner."
+            exit 1
+          fi
+          pnpm --filter @testkite/runner test:host
       - name: Soak 200 synthetic chains
         working-directory: testkite
         run: pnpm --filter @testkite/runner test:soak

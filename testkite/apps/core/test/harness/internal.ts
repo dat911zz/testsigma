@@ -166,6 +166,20 @@ export interface InternalTestApp {
   rewindFleetClock: (seconds: number) => Promise<void>;
   /** `expires_at` of the live run token for a job — the value a heartbeat is supposed to move. */
   runTokenExpiry: (jobRunId: string) => Promise<Date>;
+  /**
+   * `pg_get_constraintdef` of a named constraint on the MIGRATED database. The only way to
+   * assert what the column actually accepts: the schema file states an intent, the migrated
+   * constraint is what a worker's row will really be judged against.
+   */
+  constraintDef: (name: string) => Promise<string>;
+  /**
+   * Runs a statement the schema is expected to REFUSE, returning the whole Postgres cause chain.
+   * PGlite/drizzle bury the constraint name below `.cause` (see job-runs-schema.test.ts), so an
+   * assertion on `.message` alone would pass for any failure whatsoever — including a typo.
+   */
+  rejectionOf: (text: string, params: readonly unknown[]) => Promise<string>;
+  /** The team and run every seeded job belongs to — a valid FK target for a negative INSERT. */
+  seedIds: () => { readonly teamId: string; readonly runId: string };
 }
 
 type Shared = { readonly t: TestDb; readonly app: FastifyInstance };
@@ -357,6 +371,30 @@ export async function makeInternalTestApp(): Promise<InternalTestApp> {
       if (value === undefined) throw new Error(`runTokenExpiry: no live token for ${jobRunId}`);
       return value instanceof Date ? value : new Date(value);
     },
+    constraintDef: async (name: string): Promise<string> => {
+      const r = await t.raw.query<{ def: string }>(
+        `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = $1`,
+        [name],
+      );
+      const def = r.rows[0]?.def;
+      if (def === undefined) throw new Error(`constraintDef: no constraint named ${name}`);
+      return def;
+    },
+    rejectionOf: async (text: string, params: readonly unknown[]): Promise<string> => {
+      try {
+        await t.raw.query(text, [...params]);
+      } catch (err: unknown) {
+        const parts: string[] = [];
+        let cur: unknown = err;
+        while (cur instanceof Error) {
+          parts.push(cur.message);
+          cur = cur.cause;
+        }
+        return parts.join(" | ");
+      }
+      throw new Error("statement was expected to be rejected by Postgres, but it succeeded");
+    },
+    seedIds: () => ({ teamId: teamA.teamId, runId: started.runId }),
   };
 }
 

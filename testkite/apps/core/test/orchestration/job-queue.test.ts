@@ -14,8 +14,10 @@
  *    (same shape as run-service.test.ts).
  *  - the foreign job id comes from seedJobs()'s return value instead of a firstJobId() helper;
  *    the harness already answers that question, a second way to ask it would only drift.
- *  - four extra tests, one per EpochOutcome branch the plan's eight leave unexecuted: the
- *    happy heartbeat, `terminal`, `cancelled`, and requeue-at-the-head-of-THIS-team's-queue.
+ *  - five extra tests on top of the plan's eight, for thirteen in this file. Four cover an
+ *    EpochOutcome branch the plan leaves unexecuted — the happy heartbeat, `terminal`,
+ *    `cancelled`, and requeue-at-the-head-of-THIS-team's-queue — and the fifth covers the lane
+ *    filter, which decides which worker may even see a job.
  */
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

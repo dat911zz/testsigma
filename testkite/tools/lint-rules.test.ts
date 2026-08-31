@@ -118,6 +118,31 @@ describe("runner is process-separate and zero-credential", () => {
   });
 });
 
+describe("one file, and only one, may touch a browser driver", () => {
+  it("CATCHES playwright-core, @playwright/test and puppeteer outside the adapter", async () => {
+    const ids = await lintFixture("apps/runner/src/executor/browser-driver-forbidden.ts");
+    expect(ids.filter((r) => r === "no-restricted-imports")).toHaveLength(3);
+  });
+
+  it("CATCHES the dynamic form — `await import(\"playwright-core\")` and the scoped package", async () => {
+    const ids = await lintFixture("apps/runner/src/executor/browser-driver-dynamic.ts");
+    expect(ids.filter((r) => r === "no-restricted-syntax")).toHaveLength(2);
+  });
+
+  it("ALLOWS playwright-core inside browser/playwright-engine.ts — it IS the adapter", async () => {
+    expect(await lintFixture("apps/runner/src/browser/playwright-engine.ts")).toEqual([]);
+  });
+
+  it("keeps the zero-credential ban on the adapter's exemption — a browser is not a DB", async () => {
+    // The exemption lifts the browser rule for one path and nothing else, and it is keyed to
+    // that exact path rather than to `browser/`: this neighbour gets caught for BOTH.
+    const ids = await lintFixture(
+      "apps/runner/src/browser/playwright-engine-still-zero-credential.ts",
+    );
+    expect(ids.filter((r) => r === "no-restricted-imports")).toHaveLength(2);
+  });
+});
+
 describe("isolation L1 — no query builder on a raw DB handle", () => {
   it("CATCHES all five raw-handle queries in a module outside kernel", async () => {
     const ids = await lintFixture("apps/core/src/modules/authoring/raw-db-query.ts");

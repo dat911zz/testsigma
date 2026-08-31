@@ -11,6 +11,7 @@
  * instead of its production run.
  */
 import { z } from "zod";
+import { LANES } from "../enums.js";
 import { errorResponseSchema } from "./identity.js";
 import { defineRoute, type RouteDescriptor } from "./types.js";
 
@@ -26,7 +27,13 @@ const jobParams = z.object({ jobRunId: z.string().uuid() });
 const workerParams = z.object({ workerId: z.string().min(1).max(128) });
 /** Every job mutation carries it. NOT optional — a missing leaseEpoch is a 400, never a default. */
 const leaseEpoch = z.number().int().nonnegative();
-const lane = z.enum(["interactive", "batch"]);
+/**
+ * The SAME closed set the tenant plane and the two CHECK constraints use — re-typing the two
+ * literals here would let the fleet's wire schema and the `lane` column drift into disagreeing
+ * about what a lane is, and the only symptom would be a worker's request 400-ing (or worse,
+ * being accepted and then rejected by the column as a 500).
+ */
+const lane = z.enum(LANES);
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 
 export const registerRequestSchema = z.object({
