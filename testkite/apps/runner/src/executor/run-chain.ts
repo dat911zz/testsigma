@@ -53,8 +53,13 @@ class ChainTimeout extends Error {
 export async function runChain(chain: ChainPlan, policy: RunPolicy, deps: RunChainDeps): Promise<ChainOutcome> {
   const budget = budgetForChain(chain.stepCount);
   const chainMs = chain.timeoutSeconds * 1000;
-  // The plan's own stamped timeout wins; assertNested still guards the layers below it.
-  assertNested({ ...budget, chainMs: Math.max(chainMs, budget.stepMs + 1) });
+  // The plan's own stamped timeout wins, and the guard runs on THAT value — the one handed to the
+  // engine below and to `raceDeadline`. Clamping it here (`Math.max(chainMs, stepMs + 1)`) made
+  // the guard a no-op for the single shape it exists to catch: a plan whose chain budget is
+  // shorter than the step budget nested inside it. That plan is a compiler/runner disagreement
+  // about the timeout ladder, and it must fail before a browser is opened, not silently un-bound
+  // a layer. The compiler's floor is 180s, so no plan this runner is meant to execute trips it.
+  assertNested({ ...budget, chainMs });
 
   const contextId = `${chain.chainKey}#${deps.now()}`;
   const steps: StepOutcome[] = [];

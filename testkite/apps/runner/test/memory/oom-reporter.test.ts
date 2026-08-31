@@ -83,6 +83,44 @@ describe("OomReporter", () => {
     expect(reporter.check(null).killed).toBe(false);
   });
 
+  /**
+   * The whole point of this class is that the KERNEL, not the stack trace, decides whether
+   * chromium was killed. When the cgroup cannot be answered for, "no kill" is a guess, and a
+   * guess dressed as `killed: false` turns a real OOM into a healthy-looking chain.
+   */
+  it("does not claim there was no kill when the cgroup could not be read", () => {
+    const limiter = new FakeMemoryLimiter();
+    const reporter = new OomReporter(limiter);
+    reporter.baseline();
+    limiter.setUnreadable("memory.events unreadable (EISDIR)");
+    const finding = reporter.check(null);
+    expect(finding.unreadable).toMatch(/EISDIR/);
+    expect(finding.killed).toBe(false); // false means UNKNOWN here, and `unreadable` says so
+  });
+
+  it("carries an unreadable BASELINE forward: a delta against a number nobody read is not evidence", () => {
+    const limiter = new FakeMemoryLimiter();
+    const reporter = new OomReporter(limiter);
+    limiter.setUnreadable("memory.events is absent (ENOENT)");
+    reporter.baseline();
+    limiter.setUnreadable(null);
+    limiter.raiseOomKill();
+    const finding = reporter.check({ contextId: "ctx-3", rssBytes: 1 });
+    expect(finding.unreadable).toMatch(/ENOENT/);
+    expect(finding.killed).toBe(false);
+    expect(finding.blamedContextId).toBeNull(); // never blame a context on a guess
+  });
+
+  it("says nothing is unreadable on the happy path, so the flag stays meaningful", () => {
+    const limiter = new FakeMemoryLimiter();
+    const reporter = new OomReporter(limiter);
+    reporter.baseline();
+    limiter.raiseOomKill();
+    const finding = reporter.check(null);
+    expect(finding.unreadable).toBeNull();
+    expect(finding.killed).toBe(true);
+  });
+
   it("maps a finding to a RETRYABLE browser_oom infra error carrying peakRss", () => {
     const limiter = new FakeMemoryLimiter();
     const reporter = new OomReporter(limiter);

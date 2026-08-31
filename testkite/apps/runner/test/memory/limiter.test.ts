@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -67,6 +67,31 @@ describe("CgroupV2MemoryLimiter", () => {
     const dir = fakeCgroupDir();
     expect(new CgroupV2MemoryLimiter(dir).read().limitBytes).toBe(Number.POSITIVE_INFINITY);
   });
+
+  it("reports a fully readable cgroup as readable, so the flag means something", () => {
+    expect(new CgroupV2MemoryLimiter(fakeCgroupDir()).read().unreadable).toBeNull();
+  });
+
+  /**
+   * A swallowed read error used to come back as `0 current, 0 oom_kill` — indistinguishable from
+   * a healthy cgroup, which is how a REAL kernel kill got reported as a healthy chain. The
+   * failure is forced with a DIRECTORY named `memory.events` (EISDIR) rather than `chmod 000`:
+   * this suite runs as uid 0 here, and root reads a 000 file just fine.
+   */
+  it("flags a cgroup file that exists but cannot be read, instead of reporting zeros", () => {
+    const dir = fakeCgroupDir();
+    rmSync(join(dir, "memory.events"));
+    mkdirSync(join(dir, "memory.events"));
+    const snap = new CgroupV2MemoryLimiter(dir).read();
+    expect(snap.unreadable).toMatch(/memory\.events/);
+    expect(snap.unreadable).toMatch(/EISDIR/);
+    expect(snap.oomKillCount).toBe(0); // still 0 — but now it is labelled as "not measured"
+  });
+
+  it("names ENOENT separately: a cgroup removed under us is legitimate, a broken mount is not", () => {
+    const snap = new CgroupV2MemoryLimiter(join(tmpdir(), "tk-cg-definitely-gone")).read();
+    expect(snap.unreadable).toMatch(/ENOENT/);
+  });
 });
 
 describe("FakeMemoryLimiter", () => {
@@ -82,6 +107,13 @@ describe("FakeMemoryLimiter", () => {
     expect(snap.peakBytes).toBe(2672 * MB);
     expect(snap.oomKillCount).toBe(1);
     expect(fake.kind).toBe("fake");
+  });
+
+  it("reports readable by default and whatever unreadable reason a test scripts", () => {
+    const fake = new FakeMemoryLimiter();
+    expect(fake.read().unreadable).toBeNull();
+    fake.setUnreadable("memory.events unreadable (EACCES)");
+    expect(fake.read().unreadable).toBe("memory.events unreadable (EACCES)");
   });
 
   it("remembers attached pids so a test can assert the browser was placed in the nested cgroup", () => {

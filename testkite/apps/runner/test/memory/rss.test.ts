@@ -31,6 +31,28 @@ describe("readRssBytes", () => {
     expect(readRssBytes(101, root)).toBeNull();
   });
 
+  it("returns null when the resident field carries trailing junk rather than trusting the prefix", () => {
+    // `Number.parseInt` reads "21700abc" as 21700 — a corrupt statm would be silently believed.
+    const root = fakeProc({ 102: "302645 21700abc 9858 1 0 995328 0\n" });
+    expect(readRssBytes(102, root)).toBeNull();
+  });
+
+  /**
+   * A read that fails for any reason OTHER than "the process is gone" is a broken assumption
+   * about /proc, and returning null for it makes `sumRssBytes` (which folds null into 0) report a
+   * smaller browser tree than the real one — L2/L3 governance going blind exactly when it matters.
+   *
+   * The failure is forced with a DIRECTORY named `statm` (EISDIR), not `chmod 000`: this suite
+   * runs as uid 0 here and root reads a 000 file just fine, so a permission bit would prove nothing.
+   */
+  it("throws instead of undercounting when statm exists but cannot be read", () => {
+    const root = mkdtempSync(join(tmpdir(), "tk-proc-"));
+    mkdirSync(join(root, "103"));
+    mkdirSync(join(root, "103", "statm"));
+    expect(() => readRssBytes(103, root)).toThrow(/EISDIR/);
+    expect(() => sumRssBytes([103], root)).toThrow(/EISDIR/);
+  });
+
   it("sums only the pids that are still alive", () => {
     const root = fakeProc({ 100: "1 1000 0 0 0 0 0\n", 101: "1 2000 0 0 0 0 0\n" });
     expect(sumRssBytes([100, 101, 999_999], root)).toBe(3_000 * PAGE_SIZE_BYTES);

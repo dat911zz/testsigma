@@ -80,11 +80,17 @@ describe("systemd units", () => {
     expect(service).toContain("--read-only");
   });
 
-  it("NEVER passes --no-sandbox anywhere in the deploy tree", () => {
-    for (const name of ["ts-worker@.service", "runnerd.service", "ts-workers.slice"]) {
-      expect(unit(name)).not.toContain("no-sandbox");
-    }
-  });
+  /*
+   * There is deliberately NO "the deploy tree never passes --no-sandbox" test here. It used to
+   * exist and it proved nothing: it grepped three hand-written config files for a string that no
+   * mechanism in this repo ever writes into them. `--no-sandbox` is an argv flag that
+   * playwright-core adds at LAUNCH time unless `chromiumSandbox: true`, so the invariant lives
+   * where the browser is actually launched, and it is held in two places:
+   *   - `test/browser/playwright-engine.test.ts`, describe "chromium sandbox policy" — the launch
+   *     options this engine builds;
+   *   - `test/host/chromium-sandbox.test.ts` (`test:host`) — a real chromium on a non-root host,
+   *     the only place the production shape can be observed at all.
+   */
 
   it("keeps runnerd OUT of the worker slice so it survives the pressure it reports", () => {
     const runnerd = unit("runnerd.service");

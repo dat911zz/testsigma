@@ -4,7 +4,9 @@
  *
  * This is the answer to the old system's slow death: a process that lives forever accumulates
  * forever. Nothing here is a heuristic invented on the spot — every number comes from
- * MEMORY.recycle, which is also what the container manifest is generated from.
+ * MEMORY.recycle. (The deploy manifest is a separate matter: `test/deploy/manifest.test.ts`
+ * cross-checks it against `containerLimitMb`, `contextsPerWorker` and `browserCgroupReserveMb`
+ * only. No generator reads `MEMORY.recycle`, so nothing in the deploy tree can drift from it.)
  *
  * The RSS-floor rule is a LEAK DETECTOR, not a ceiling: it compares the floor between jobs
  * (when nothing should be held) against the floor at boot. The 2026-08-29 soak measured the

@@ -107,6 +107,24 @@ describe("ScreenshotRing", () => {
     expect(ring.bytesWritten).toBe(5); // the duplicate costs nothing
   });
 
+  /**
+   * `bytesWritten` is a LIFETIME counter, and `discard()` does not reset it — it clears the
+   * entries, the blob map and the eviction order, never the accounting. A reader who takes it for
+   * "bytes currently on scratch" is reading the wrong number: after a discard the scratch usage
+   * is zero while this counter keeps climbing. The worker builds one ring per chain, so in
+   * production the lifetime figure and the chain figure coincide; this test pins the difference
+   * so a future reuse of one ring across chains cannot be surprised by it.
+   */
+  it("keeps counting bytes across a discard: the counter is lifetime, not live scratch usage", async () => {
+    const d = dir();
+    const ring = new ScreenshotRing({ dir: d, capacity: 10, policy: "all" });
+    await ring.push(1, shot("12345"));
+    await ring.discard();
+    expect(readdirSync(d)).toHaveLength(0); // the blobs really are gone
+    await ring.push(2, shot("678"));
+    expect(ring.bytesWritten).toBe(8); // 5 + 3, cumulative — NOT the 3 bytes now on disk
+  });
+
   it("creates its scratch directory on first write, so one chain = one directory works", async () => {
     const d = join(dir(), "jr-1", "chain-0");
     const ring = new ScreenshotRing({ dir: d, capacity: 10, policy: "failure" });

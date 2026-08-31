@@ -102,15 +102,44 @@ describe("runChain", () => {
     expect(engine.openContextIds.size).toBe(0);
   });
 
+  /**
+   * The chain budget must be a REAL one — 180s, the compiler's floor — not the `timeoutSeconds: 0`
+   * this test used to pass, which only expired instantly because `assertNested` was clamping the
+   * value away instead of refusing it. Four steps of 50s each overrun a 180s chain while every
+   * step stays inside its own 60s budget, which is the only shape a chain deadline can actually
+   * fire in once the layers are genuinely nested. Fake timers keep it instant.
+   */
   it("closes the context in finally even when the chain times out", async () => {
+    vi.useFakeTimers();
+    try {
+      const engine = new FakeBrowserEngine();
+      const slow = chainOf([actionStep(1), actionStep(2), actionStep(3), actionStep(4)]);
+      const running = runChain({ ...slow, timeoutSeconds: 180 }, policy, deps(engine, async () => {
+        await new Promise((r) => setTimeout(r, 50_000));
+        return { ok: true };
+      }));
+      await vi.advanceTimersByTimeAsync(200_000);
+      const out = await running;
+      expect(engine.openContextIds.size).toBe(0);
+      expect(out.verdict).toBe("failed");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * The guard exists for exactly one shape — a plan whose chain budget is SHORTER than the step
+   * budget nested inside it — and the clamp in the call made it a no-op for that shape: the
+   * assertion saw `stepMs + 1` while the engine and the chain deadline were handed the real,
+   * un-nested number. A plan like this can only come from a compiler that disagrees with the
+   * runner about the timeout ladder, and it must fail loudly, before a browser is opened.
+   */
+  it("refuses a chain budget shorter than one step instead of clamping it out of sight", async () => {
     const engine = new FakeBrowserEngine();
-    const slow = chainOf([actionStep(1)]);
-    const out = await runChain({ ...slow, timeoutSeconds: 0 }, policy, deps(engine, async () => {
-      await new Promise((r) => setTimeout(r, 50));
-      return { ok: true };
-    }));
-    expect(engine.openContextIds.size).toBe(0);
-    expect(out.verdict).toBe("failed");
+    await expect(
+      runChain({ ...chainOf([actionStep(1)]), timeoutSeconds: 30 }, policy, deps(engine, async () => ({ ok: true }))),
+    ).rejects.toThrow(/timeout nesting broken: step 60000ms >= chain 30000ms/);
+    expect(engine.contextsServed()).toBe(0);
   });
 
   it("turns an ok=false OpResult into verdict=failed and stops the chain", async () => {

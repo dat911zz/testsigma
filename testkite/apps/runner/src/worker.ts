@@ -34,7 +34,7 @@
  * soak. Every payload is still built by the CONTRACT'S OWN schemas inside `control-plane-client.ts`,
  * so a shape this worker cannot legally express fails at compile time rather than in production.
  */
-import { infraErrorSchema } from "@testkite/contract";
+import { infraErrorSchema, UnauthorizedError } from "@testkite/contract";
 import type { ChainPlan, ScreenshotPolicy, StepPlan } from "@testkite/run-compiler";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm } from "node:fs/promises";
@@ -120,8 +120,17 @@ export interface WorkerStats {
   readonly quarantined: number;
 }
 
-/** What the plane said about a job that is no longer this worker's to write about. */
-type Fence = StaleEpochError | JobCancelledError | JobTerminalError;
+/**
+ * What the plane said about a job that is no longer this worker's to write about.
+ *
+ * `UnauthorizedError` (a 401) belongs here for the same reason a 409 does: the plane is refusing
+ * to hear from this worker at all, so the chain must stop driving a browser on the tenant's system
+ * — the lease it was renewing is being reaped, and another attempt will run the same chain, with
+ * duplicate side effects against the tenant's app if this one keeps going. It differs from the
+ * others only in what happens after: `runOnce` re-throws it, `main()` exits, and systemd's restart
+ * re-registers the worker with a fresh credential.
+ */
+type Fence = StaleEpochError | JobCancelledError | JobTerminalError | UnauthorizedError;
 
 /**
  * Holds the one context a chain is allowed to open, so the worker can CLOSE it from outside the
@@ -456,6 +465,14 @@ export class Worker {
   async #reportInfra(job: ClaimedJob, chain: ChainPlan, outcome: ChainOutcome): Promise<void> {
     // Ask the kernel, not the stack trace: a killed renderer looks like "crash" from inside.
     const finding = this.#deps.oom.check(this.#deps.monitor.largest());
+    if (finding.unreadable !== null) {
+      // The kernel was not available to ask, so this report is the executor's own guess about an
+      // infra failure that MAY have been an OOM. Say so: an operator seeing browser_oom vanish
+      // from a host's incident mix needs to know the cgroup went unreadable, not assume health.
+      this.#deps.log(
+        `chain ${chain.chainKey} was NOT checked for a browser OOM: ${finding.unreadable}`,
+      );
+    }
     let infra: InfraPayload;
     if (finding.killed) {
       const decision = this.#deps.quarantine.onChainOom(chain.chainKey);
@@ -614,7 +631,12 @@ export class Worker {
    */
   #onJobSignal(err: unknown, job: ClaimedJob, guard: ChainContextGuard): void {
     if (job.jobRunId !== this.#currentJobRunId) return;
-    if (err instanceof StaleEpochError || err instanceof JobCancelledError || err instanceof JobTerminalError) {
+    if (
+      err instanceof StaleEpochError ||
+      err instanceof JobCancelledError ||
+      err instanceof JobTerminalError ||
+      err instanceof UnauthorizedError
+    ) {
       this.#fence ??= err;
       guard.abort();
       return;

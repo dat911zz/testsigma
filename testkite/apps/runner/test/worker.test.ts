@@ -18,7 +18,7 @@
  *    M3 acceptance soak; here the payloads are still built by the CONTRACT'S OWN schemas inside
  *    `control-plane-client.ts`, so a shape this worker cannot express fails at compile time.
  */
-import { AssertionFailure, RetryableInfraError } from "@testkite/contract";
+import { AssertionFailure, RetryableInfraError, UnauthorizedError } from "@testkite/contract";
 import { PLAN_FORMAT_VERSION, type ChainPlan, type RunPlan, type ScreenshotPolicy, type StepPlan } from "@testkite/run-compiler";
 import type { VerbDefinition } from "@testkite/verb-kit";
 import { mkdtempSync } from "node:fs";
@@ -122,6 +122,8 @@ class StubClient implements ControlPlaneClient {
   staleOn: "complete" | "event" | "heartbeat" | null = null;
   /** With `staleOn: "event"`, the first seq that is refused — lets a test fence mid-chain only. */
   staleFromSeq = 1;
+  /** The first seq answered with a 401, or null. Models a credential that expired mid-chain. */
+  unauthorizedFromSeq: number | null = null;
   heartbeatCommand: JobHeartbeatResponse["command"] = "continue";
   completeThrows: Error | null = null;
 
@@ -146,6 +148,9 @@ class StubClient implements ControlPlaneClient {
   }
 
   async event(j: ClaimedJob, e: RunEventReport): Promise<EventAck> {
+    if (this.unauthorizedFromSeq !== null && e.seq >= this.unauthorizedFromSeq) {
+      throw new UnauthorizedError("control plane rejected this worker's credential on /internal/events");
+    }
     if (this.staleOn === "event" && e.seq >= this.staleFromSeq) throw this.#stale(j);
     this.events.push(e);
     return { accepted: true, duplicate: false };
@@ -349,6 +354,26 @@ describe("Worker", () => {
     expect(client.failures[0]).toMatchObject({ code: "browser_oom", peakRssBytes: 1_728_053_248 });
   });
 
+  /**
+   * `FakeMemoryLimiter.setUnreadable` scripts what a broken cgroup mount produces. The point is
+   * that the finding does NOT silently become "no OOM": an infra failure whose OOM check never
+   * ran must say so, or an operator reads a host whose browser_oom rate quietly went to zero as
+   * a host that stopped OOM-ing.
+   */
+  it("says out loud when an infra failure could not be checked against the cgroup", async () => {
+    client.queue.push(job());
+    limiter.setUnreadable("memory.events could not be read (EISDIR)");
+    const lines: string[] = [];
+    const w = new Worker(deps(async () => {
+      throw new RetryableInfraError("context_crash", "renderer gone");
+    }, { log: (m: string) => lines.push(m) }));
+    await w.runOnce();
+    expect(lines.some((l) => l.includes("NOT checked for a browser OOM") && l.includes("EISDIR"))).toBe(true);
+    // The executor's own classification still goes out — an unreadable cgroup loses the OOM
+    // upgrade, it never loses the report.
+    expect(client.failures[0]).toMatchObject({ code: "context_crash" });
+  });
+
   it("STALE_EPOCH on complete: stops immediately, writes nothing more, counts a zombie suicide", async () => {
     client.queue.push(job());
     client.staleOn = "complete";
@@ -386,6 +411,39 @@ describe("Worker", () => {
     // Playwright has (measured 2026-08-29), and this fake cannot show that half.
     expect(openWhenStepRan[0]).toBe(1);
     expect(openWhenStepRan[1]).toBe(0);
+  });
+
+  /**
+   * A 401 is the same class of answer as a 409: the plane is refusing to hear from this worker.
+   * Before this test the rejection was logged as "non-fatal" and the chain kept driving a REAL
+   * browser on the tenant's system for the rest of the chain budget (up to 900s) while the lease
+   * was already reaped and another attempt was running the same chain — duplicate side effects
+   * against the tenant's app, paid for by a credential that no longer exists.
+   */
+  it("401 mid-chain fences the worker exactly like a stale epoch: the context closes at once", async () => {
+    client.queue.push(job({ plan: planWith([chainOf("login>checkout", [1, 2, 3])]) }));
+    client.unauthorizedFromSeq = 2; // chain_started (seq 1) lands; the first step_finished is refused
+    const openWhenStepRan: number[] = [];
+    const w = new Worker(deps(async () => {
+      openWhenStepRan.push(engine.openContextIds.size);
+      return { ok: true };
+    }));
+    // Not "ran": the fence escapes runOnce, and `main()` turns it into a process exit whose
+    // systemd restart re-registers the worker with a fresh credential.
+    await expect(w.runOnce()).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(openWhenStepRan[0]).toBe(1);
+    expect(openWhenStepRan[1]).toBe(0); // guard.abort() closed the context before step 2 started
+    expect(engine.openContextIds.size).toBe(0);
+  });
+
+  it("401 mid-chain writes nothing more: no verdict, no infra report, no artifact", async () => {
+    client.queue.push(job());
+    client.unauthorizedFromSeq = 2;
+    const w = new Worker(deps(async () => ({ ok: false, failureMessage: "no button" })));
+    await expect(w.runOnce()).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(client.completed).toHaveLength(0);
+    expect(client.failures).toHaveLength(0);
+    expect(uploader.uploads).toHaveLength(0);
   });
 
   it("never claims again after a suicide — a fenced worker is done, not merely done with this job", async () => {

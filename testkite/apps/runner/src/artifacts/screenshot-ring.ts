@@ -86,6 +86,13 @@ export class ScreenshotRing {
     this.#opts = options;
   }
 
+  /**
+   * Bytes this ring has written over its WHOLE LIFETIME — not the bytes currently on scratch.
+   * Deduped frames never counted, and evicted or discarded ones are not subtracted: `discard()`
+   * clears `#entries`, `#blobs` and `#order`, and deliberately leaves this counter alone. The
+   * worker builds one ring per chain, so in production the two readings coincide; anything that
+   * reuses a ring across chains is reading a running total.
+   */
   get bytesWritten(): number {
     return this.#bytesWritten;
   }
