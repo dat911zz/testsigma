@@ -143,20 +143,18 @@ export type CompletedStep = z.input<typeof completedStepSchema>;
 export type CompletedArtifact = z.input<typeof completedArtifactSchema>;
 export type InfraPayload = z.input<typeof infraErrorSchema>;
 
-/** A claimed job: exactly the contract's shape, with the frozen plan typed once it is checked. */
-export interface ClaimedJob {
-  readonly jobRunId: string;
-  readonly runId: string;
-  readonly teamId: string;
-  readonly projectId: string;
-  readonly chainKey: string;
-  readonly attempt: number;
-  readonly leaseEpoch: number;
-  readonly leaseDeadlineAt: string;
-  /** Scoped to THIS run and dead with the lease; the only credential for a job mutation. */
-  readonly runToken: string;
-  readonly plan: RunPlan;
-}
+/**
+ * A claimed job: the contract's own `claimedJobSchema`, DERIVED — the ten field names are not
+ * written down a second time in this worker. One narrowing: the frozen plan crosses the wire as
+ * `unknown` (the contract package must not import the compiler) and becomes a `RunPlan` here,
+ * after `asRunPlan` has checked it. `runToken` is scoped to THIS run and dies with the lease; it
+ * is the only credential a job mutation carries.
+ *
+ * Re-declaring this shape by hand would compile forever and drop the next field the contract
+ * adds — `decodeBody` would parse it, `claim` would leave it behind, and no build anywhere in
+ * the fleet would say so.
+ */
+export type ClaimedJob = Readonly<Omit<z.infer<typeof claimedJobSchema>, "plan">> & { readonly plan: RunPlan };
 
 export interface RunEventReport {
   /** Monotonic per job — the plane deduplicates on it, so a resend is harmless, never a 409. */
@@ -394,18 +392,8 @@ export class HttpControlPlaneClient implements ControlPlaneClient {
     // 204: an empty queue is the normal answer, not an error. Sleep `claimIdleMs`, ask again.
     if (answer === null) return null;
     const claimed = decodeBody(claimedJobSchema, answer, "claim");
-    return {
-      jobRunId: claimed.jobRunId,
-      runId: claimed.runId,
-      teamId: claimed.teamId,
-      projectId: claimed.projectId,
-      chainKey: claimed.chainKey,
-      attempt: claimed.attempt,
-      leaseEpoch: claimed.leaseEpoch,
-      leaseDeadlineAt: claimed.leaseDeadlineAt,
-      runToken: claimed.runToken,
-      plan: asRunPlan(claimed.plan, claimed.jobRunId),
-    };
+    // Spread, not a field list: whatever the contract adds travels to the worker loop untouched.
+    return { ...claimed, plan: asRunPlan(claimed.plan, claimed.jobRunId) };
   }
 
   async jobHeartbeat(job: ClaimedJob): Promise<JobHeartbeatResponse> {

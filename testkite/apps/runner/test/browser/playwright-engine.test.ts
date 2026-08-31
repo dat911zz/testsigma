@@ -202,7 +202,15 @@ if (launched === null) {
       const pids = [...ctx.rendererPids()];
 
       await ctx.close();
-      await new Promise((r) => setTimeout(r, 500)); // the spike showed reaping is not instant
+      // Reaping is not instant, and it is slowest exactly when the machine is busy: under the
+      // full parallel suite a renderer was still in /proc 500 ms after close (RSS 0 — mid-exit,
+      // not a leak), which made this assertion FALSELY red. Poll up to the settle ceiling
+      // measured on this host (1.5 s, doubled for headroom) instead of sleeping a fixed guess —
+      // a renderer that truly survives still fails the assertion, only later.
+      const deadline = Date.now() + 3_000;
+      while (Date.now() < deadline && pids.some((pid) => readRssBytes(pid) !== null)) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
 
       expect(pids.map((p) => readRssBytes(p))).toEqual(pids.map(() => null));
     });

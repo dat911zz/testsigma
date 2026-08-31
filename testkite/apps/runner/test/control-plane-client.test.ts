@@ -13,8 +13,11 @@
  * control plane's own suites (`apps/core`). A green run here means THE WORKER SPEAKS THE
  * CONTRACT — not that a real control plane agrees with it.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   ARTIFACT_MAX_SIZE_BYTES,
+  claimedJobSchema,
   FatalInfraError,
   NotFoundError,
   RetryableInfraError,
@@ -366,5 +369,32 @@ describe("HttpControlPlaneClient", () => {
     const job = await claimOne();
     cp.jobCommand = "cancel";
     expect(await client.jobHeartbeat(job)).toMatchObject({ command: "cancel" });
+  });
+});
+
+/**
+ * DRIFT GUARD for the one payload the worker is most tempted to re-type by hand.
+ *
+ * Why a source assertion and not a type assertion: TypeScript is structural, so a hand-written
+ * `interface ClaimedJob` listing today's ten fields is INDISTINGUISHABLE — at compile time and at
+ * runtime — from the type derived off `claimedJobSchema`. The two only diverge the day the
+ * contract gains a field: the derived type carries it, the hand-written one drops it silently at
+ * the object literal that builds the job. There is nothing to observe until that day, which is
+ * exactly why the guard is placed on the DECLARATION instead of on behaviour.
+ *
+ * What is proven here: this worker's own declaration and its own claim path. That the control
+ * plane actually serves `claimedJobSchema` is proven by `apps/core`'s internal-route suites.
+ */
+describe("ClaimedJob stays derived from the contract", () => {
+  const clientSource = readFileSync(fileURLToPath(new URL("../src/control-plane-client.ts", import.meta.url)), "utf8");
+
+  it("declares ClaimedJob off claimedJobSchema instead of re-listing the payload's fields", () => {
+    expect(clientSource).toMatch(/export type ClaimedJob =[^;]*z\.infer<typeof claimedJobSchema>/u);
+    expect(clientSource).not.toMatch(/interface ClaimedJob\b/u);
+  });
+
+  it("hands back every field claimedJobSchema declares, so a field added over there is never dropped here", async () => {
+    const job = await claimOne();
+    expect(Object.keys(job).sort()).toEqual(Object.keys(claimedJobSchema.shape).sort());
   });
 });
