@@ -1,0 +1,20 @@
+# The host supervisor. Deliberately OUTSIDE ts-workers.slice: runnerd must survive the memory
+# pressure it is reporting on. It holds no chain state, so a restart costs nothing but a
+# re-registration.
+[Unit]
+Description=TestKite host supervisor (runnerd)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/node /opt/testkite/runner/dist/runnerd/main.js
+EnvironmentFile=/etc/testkite/runner.env
+Restart=always
+RestartSec=5s
+MemoryAccounting=yes
+MemoryMax=256M
+OOMScoreAdjust=-800
+
+[Install]
+WantedBy=multi-user.target

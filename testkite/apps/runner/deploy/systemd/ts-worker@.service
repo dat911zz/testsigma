@@ -1,0 +1,42 @@
+# One instance per worker container: ts-worker@1 .. ts-worker@M.
+#
+# OOMPolicy=continue is deliberate and load-bearing. The default (`stop`) would tear the WHOLE
+# unit down when the kernel kills one process inside it — which is exactly the case this fleet is
+# designed around: the kernel kills Chromium, Node SURVIVES, reads memory.events and reports
+# browser_oom with peakRss (§5 L2). `stop` would kill the reporter before it could report.
+#
+# Restart=always with a backoff: a worker that dies for any other reason comes back and
+# re-registers; the control plane's reaper bumps lease_epoch, so the returning worker can never
+# write a verdict for the chain it lost (409 STALE_EPOCH).
+[Unit]
+Description=TestKite worker %i
+After=network-online.target
+Wants=network-online.target
+PartOf=ts-workers.target
+
+[Service]
+Type=exec
+Slice=ts-workers.slice
+Environment=RUNNER_WORKER_NAME=%H-w%i
+Environment=RUNNER_LANE=batch
+Environment=RUNNER_WORKSPACE_DIR=/var/lib/testkite/w%i
+EnvironmentFile=/etc/testkite/runner.env
+ExecStart=/usr/bin/podman run --rm --name ts-worker-%i \
+  --user 10001:10001 \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --read-only --tmpfs /tmp:size=64m \
+  --shm-size 1g \
+  --memory 3g --memory-swap 3g \
+  --pids-limit 512 \
+  --cpus 2.0 \
+  --volume /var/lib/testkite/w%i:/workspace:rw \
+  --env-file /etc/testkite/runner.env \
+  --env RUNNER_WORKER_NAME=%H-w%i \
+  --env RUNNER_WORKSPACE_DIR=/workspace \
+  ghcr.io/testkite/runner:latest
+ExecStop=/usr/bin/podman stop --time 90 ts-worker-%i
+Restart=always
+RestartSec=2s
+OOMPolicy=continue
+TimeoutStopSec=120s

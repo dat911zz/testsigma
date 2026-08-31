@@ -1,0 +1,10 @@
+{
+  "$comment": "Container memory ceilings — MUST match apps/runner/src/memory-governance.ts. CI fails a manifest with no memory limit (docs/SYSTEM_DESIGN.md §1).",
+  "image": "ghcr.io/testkite/runner:latest",
+  "lanes": {
+    "batch": { "memoryMb": 3072, "contexts": 4, "pidsLimit": 512, "cpus": 2.0, "shmSizeMb": 1024, "swap": false },
+    "interactive": { "memoryMb": 2048, "contexts": 2, "pidsLimit": 512, "cpus": 2.0, "shmSizeMb": 1024, "swap": false }
+  },
+  "browserCgroupReserveMb": 400,
+  "slice": { "memoryHighPct": 80, "memoryMaxPct": 88 }
+}

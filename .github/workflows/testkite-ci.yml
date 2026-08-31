@@ -105,6 +105,59 @@ jobs:
           fi
           echo "Browser gate: clean."
 
+      # The gate above keeps apps/core browser-free; this one covers the other half — the shared
+      # packages every image pulls in — plus the POSITIVE side nobody else checks: apps/runner must
+      # not LOSE its browser dependency (a runner that quietly stops shipping chromium turns every
+      # chain into an infra error instead of a verdict).
+      #
+      # It anchors on a real import statement rather than the bare driver name, for the reason
+      # measured on 30-08-2026 one step above: text that merely NAMES the driver is not a browser in
+      # the image — packages/verb-kit carries `// TODO(M4): import type { Page } from
+      # "playwright-core"` and run-compiler carries the `"chromium-headless-shell"` engine literal.
+      # A name-grep would paint both red forever, and a permanently red gate is a gate nobody reads.
+      # Measured both ways 31-08-2026: 0 hits across apps/core/src + packages/*/src, 2 hits in
+      # apps/runner/src/browser/playwright-engine.ts (so the pattern does find a real import).
+      - name: Gate — playwright only in the runner image
+        run: |
+          set -euo pipefail
+          IMPORTS='^\s*(import|export)[^\x22\x27]*[\x22\x27](playwright|puppeteer)[a-z0-9@/.-]*[\x22\x27]|(import|require)\(\s*[\x22\x27](playwright|puppeteer)'
+          if grep -rPn "$IMPORTS" testkite/apps/core/src testkite/packages/*/src --include='*.ts'; then
+            echo "::error::A browser driver is imported outside apps/runner (line above). Driving a browser is a capability of the fleet image only."
+            exit 1
+          fi
+          if grep -En "playwright|puppeteer" testkite/apps/core/package.json testkite/packages/*/package.json; then
+            echo "::error::A shared package declares a browser dependency; it would ship in the API image too."
+            exit 1
+          fi
+          grep -q '"playwright-core"' testkite/apps/runner/package.json \
+            || { echo "::error::apps/runner lost its browser dependency."; exit 1; }
+          echo "Runner-only browser gate: clean."
+
+      # A container manifest without a memory limit is exactly how the old system died
+      # (docs/SYSTEM_DESIGN.md §1). apps/runner/test/deploy/manifest.test.ts already cross-checks the
+      # manifest against memory-governance.ts; this step is the same rule read straight off the
+      # committed JSON, so it survives someone deleting the test. Measured 31-08-2026: flipping one
+      # lane to "swap": true exits 1 with `lane batch must disable swap`.
+      - name: Gate — every runner lane declares a memory limit
+        working-directory: testkite
+        run: |
+          node -e '
+            const m = require("./apps/runner/deploy/runner-manifest.json");
+            for (const [lane, cfg] of Object.entries(m.lanes)) {
+              if (!(cfg.memoryMb > 0)) { console.error(`lane ${lane} has no memoryMb`); process.exit(1); }
+              if (cfg.swap !== false) { console.error(`lane ${lane} must disable swap`); process.exit(1); }
+            }
+            console.log("manifest memory limits: ok");'
+
+      # `systemd-analyze verify` returns exit 0 on a unit whose directives it could not parse, so
+      # this script judges its OUTPUT (see the header of verify-units.sh, and the self-proof suite
+      # apps/runner/test/deploy/verify-units.test.ts which feeds it a deliberately broken unit).
+      # It exits 2 — a loud red, never a silent pass — if systemd-analyze is missing from the image.
+      # This proves the units PARSE. That systemd APPLIES them is host-pilot evidence: CI never
+      # boots the fleet.
+      - name: Gate — systemd unit syntax
+        run: bash testkite/scripts/verify-units.sh testkite/apps/runner/deploy/systemd
+
       # Language rule (CLAUDE.md Luật 4 + the i18n-code cleanup pass): source code and
       # tests are English; Vietnamese stays confined to docs/. Scans the same 4 trees the
       # i18n-code cleanup swept, PLUS the workspace's root-level config/scripts (also

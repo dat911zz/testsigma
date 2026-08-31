@@ -1,0 +1,15 @@
+# L0 of the four memory ceilings (docs/SYSTEM_DESIGN.md §5): every worker container on this host
+# lives inside ONE slice, so the fleet can never take the host down with it. MemoryHigh throttles
+# and reclaims first; MemoryMax is the wall. Both are percentages of host RAM so the same unit is
+# correct on an 8-vCPU/24GB and a 16-vCPU/32GB box.
+[Unit]
+Description=TestKite worker containers (memory-capped fleet slice)
+Before=slices.target
+
+[Slice]
+MemoryAccounting=yes
+MemoryHigh=80%
+MemoryMax=88%
+CPUAccounting=yes
+TasksAccounting=yes
+TasksMax=4096
