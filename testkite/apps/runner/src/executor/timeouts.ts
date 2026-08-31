@@ -34,6 +34,40 @@ export function budgetForChain(stepCount: number): TimeoutBudget {
   };
 }
 
+/**
+ * Races `work` against a deadline and ALWAYS clears the loser's timer.
+ *
+ * The clearing is the point of this function, and it is not tidiness. A pending `setTimeout`
+ * holds its callback closure alive, and that closure reaches — through the reject function, the
+ * raced promise and the frames awaiting it — the executor's deps, the worker's `onStep` closure,
+ * the ClaimedJob and finally the whole frozen RunPlan. The 200-chain acceptance soak measured
+ * exactly that on 2026-08-31: nine uncleared timers per chain (eight steps plus the chain) held
+ * ONE FULLY PARSED RunPlan per chain — ~0.5MB of node RSS each — until every timer eventually
+ * fired, up to 180s later. A burst of short chains therefore grew the RSS floor without limit
+ * for three minutes at a time: the slow death of §1, rebuilt by an unfired timer.
+ *
+ * `unref()` is not a substitute and never was: it stops a timer from holding the event loop
+ * OPEN, not from holding memory. It stays on so a worker shutting down mid-chain is not pinned
+ * by a deadline that has not expired yet.
+ *
+ * This bounds the WAIT, never the WORK — a lost race does not cancel a Playwright action
+ * (spike 2026-08-29); closing the context does, which is `run-chain.ts`'s `finally`.
+ */
+export async function raceDeadline<T>(work: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(onTimeout()), ms);
+        timer.unref();
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** Fails loudly if a future edit breaks the nesting — a budget that is not nested silently un-bounds a layer. */
 export function assertNested(b: TimeoutBudget): void {
   if (!(b.actionMs < b.navigationMs)) {

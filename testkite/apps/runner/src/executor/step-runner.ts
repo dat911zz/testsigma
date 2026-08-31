@@ -22,6 +22,7 @@ import { FatalInfraError } from "@testkite/contract";
 import type { CasePlan, DataRow, StepPlan } from "@testkite/run-compiler";
 import type { VerbDefinition } from "@testkite/verb-kit";
 import type { EngineContextHandle } from "../browser/engine.js";
+import { raceDeadline } from "./timeouts.js";
 import { StepTimeoutError } from "./verdict.js";
 
 export type VerbResolver = (opKey: string) => VerbDefinition | undefined;
@@ -154,16 +155,13 @@ async function runAction(
 
   // The step budget bounds the WAIT, not the work: Playwright keeps running after a lost race
   // (spike 2026-08-29), which is exactly why run-chain.ts closes the context in `finally`.
-  const result = await Promise.race([
+  // `raceDeadline` clears the loser's timer — an unfired one would pin this frame, and with it
+  // the whole job graph, for a further 60s (soak finding, 2026-08-31).
+  const result = await raceDeadline(
     running,
-    new Promise<never>((_resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new StepTimeoutError(step.ordinal, deps.stepTimeoutMs)),
-        deps.stepTimeoutMs,
-      );
-      timer.unref();
-    }),
-  ]);
+    deps.stepTimeoutMs,
+    () => new StepTimeoutError(step.ordinal, deps.stepTimeoutMs),
+  );
 
   const base: StepOutcome = {
     caseId,

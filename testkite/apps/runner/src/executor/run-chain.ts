@@ -16,7 +16,7 @@ import { FatalInfraError } from "@testkite/contract";
 import type { ChainPlan, RunPolicy } from "@testkite/run-compiler";
 import type { BrowserEngine, EngineContextHandle } from "../browser/engine.js";
 import { runCase, StepFailed, type StepOutcome, type VerbResolver } from "./step-runner.js";
-import { assertNested, budgetForChain } from "./timeouts.js";
+import { assertNested, budgetForChain, raceDeadline } from "./timeouts.js";
 import { classifyError } from "./verdict.js";
 
 export interface ChainOutcome {
@@ -93,13 +93,11 @@ export async function runChain(chain: ChainPlan, policy: RunPolicy, deps: RunCha
       }
     })();
 
-    await Promise.race([
-      work,
-      new Promise<never>((_resolve, reject) => {
-        const timer = setTimeout(() => reject(new ChainTimeout(chainMs)), chainMs);
-        timer.unref();
-      }),
-    ]);
+    // `raceDeadline` clears the deadline timer on every exit path. A timer left pending holds
+    // this frame — and through `deps`, the ClaimedJob and the whole frozen plan — alive for the
+    // rest of the chain budget, which is how the 200-chain soak first measured node's RSS floor
+    // climbing ~0.5MB per chain (2026-08-31).
+    await raceDeadline(work, chainMs, () => new ChainTimeout(chainMs));
 
     verdict = "passed";
     return { chainKey: chain.chainKey, verdict, steps };

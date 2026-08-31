@@ -11,6 +11,10 @@ on:
     paths:
       - 'testkite/**'
       - '.github/workflows/testkite-ci.yml'
+  # Nhịp riêng cho job `fleet-soak`: 200 chain synthetic mất vài phút và giá trị của nó là
+  # XU HƯỚNG qua từng đêm, không phải tín hiệu per-commit. 02:00 UTC.
+  schedule:
+    - cron: '0 2 * * *'
 
 jobs:
   build-and-test:
@@ -260,3 +264,33 @@ jobs:
           pnpm db:generate
           git diff --exit-code -- drizzle/ \
             || { echo "Schema changed but the migration was never committed. Run: pnpm db:generate"; exit 1; }
+
+  # Tầng test thứ ba: SOAK. `build-and-test` chạy trên FakeBrowserEngine nên không nói được gì
+  # về bộ nhớ thật; job này chạy 200 chain synthetic qua chromium THẬT + `FakeControlPlane` và
+  # khẳng định 4 trần của §5 (sàn RSS node không trôi, cây chromium dưới trần L1, không rò
+  # context, không orphan chromium). Nightly vì nó mất vài phút và giá trị là XU HƯỚNG.
+  #
+  # Runner của GitHub chạy uid non-root ⇒ `launchSoakEngine` KHÔNG dùng lối thoát
+  # `off-root-dev-only`: đây là nơi duy nhất chromium chạy CÓ SANDBOX ở quy mô 200 chain.
+  # Sandbox dev (uid 0) thì không thể — xem đầu file apps/runner/test/soak/soak-200.test.ts.
+  fleet-soak:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack prepare pnpm@9 --activate
+      - name: pnpm install (frozen lockfile)
+        working-directory: testkite
+        run: pnpm install --frozen-lockfile
+      # `playwright-core` (không phải `playwright`) là dependency của runner — nó cũng ship CLI
+      # cài browser. Gọi sai tên gói ⇒ job đỏ ngay ở bước này, không phải lúc launch.
+      - name: Install chromium-headless-shell
+        working-directory: testkite
+        run: pnpm --filter @testkite/runner exec playwright-core install --with-deps chromium-headless-shell
+      - name: Soak 200 synthetic chains
+        working-directory: testkite
+        run: pnpm --filter @testkite/runner test:soak

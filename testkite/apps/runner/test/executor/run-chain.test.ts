@@ -256,6 +256,34 @@ describe("runChain", () => {
     expect(onStep).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * REGRESSION, found by the 200-chain acceptance soak on 2026-08-31 (`test/soak`). Every step
+   * and the chain itself race their work against a deadline; the loser's timer used to be left
+   * pending. A pending timer holds its callback closure, and that closure reaches — through the
+   * reject function, the raced promise and the frames awaiting it — the executor's deps, the
+   * worker's `onStep` closure, the ClaimedJob and finally the whole frozen RunPlan. The heap
+   * snapshot diff was unambiguous: ONE fully parsed RunPlan retained per chain, ~0.5MB per chain
+   * of node RSS, released only when each timer eventually fired (up to 180s later). `unref()`
+   * does not help — it stops a timer from holding the event loop OPEN, not from holding memory.
+   */
+  it("leaves no timer pending: a lost race timer retains the whole job graph until it fires", async () => {
+    vi.useFakeTimers();
+    try {
+      const engine = new FakeBrowserEngine();
+      const before = vi.getTimerCount();
+      const out = await runChain(
+        chainOf([actionStep(1), actionStep(2), actionStep(3)]),
+        policy,
+        deps(engine, async () => ({ ok: true })),
+      );
+      expect(out.verdict).toBe("passed");
+      // Three step deadlines plus the chain deadline, all of them cleared.
+      expect(vi.getTimerCount()).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("attaches the screenshot hash the artifact layer returned", async () => {
     const engine = new FakeBrowserEngine();
     const out = await runChain(chainOf([actionStep(1)]), policy, deps(engine, async () => ({ ok: true }), {
