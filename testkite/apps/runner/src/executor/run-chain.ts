@@ -32,6 +32,14 @@ export interface RunChainDeps {
   readonly now: () => number;
   readonly onStep: (outcome: StepOutcome) => void;
   readonly screenshot: (handle: EngineContextHandle, outcome: StepOutcome) => Promise<string | null>;
+  /**
+   * Retain-on-failure for the trace (§5.1). Called with the settled verdict while the context is
+   * STILL OPEN, because `context.tracing.stop()` needs a live context — after `close()` the trace
+   * is gone, which is why this cannot be left to the caller: only this function knows both the
+   * verdict and the last moment the handle is usable. Optional: a caller that does not collect
+   * traces simply never keeps one, and the context close below discards it.
+   */
+  readonly finishTrace?: (handle: EngineContextHandle, verdict: ChainOutcome["verdict"]) => Promise<void>;
   readonly log: (message: string) => void;
 }
 
@@ -52,6 +60,9 @@ export async function runChain(chain: ChainPlan, policy: RunPolicy, deps: RunCha
   const steps: StepOutcome[] = [];
 
   let handle: EngineContextHandle | null = null;
+  // Read by `finally` to decide whether the trace is kept. Starts pessimistic: if control leaves
+  // this function by a path nobody anticipated, the evidence is retained rather than dropped.
+  let verdict: ChainOutcome["verdict"] = "infra_error";
   try {
     const context = await deps.engine.newChainContext({
       contextId,
@@ -90,24 +101,35 @@ export async function runChain(chain: ChainPlan, policy: RunPolicy, deps: RunCha
       }),
     ]);
 
-    return { chainKey: chain.chainKey, verdict: "passed", steps };
+    verdict = "passed";
+    return { chainKey: chain.chainKey, verdict, steps };
   } catch (err) {
     if (err instanceof StepFailed) {
-      return { chainKey: chain.chainKey, verdict: "failed", steps };
+      verdict = "failed";
+      return { chainKey: chain.chainKey, verdict, steps };
     }
     const cls = classifyError(err);
     if (cls.kind === "assertion") {
-      return { chainKey: chain.chainKey, verdict: "failed", steps };
+      verdict = "failed";
+      return { chainKey: chain.chainKey, verdict, steps };
     }
+    verdict = "infra_error";
     return {
       chainKey: chain.chainKey,
-      verdict: "infra_error",
+      verdict,
       steps,
       infra: { code: cls.code, retryable: cls.kind === "retryable-infra", message: cls.message },
     };
   } finally {
     // NOTHING may skip this — not a throw, not a timeout, not a cancellation.
     if (handle !== null) {
+      // The trace first: stopping it needs the context alive, and a trace that fails to land is
+      // lost evidence, never a lost verdict — so it is logged and the close still happens.
+      try {
+        await deps.finishTrace?.(handle, verdict);
+      } catch (traceErr) {
+        deps.log(`context ${contextId} failed to finish its trace: ${String(traceErr)}`);
+      }
       try {
         await handle.close();
       } catch (closeErr) {
