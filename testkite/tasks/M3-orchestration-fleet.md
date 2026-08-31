@@ -71,6 +71,46 @@
 - [x] Soak thử: 200 chain synthetic, RSS ceilings giữ, không orphan chromium, API RSS phẳng
       (hash: 0360993 — T19; job CI `fleet-soak` chạy nightly 02:00 UTC, số đo ở "Exit criteria")
 
+## Trả nợ kỹ thuật (31-08-2026)
+
+Ba mục nợ có địa chỉ ghi ở `M3-polish-report.md` mục 2.2 đã trả trong đợt **M3-debt**
+(plan `plans/2026-08-31-m3-debt.md`, task D1/D2/D3). Không mục nào chạm tới ba Exit criteria bên
+dưới — chúng vẫn nợ host pilot y như cũ.
+
+- **NIT 73 — danh tính step trong một chain** (hash: `7864932`; chốt sổ tài liệu `67afbdd`).
+  `StepOutcome` mang thêm `execSeq` (khoá + thứ tự thực thi, 1-based, dày, đơn điệu trong một
+  attempt) và `loopPath` (nhãn vòng lặp, ngoài vào trong), đi trọn tuyến runner →
+  `@testkite/contract` → `/internal/fleet/jobs/{id}/complete` → `res_step_results` → đường đọc.
+  Bất biến chuyển sang **đường ghi**: `res_step_results_exec_unique` (migration 0043, lan xuống mọi
+  partition tháng kể cả `_default`, unique chứa `started_at` vì Postgres đòi partition key);
+  `readStepResults` bỏ `DISTINCT ON (step_ordinal)`, sắp theo `exec_seq`. Trước đó một `for` 3 hàng
+  dữ liệu chỉ hiện **một** dòng trong report. Chứng minh: `apps/core/test/results/step-identity.test.ts`
+  ("keeps all three executions of a 3-row `for`") + `apps/runner/test/executor/step-identity.test.ts`
+  + `apps/core/test/http/internal/complete-step-identity.test.ts`. **Chưa sửa:** fan-out cấp CASE vẫn
+  gộp N lần chạy về một `res_case_results` (không step nào mất) — đòi đổi PRIMARY KEY
+  `res_case_result_keys`, địa chỉ **M4**.
+- **NIT 12 — hàng rào cấp KIỂU cho adapter DTO↔domain** (hash: `81e8c06`; chốt sổ `5af5c3d`).
+  `FieldMap<Src, Dst>` (type-only, `packages/contract/src/schemas/field-map.ts`) buộc **mọi** field
+  của DTO — optional cũng thế — phải có mặt trong bảng ánh xạ, giá trị là khoá đích nên TS kiểm cả
+  đích có thật; áp cho **10 bảng** trong 3 file: `run-service.ts` (8, một bảng cho mỗi step-kind),
+  `http/internal/routes.ts`, `apps/runner/src/worker.ts`.
+  Guard được chứng minh không rỗng bằng `ts.createProgram` chạy lên 6 fixture đỏ có chủ đích
+  (`apps/core/test/arch/adapter-guard.test.ts`), tập entry `null` bị pin hai phía biên
+  (`apps/runner/test/arch/field-map-drops.test.ts`), bảng thứ tư không thể ra đời lặng lẽ
+  (`tools/field-map-inventory.test.ts`). Kiểu **không** với tới thân hàm: nó chứng minh field được
+  NHÌN, không chứng minh được CHÉP — nên tầng 2 là test, có chủ đích.
+- **NIT 4 — tách vai DB** (hash: `d8141aa`; chốt sổ `c68d0ff`). Bất biến cũ ("không login nào giữ
+  đồng thời `testkite_app` và `testkite_dispatch`") **SAI** và đã bị thay: `apps/core` có MỘT
+  `DATABASE_URL`, MỘT pool, ba lối `SET LOCAL ROLE` ⇒ login **bắt buộc** là thành viên cả ba. Cái
+  nguy hiểm là **kế thừa**, không phải tư cách thành viên. Ba bất biến mới, mỗi cái tự dựng vi phạm
+  rồi dọn sạch trên Postgres THẬT (18 ca, `apps/core/test/schema/role-separation.test.ts`): không
+  login nào KẾ THỪA vai `testkite_*` (xét **từng cạnh grant**, bắc cầu) · không vai `testkite_*` nào
+  là thành viên của vai khác · không login nào vừa giữ vai `testkite_*` vừa `SUPERUSER`/`BYPASSRLS`.
+  Mẫu cấp + cổng kiểm: `scripts/grant-db-roles.sql`; runbook: `../docs/runbook-db-roles.md`.
+  **Vẫn ngoài repo:** login role production tên gì, cấp bằng Terraform hay tay — CI không chứng minh
+  gì về cụm production (login của CI là superuser), sự thật chỉ đến từ `-v check_only=1` chạy trên
+  chính cụm đó; đã thành một dòng cutover trong `M9-full-cutover-hardening.md`.
+
 ## Exit criteria
 
 - Giết -9 một worker giữa chừng: chain requeue đúng 1 lần, zombie bị 409, kết quả đọc MAX(attempt).

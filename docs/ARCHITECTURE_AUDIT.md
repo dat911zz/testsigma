@@ -400,6 +400,15 @@ M3 (orchestration + fleet) dạy đúng một điều lặp lại dưới nhiề
 - **Test trên FAKE về nguyên tắc mù với cả một lớp lỗi** — ref/unref của handle thật, argv thật của browser, cgroup thật. Vì vậy mọi khẳng định phải ghi rõ **CI chứng minh gì / chỉ host thật chứng minh được gì**, và tài liệu không được nói ngược code (`c469779`, `1eb21bd`).
 - **Test khẳng định đại lượng nó không điều khiển là flaky theo thiết kế** — đồng hồ tường, `sleep` cứng. Tiêm đồng hồ qua cổng, hoặc poll tới trần đã đo. Dự án này đã trả giá: một test dán nhãn "flaky" từng che giấu một race THẬT suốt 2 milestone (`0ba1d18`, `96a38ab`).
 
+### 10.3. M3 — bài học từ đợt trả nợ kỹ thuật (31-08-2026, `7864932` `81e8c06` `d8141aa`)
+
+Ba mục nợ có địa chỉ của M3 được trả trong một đợt riêng sau polish wave; chúng dạy bốn điều mà bảng trên chưa nói:
+
+- **Một khoá đọc thiếu chiều thì dữ liệu mất Ở ĐƯỜNG ĐỌC, không ở đường ghi — nên test đường ghi xanh không bao giờ phát hiện ra.** `res_step_results` nhận đủ 3 hàng của một `for` 3 hàng dữ liệu; chính `SELECT DISTINCT ON (step_ordinal)` nuốt 2 hàng lúc báo cáo. Luật: mỗi khoá đọc phải được **cưỡng chế bằng UNIQUE ở đường ghi**, định danh phải là **trường THẬT trong hợp đồng** (`execSeq`/`loopPath`) chứ không suy ra từ thứ tự mảng, và test phải **đọc lại cái vừa ghi rồi ĐẾM** (`7864932`).
+- **Một khoá "hiển nhiên duy nhất" theo mô hình miền chưa bao giờ duy nhất.** Trùng `ordinal` không cần vòng lặp nào: step group inline lặp lại chính ordinal của group, và cùng cái trùng ấy từng gán SAI câu NLP cho step. Chứng minh tính duy nhất bằng constraint, đừng suy từ mô hình.
+- **Hàng rào cấp KIỂU chỉ chứng minh cái nó NHÌN thấy.** `FieldMap` bắt được field optional mới bị rơi khi rebuild DTO↔domain, nhưng không biết thân hàm có CHÉP hay không ⇒ luôn phải kèm một tầng test pin tập entry `null`; và guard phải tự chứng minh không rỗng bằng fixture ĐỎ chạy qua `ts.createProgram` (`81e8c06`).
+- **Một bất biến an ninh phát biểu SAI còn tệ hơn không phát biểu.** "Không login nào giữ đồng thời hai vai `testkite_*`" cấm đúng cấu hình duy nhất chạy được (một pool + `SET LOCAL ROLE`); cái phải cấm là **kế thừa**, mà từ PG16 kế thừa nằm trên **TỪNG cạnh grant** nên `ALTER ROLE … NOINHERIT` KHÔNG sửa được grant đã tồn tại — đo được `rolinherit = false` mà vẫn đọc xuyên team (`d8141aa`).
+
 ---
 
 ## Phụ lục A — File đáng chú ý nhất
