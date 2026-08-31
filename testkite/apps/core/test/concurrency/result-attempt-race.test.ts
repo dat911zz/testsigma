@@ -33,7 +33,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "../../src/modules/kernel/index.js";
 import {
   latestCaseResults,
-  latestStepResults,
+  readStepResults,
   writeCaseResults,
   type CaseResultInput,
 } from "../../src/modules/results/results-service.js";
@@ -83,6 +83,8 @@ function oneCase(i: number): CaseResultInput {
     steps: [
       {
         ordinal: 1,
+        execSeq: 1,
+        loopPath: [],
         verdict: "passed",
         renderedSentence: `Click Login (writer ${String(i)})`,
         durationMs: 91,
@@ -193,7 +195,7 @@ describeRealPg("case-result attempt under REAL contention (real Postgres, many c
     const head = rows[0];
     if (head === undefined) throw new Error("latestCaseResults returned nothing");
     const steps = await withTenant(r.db, { teamId }, (tx) =>
-      latestStepResults(tx, { teamId }, head.id),
+      readStepResults(tx, { teamId }, head.id),
     );
     expect(steps.map((s) => s.renderedSentence)).toEqual([
       `Click Login (writer ${String(winner.i)})`,

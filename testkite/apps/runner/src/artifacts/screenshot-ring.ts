@@ -35,7 +35,8 @@ export const SCREENSHOT_CONTENT_TYPE = "image/webp";
 export type SkipReason = "empty" | "too_large";
 
 export interface SkippedShot {
-  readonly ordinal: number;
+  /** The EXECUTION number of the step, not its ordinal — one case can run ordinal 2 twice. */
+  readonly execSeq: number;
   readonly sizeBytes: number;
   readonly reason: SkipReason;
 }
@@ -53,7 +54,8 @@ export function presignRejection(sizeBytes: number): SkipReason | null {
 }
 
 export interface RingEntry {
-  readonly ordinal: number;
+  /** Diagnostic only: the blob path is keyed by sha256, so nothing about storage reads this. */
+  readonly execSeq: number;
   readonly sha256: string;
   readonly sizeBytes: number;
   readonly path: string;
@@ -98,24 +100,27 @@ export class ScreenshotRing {
   }
 
   /**
-   * Records step `ordinal`'s frame. Returns null when nothing was kept: policy `none`, or a
-   * capture the presign gate refuses. Null is not an error — the verdict is decided by
-   * assertions, never by whether a screenshot survived — but the caller should log `skipped()`,
-   * because a missing frame in the failure gallery is otherwise invisible.
+   * Records the frame of the step whose execution number is `execSeq`. Returns null when nothing
+   * was kept: policy `none`, or a capture the presign gate refuses. Null is not an error — the
+   * verdict is decided by assertions, never by whether a screenshot survived — but the caller
+   * should log `skipped()`, because a missing frame in the failure gallery is otherwise invisible.
+   *
+   * Keyed by EXECUTION, not by ordinal: a `for` runs one ordinal once per row, so "step 2" named
+   * two different frames the moment a loop had two iterations.
    */
-  async push(ordinal: number, bytes: Buffer): Promise<RingEntry | null> {
+  async push(execSeq: number, bytes: Buffer): Promise<RingEntry | null> {
     if (this.#opts.policy === "none") return null;
 
     const rejection = presignRejection(bytes.length);
     if (rejection !== null) {
-      this.#skipped.push({ ordinal, sizeBytes: bytes.length, reason: rejection });
+      this.#skipped.push({ execSeq, sizeBytes: bytes.length, reason: rejection });
       return null;
     }
 
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     const existing = this.#blobs.get(sha256);
     if (existing !== undefined) {
-      const entry: RingEntry = { ordinal, sha256, sizeBytes: bytes.length, path: existing, deduped: true };
+      const entry: RingEntry = { execSeq, sha256, sizeBytes: bytes.length, path: existing, deduped: true };
       this.#entries.push(entry);
       return entry;
     }
@@ -128,7 +133,7 @@ export class ScreenshotRing {
     this.#order.push(sha256);
     await this.#evictIfFull();
 
-    const entry: RingEntry = { ordinal, sha256, sizeBytes: bytes.length, path, deduped: false };
+    const entry: RingEntry = { execSeq, sha256, sizeBytes: bytes.length, path, deduped: false };
     this.#entries.push(entry);
     return entry;
   }

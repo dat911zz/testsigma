@@ -29,11 +29,32 @@ export type VerbResolver = (opKey: string) => VerbDefinition | undefined;
 
 export interface StepOutcome {
   readonly caseId: string;
+  /** The AUTHORING coordinate, unchanged: what a QA edits, what CompileDiagnostic points at. */
   readonly ordinal: number;
+  /**
+   * 1-based, monotone across the WHOLE chain attempt, one per emitted outcome. THE KEY and THE
+   * ORDER. Equals this outcome's position in the array the chain reports, by construction — see
+   * `runAction`, which is the only place an outcome is ever appended.
+   */
+  readonly execSeq: number;
+  /**
+   * 1-based iteration index of each enclosing `for`, outermost first; `[]` outside every loop.
+   * A LABEL, never a key: two steps of one case can share it (an inlined step group repeats the
+   * group's own ordinals — packages/run-compiler/fixtures/group-inline-flat.golden.json).
+   */
+  readonly loopPath: readonly number[];
+  /** Copied from the plan node being executed, so nothing has to join it back by ordinal. */
+  readonly renderedSentence: string;
   readonly status: "passed" | "failed";
   readonly durationMs: number;
   readonly message?: string;
   readonly screenshotSha256?: string;
+}
+
+/** What a `for` body inherits: the row to bind, and where in the loop nest it is. */
+export interface LoopScope {
+  readonly row: Readonly<Record<string, string>>;
+  readonly path: readonly number[];
 }
 
 export interface StepRunnerDeps {
@@ -63,14 +84,14 @@ export class StepFailed extends Error {
  * every non-passing chain look like it executed nothing.
  */
 export async function runCase(kase: CasePlan, deps: StepRunnerDeps, out: StepOutcome[]): Promise<void> {
-  await runSteps(kase.steps, kase.caseId, deps, out, NO_LOOP_ROW);
+  await runSteps(kase.steps, kase.caseId, deps, out, ROOT_SCOPE);
 }
 
 /**
- * Outside a `for` body there is nothing left for the worker to bind: compiler phase 5 already
- * merged the case's own data row into those args.
+ * Outside any `for` body: nothing left for the worker to bind — compiler phase 5 already merged
+ * the case's own data row into those args — and no loop position to report.
  */
-const NO_LOOP_ROW: Readonly<Record<string, string>> = Object.freeze({});
+const ROOT_SCOPE: LoopScope = Object.freeze({ row: Object.freeze({}), path: Object.freeze([]) });
 
 /** Whole-string `$data:<column>` ref — the same shape compiler phase 5 parses, data family only. */
 const DATA_REF = /^\$data:(.+)$/;
@@ -108,11 +129,11 @@ async function runSteps(
   caseId: string,
   deps: StepRunnerDeps,
   out: StepOutcome[],
-  loopRow: Readonly<Record<string, string>>,
+  scope: LoopScope,
 ): Promise<void> {
   for (const step of steps) {
     if (step.kind === "action") {
-      await runAction(step, caseId, deps, out, loopRow);
+      await runAction(step, caseId, deps, out, scope);
       continue;
     }
     if (step.kind === "for") {
@@ -122,10 +143,17 @@ async function runSteps(
       // while every other outer column stays visible.
       const rows: readonly DataRow[] = step.loopRows ?? [];
       for (const [i, current] of rows.entries()) {
+        const iteration = i + 1;
         deps.log(
-          `for-loop iteration ${i + 1}/${rows.length} (row "${current.label}") at ordinal ${step.ordinal}`,
+          `for-loop iteration ${iteration}/${rows.length} (row "${current.label}") at ordinal ${step.ordinal}`,
         );
-        await runSteps(step.children, caseId, deps, out, { ...loopRow, ...current.values });
+        // The row's LABEL is a display string an author typed: it is not unique, not stable, and
+        // has no table behind it yet (composition-root loadDataProfiles is still a stub; M4 owns
+        // the source). So the label stays in the log and the INDEX is what travels.
+        await runSteps(step.children, caseId, deps, out, {
+          row: { ...scope.row, ...current.values },
+          path: [...scope.path, iteration],
+        });
       }
       continue;
     }
@@ -140,7 +168,7 @@ async function runAction(
   caseId: string,
   deps: StepRunnerDeps,
   out: StepOutcome[],
-  loopRow: Readonly<Record<string, string>>,
+  scope: LoopScope,
 ): Promise<void> {
   const verb = deps.resolveVerb(step.opKey);
   if (verb === undefined) {
@@ -149,7 +177,12 @@ async function runAction(
     );
   }
 
-  const args = bindLoopArgs(step.args, loopRow);
+  const args = bindLoopArgs(step.args, scope.row);
+  // The array this outcome is about to join IS the array the chain reports, and `out.push` runs
+  // exactly once per executed step — so the position is the execution number, with no counter to
+  // keep in sync and nothing that can drift. The control plane's fallback for an older worker
+  // (index + 1 over the reported array) is therefore the SAME number, not an approximation.
+  const execSeq = out.length + 1;
   const startedAt = deps.now();
   const running = verb.execute(deps.handle.opContext(deps.stepTimeoutMs, deps.log), args);
 
@@ -166,6 +199,9 @@ async function runAction(
   const base: StepOutcome = {
     caseId,
     ordinal: step.ordinal,
+    execSeq,
+    loopPath: scope.path,
+    renderedSentence: step.renderedSentence,
     status: result.ok ? "passed" : "failed",
     durationMs: deps.now() - startedAt,
     ...(result.ok ? {} : { message: result.failureMessage ?? "the op reported a failure without a message" }),

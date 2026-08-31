@@ -18,7 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { makeTestDb, type SeededTeam, type TestDb } from "../harness/pglite.js";
 import {
   latestCaseResults,
-  latestStepResults,
+  readStepResults,
   writeCaseResults,
   type CaseResultInput,
 } from "../../src/modules/results/results-service.js";
@@ -63,6 +63,8 @@ function caseInput(over: {
     steps: [
       {
         ordinal: 1,
+        execSeq: 1,
+        loopPath: [],
         verdict: over.stepVerdict,
         renderedSentence: `Click Login (${over.verdict})`,
         durationMs: 91,
@@ -150,7 +152,7 @@ describe("MAX(attempt) read rule", () => {
     await writeTwoAttempts();
     const [head] = await t.asTeamCtx(a.teamId, (tx, ctx) => latestCaseResults(tx, ctx, runId));
     if (head === undefined) throw new Error("latestCaseResults returned nothing to read steps of");
-    const steps = await t.asTeamCtx(a.teamId, (tx, ctx) => latestStepResults(tx, ctx, head.id));
+    const steps = await t.asTeamCtx(a.teamId, (tx, ctx) => readStepResults(tx, ctx, head.id));
     expect(steps.map((s) => ({ ordinal: s.ordinal, verdict: s.verdict, attempt: s.attempt }))).toEqual([
       { ordinal: 1, verdict: "passed", attempt: 2 },
     ]);
@@ -239,7 +241,7 @@ describe("MAX(attempt) read rule", () => {
     const [head] = await t.asTeamCtx(a.teamId, (tx, ctx) => latestCaseResults(tx, ctx, runId));
     expect(head?.startedAt.toISOString()).toBe("2026-08-15T10:00:00.123Z");
     const steps = await t.asTeamCtx(a.teamId, (tx, ctx) =>
-      latestStepResults(tx, ctx, head?.id ?? ""),
+      readStepResults(tx, ctx, head?.id ?? ""),
     );
     expect(steps.length).toBe(1);
     expect(steps[0]?.durationMs).toBe(91);

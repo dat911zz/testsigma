@@ -12,7 +12,7 @@ export const MODULE = "results" as const;
 export {
   writeCaseResults,
   latestCaseResults,
-  latestStepResults,
+  readStepResults,
   ensureResultPartitionsSql,
   RESULT_RETENTION_DAYS,
   STEP_VERDICTS,

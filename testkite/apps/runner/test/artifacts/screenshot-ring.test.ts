@@ -89,14 +89,14 @@ describe("ScreenshotRing", () => {
     expect(ring.entries()).toHaveLength(0);
   });
 
-  it("keepForUpload() returns unique blobs only, in ordinal order", async () => {
+  it("keepForUpload() returns unique blobs only, in execution order", async () => {
     const d = dir();
     const ring = new ScreenshotRing({ dir: d, capacity: 10, policy: "failure" });
     await ring.push(1, shot("a"));
     await ring.push(2, shot("a"));
     await ring.push(3, shot("b"));
     const kept = await ring.keepForUpload();
-    expect(kept.map((e) => e.ordinal)).toEqual([1, 3]);
+    expect(kept.map((e) => e.execSeq)).toEqual([1, 3]);
   });
 
   it("tracks bytes written so the worker can report NVMe scratch usage", async () => {
@@ -143,7 +143,7 @@ describe("ScreenshotRing", () => {
     await ring.push(2, shot("b"));
     await ring.push(3, shot("c"));
     const kept = await ring.keepForUpload();
-    expect(kept.map((e) => e.ordinal)).toEqual([2, 3]);
+    expect(kept.map((e) => e.execSeq)).toEqual([2, 3]);
     for (const entry of kept) expect(existsSync(entry.path)).toBe(true);
   });
 
@@ -179,7 +179,7 @@ describe("ScreenshotRing presign size gate", () => {
     expect(readdirSync(d)).toHaveLength(0);
     expect(ring.entries()).toHaveLength(0);
     expect(ring.bytesWritten).toBe(0);
-    expect(ring.skipped()).toEqual([{ ordinal: 1, sizeBytes: 0, reason: "empty" }]);
+    expect(ring.skipped()).toEqual([{ execSeq: 1, sizeBytes: 0, reason: "empty" }]);
   });
 
   it("keeps the good frames of a chain that also produced an unusable one", async () => {
@@ -188,7 +188,7 @@ describe("ScreenshotRing presign size gate", () => {
     await ring.push(1, shot("a"));
     await ring.push(2, Buffer.alloc(0));
     await ring.push(3, shot("b"));
-    expect((await ring.keepForUpload()).map((e) => e.ordinal)).toEqual([1, 3]);
+    expect((await ring.keepForUpload()).map((e) => e.execSeq)).toEqual([1, 3]);
     expect(ring.skipped()).toHaveLength(1);
   });
 

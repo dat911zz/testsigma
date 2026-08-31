@@ -22,7 +22,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "../../src/modules/kernel/index.js";
 import {
   latestCaseResults,
-  latestStepResults,
+  readStepResults,
   writeCaseResults,
   type CaseResultInput,
 } from "../../src/modules/results/results-service.js";
@@ -99,6 +99,8 @@ describeRealPg("results on real Postgres (node-postgres types)", () => {
     steps: [
       {
         ordinal: 1,
+        execSeq: 1,
+        loopPath: [],
         verdict,
         renderedSentence: "Click Login",
         durationMs: 91,
@@ -125,7 +127,7 @@ describeRealPg("results on real Postgres (node-postgres types)", () => {
     const head = rows[0];
     if (head === undefined) throw new Error("latestCaseResults returned nothing");
     const steps = await withTenant(r.db, { teamId }, (tx) =>
-      latestStepResults(tx, { teamId }, head.id),
+      readStepResults(tx, { teamId }, head.id),
     );
     // The step exists at all only because its FK key matched to the millisecond.
     expect(steps.map((s) => ({ ordinal: s.ordinal, verdict: s.verdict }))).toEqual([

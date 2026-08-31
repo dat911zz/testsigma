@@ -58,6 +58,12 @@ export const resStepResults = pgTable("res_step_results", {
   // unique key, and that key is required to contain started_at.
   caseResultStartedAt: timestamp("case_result_started_at", { withTimezone: true }).notNull(),
   stepOrdinal: integer("step_ordinal").notNull(),
+  // The execution identity (migration 0043). `exec_seq` is the KEY and the narration ORDER:
+  // 1-based, dense, one per executed step of a chain attempt. `loop_path` is the MEANING: the
+  // 1-based iteration index of each enclosing `for`, outermost first — NULL when the worker did
+  // not report one at all, `{}` when it reported "outside every loop".
+  execSeq: integer("exec_seq").notNull(),
+  loopPath: integer("loop_path").array(),
   attempt: integer("attempt").notNull().default(1),
   verdict: resultVerdict("verdict").notNull(),
   renderedSentence: text("rendered_sentence").notNull(),

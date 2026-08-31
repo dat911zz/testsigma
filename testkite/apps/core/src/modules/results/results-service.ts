@@ -43,7 +43,12 @@ export type StepVerdict = (typeof STEP_VERDICTS)[number];
 export type CaseVerdict = ResultVerdict;
 
 export interface StepResultInput {
+  /** The AUTHORING coordinate — repeatable inside one case, so never an identity on its own. */
   readonly ordinal: number;
+  /** 1-based, dense, one per executed step of this attempt. THE KEY and the narration ORDER. */
+  readonly execSeq: number;
+  /** null = the worker did not report a loop position (a build older than 0043). */
+  readonly loopPath: readonly number[] | null;
   readonly verdict: StepVerdict;
   readonly renderedSentence: string;
   readonly durationMs: number;
@@ -76,6 +81,8 @@ export interface CaseResultRow {
 export interface StepResultRow {
   readonly id: string;
   readonly ordinal: number;
+  readonly execSeq: number;
+  readonly loopPath: readonly number[] | null;
   readonly attempt: number;
   readonly verdict: StepVerdict;
   readonly renderedSentence: string;
@@ -136,11 +143,46 @@ function toCaseResultRow(row: SqlRow): CaseResultRow {
   };
 }
 
+/**
+ * Narrowing, not a cast: the driver hands back `unknown`, and both pg and PGlite may render an
+ * int[] as a JS array OR as the literal string `{1,2}` depending on the type parsers installed.
+ * A row whose loop_path is neither is schema drift, and saying so loudly beats handing the API
+ * layer a shape it will misread.
+ */
+function toLoopPath(value: unknown): readonly number[] | null {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return value.map((v: unknown) => Number(v));
+  const text = String(value);
+  const inner = text.startsWith("{") && text.endsWith("}") ? text.slice(1, -1) : null;
+  if (inner === null) throw new Error(`res_step_results.loop_path is not an int[]: ${text}`);
+  return inner === "" ? [] : inner.split(",").map((v) => Number(v));
+}
+
+/**
+ * A Postgres array LITERAL (`{1,2}`), bound as ONE text parameter and cast to int[].
+ *
+ * NOT a JS array handed straight to the `sql` template: drizzle 0.45 expands an array into a
+ * comma-separated PARAMETER LIST, so `sql`${[]}::int[]`` compiles to `()::int[]` and Postgres
+ * answers 42601 (measured 2026-08-31 on PGlite 0.5.8 — the plan's snippet had this wrong).
+ * The literal is still a bound parameter, never interpolated SQL, and every element is checked
+ * to be a safe integer first, so nothing can smuggle punctuation into it.
+ */
+function toArrayLiteral(path: readonly number[]): string {
+  for (const n of path) {
+    if (!Number.isSafeInteger(n)) {
+      throw new Error(`res_step_results.loop_path takes integers, got ${String(n)}`);
+    }
+  }
+  return `{${path.join(",")}}`;
+}
+
 function toStepResultRow(row: SqlRow): StepResultRow {
   const failureContext: unknown = row["failure_context"];
   return {
     id: String(row["id"]),
     ordinal: Number(row["step_ordinal"]),
+    execSeq: Number(row["exec_seq"]),
+    loopPath: toLoopPath(row["loop_path"]),
     attempt: Number(row["attempt"]),
     verdict: toStepVerdict(row["verdict"]),
     renderedSentence: String(row["rendered_sentence"]),
@@ -227,12 +269,16 @@ export async function writeCaseResults(
     // same month — retention detaches them as one.
     const caseStartedAt = toDate(caseRow["started_at"]);
     for (const s of c.steps) {
+      // `loop_path` crosses as a Postgres array literal cast to int[], never as JSON: `[1,2]`
+      // would be refused as 22P02, and the JS array itself becomes a parameter list (see
+      // `toArrayLiteral`).
       await tx.execute(sql`
         INSERT INTO res_step_results (team_id, case_result_id, case_result_started_at, step_ordinal,
-          attempt, verdict, rendered_sentence, duration_ms, failure_context, screenshot_artifact_id,
-          thumbhash, started_at)
-        VALUES (${teamId}, ${caseResultId}, ${caseStartedAt}, ${s.ordinal}, ${input.attempt}, ${s.verdict},
-          ${s.renderedSentence}, ${s.durationMs},
+          exec_seq, loop_path, attempt, verdict, rendered_sentence, duration_ms, failure_context,
+          screenshot_artifact_id, thumbhash, started_at)
+        VALUES (${teamId}, ${caseResultId}, ${caseStartedAt}, ${s.ordinal},
+          ${s.execSeq}, ${s.loopPath === null ? null : sql`${toArrayLiteral(s.loopPath)}::int[]`}, ${input.attempt},
+          ${s.verdict}, ${s.renderedSentence}, ${s.durationMs},
           ${s.failureContext === null ? null : JSON.stringify(s.failureContext)}::jsonb,
           ${s.screenshotArtifactId}, ${s.thumbhash}, ${caseStartedAt})`);
     }
@@ -269,23 +315,33 @@ export async function latestCaseResults(
 }
 
 /**
- * The steps of ONE case result, in narration order. The case result id already names a single
- * attempt (a retry writes a NEW parent row), so the DISTINCT ON here is the same rule applied
- * one level down rather than a second filter: it makes a duplicated ordinal impossible to read
- * back as two steps.
+ * Every step of ONE case result, in EXECUTION order.
+ *
+ * Renamed from `latestStepResults`: `caseResultId` already names a single attempt (a retry
+ * writes a NEW parent row), so nothing here selects a "latest" anything — the old name
+ * advertised a filter that did not exist, and the `DISTINCT ON (step_ordinal)` it justified was
+ * quietly deleting rows. A 3-row `for` reported ONE step, and an inlined step group — which
+ * repeats the group's own ordinals with no loop anywhere — lost a step with no error in sight.
+ * The rule now lives on the WRITE path, as `res_step_results_exec_unique` (migration 0043).
+ *
+ * ORDER BY exec_seq is the execution order the worker emitted, which is the only order a report
+ * may narrate: ordering by step_ordinal interleaves a loop's iterations, and ordering by
+ * loop_path drags every step outside a loop — including the ones AFTER it — ahead of the loop
+ * body (int[] sorts lexicographically; measured 2026-08-31). step_ordinal and started_at follow
+ * only to keep pre-0043 rows, whose exec_seq was reconstructed, in a deterministic order.
  */
-export async function latestStepResults(
+export async function readStepResults(
   tx: TkTx,
   ctx: TenantContext,
   caseResultId: string,
 ): Promise<readonly StepResultRow[]> {
   const teamId = assertTenantContext(ctx);
   const rows = rowsOf(await tx.execute(sql`
-    SELECT DISTINCT ON (step_ordinal) id, step_ordinal, attempt, verdict, rendered_sentence,
+    SELECT id, step_ordinal, exec_seq, loop_path, attempt, verdict, rendered_sentence,
            duration_ms, failure_context, screenshot_artifact_id, thumbhash, started_at
     FROM res_step_results
     WHERE team_id = ${teamId} AND case_result_id = ${caseResultId}
-    ORDER BY step_ordinal, attempt DESC, started_at DESC`));
+    ORDER BY exec_seq, step_ordinal, started_at`));
   return rows.map(toStepResultRow);
 }
 

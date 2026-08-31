@@ -251,6 +251,30 @@ describe("GET /v1/runs/:runId/stream", () => {
     expect(events.map((f) => f.id)).toEqual(["1", "2", "3", "4", "5", "6"]);
   });
 
+  it("carries a step's execution identity into the SSE frame", async () => {
+    // The live gallery is painted from THIS surface, not from res_step_results. `execSeq` and
+    // `loopPath` are what tell a QA that three frames of "Type $data:user" are row 1, row 2 and
+    // row 3 rather than one step redrawn three times, so they have to survive the jsonb round
+    // trip and the frame serializer — neither of which knows the two field names, which is
+    // exactly why nothing but a test says they still arrive.
+    const runId = await seedFinishedRun();
+    const jobRunId = await firstChainOf(runId);
+    await h.db.asTeamCtx(h.ids.teamA, (tx, ctx) =>
+      recordRunEvent(tx, ctx, {
+        jobRunId,
+        attempt: 1,
+        seq: 1,
+        kind: "step_finished",
+        payload: { caseId: "c1", ordinal: 2, execSeq: 2, loopPath: [2], status: "passed" },
+      }),
+    );
+    const res = await inject(runId, h.tokens.authorA);
+    const event = parseFrames(res.body).find((f) => f.event === "run_event");
+    if (event === undefined) throw new Error("the stream carried no run_event frame");
+    expect(event.data).toContain('"execSeq":2');
+    expect(event.data).toContain('"loopPath":[2]');
+  });
+
   it("resumes from Last-Event-ID instead of replaying the whole run", async () => {
     const runId = await seedFinishedRun();
     await seedEvents(await firstChainOf(runId), [1, 2, 3, 4, 5, 6]);

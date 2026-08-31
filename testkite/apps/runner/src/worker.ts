@@ -35,7 +35,7 @@
  * so a shape this worker cannot legally express fails at compile time rather than in production.
  */
 import { infraErrorSchema, UnauthorizedError } from "@testkite/contract";
-import type { ChainPlan, ScreenshotPolicy, StepPlan } from "@testkite/run-compiler";
+import type { ChainPlan, ScreenshotPolicy } from "@testkite/run-compiler";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -204,24 +204,6 @@ function toContractInfra(infra: ChainOutcome["infra"]): InfraPayload {
     retryable: infra.retryable,
     message: boundedMessage(`[${infra.code}] ${infra.message}`),
   };
-}
-
-/**
- * `(caseId, ordinal) → renderedSentence`, walked through `for` bodies as well. The sentence is
- * what a QA reads in the step gallery; `StepOutcome` deliberately does not carry it (the executor
- * has no business duplicating plan data), so it is joined back on here, from the plan the job
- * arrived with.
- */
-function sentenceIndex(chain: ChainPlan): Map<string, string> {
-  const index = new Map<string, string>();
-  const walk = (caseId: string, steps: readonly StepPlan[]): void => {
-    for (const step of steps) {
-      index.set(`${caseId}#${step.ordinal}`, step.renderedSentence);
-      if (step.kind !== "action") walk(caseId, step.children);
-    }
-  };
-  for (const kase of chain.cases) walk(kase.caseId, kase.steps);
-  return index;
 }
 
 async function readIfPresent(path: string): Promise<Buffer | null> {
@@ -425,7 +407,7 @@ export class Worker {
       },
       screenshot: async (handle, step) => {
         if (policy.screenshots === "none") return null;
-        const entry = await ring.push(step.ordinal, await handle.screenshotWebp());
+        const entry = await ring.push(step.execSeq, await handle.screenshotWebp());
         return entry?.sha256 ?? null;
       },
       // Retain-on-failure (§5.1): a green chain's trace is dropped while the context is still
@@ -455,7 +437,7 @@ export class Worker {
     this.#assertWritable();
     await this.#deps.client.complete(job, {
       verdict,
-      steps: this.#completedSteps(chain, outcome.steps, evidence.artifactIdBySha),
+      steps: this.#completedSteps(outcome.steps, evidence.artifactIdBySha),
       artifacts: evidence.artifacts,
     });
     this.#deps.quarantine.onChainOk(chain.chainKey);
@@ -540,7 +522,10 @@ export class Worker {
     }
 
     for (const skipped of ring.skipped()) {
-      this.#deps.log(`step ${skipped.ordinal} produced no usable frame (${skipped.reason}, ${skipped.sizeBytes} bytes)`);
+      // "step 2" was ambiguous the moment one case could run ordinal 2 twice.
+      this.#deps.log(
+        `step #${String(skipped.execSeq)} produced no usable frame (${skipped.reason}, ${String(skipped.sizeBytes)} bytes)`,
+      );
     }
     return { artifacts, artifactIdBySha };
   }
@@ -574,18 +559,26 @@ export class Worker {
     }
   }
 
+  /**
+   * There used to be a `(caseId, ordinal) -> renderedSentence` index built from the plan here.
+   * It was WRONG, and silently: an inlined step group repeats the group's own ordinals inside
+   * one case (packages/run-compiler/fixtures/group-inline-flat.golden.json: 1, 2, 3, 2), so the
+   * LAST sentence written won the key and the report narrated the wrong step. The executor holds
+   * the plan node at emission time and now carries the sentence on the outcome itself, which
+   * needs no key at all.
+   */
   #completedSteps(
-    chain: ChainPlan,
     steps: readonly StepOutcome[],
     artifactIdBySha: ReadonlyMap<string, string>,
   ): readonly CompletedStep[] {
-    const sentences = sentenceIndex(chain);
     return steps.map((step) => ({
       caseId: step.caseId,
       ordinal: step.ordinal,
+      execSeq: step.execSeq,
+      loopPath: [...step.loopPath],
       status: step.status,
       durationMs: Math.max(0, Math.round(step.durationMs)),
-      renderedSentence: sentences.get(`${step.caseId}#${step.ordinal}`) ?? "",
+      renderedSentence: step.renderedSentence,
       failureContext: step.status === "failed" ? { message: step.message ?? "" } : null,
       screenshotArtifactId:
         step.screenshotSha256 === undefined ? null : (artifactIdBySha.get(step.screenshotSha256) ?? null),

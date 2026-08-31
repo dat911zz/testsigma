@@ -139,6 +139,49 @@ function parseBody<S extends z.ZodTypeAny>(schema: S, body: unknown): z.infer<S>
 type CompletedStep = z.infer<typeof completeRequestSchema>["steps"][number];
 
 /**
+ * The identity every step row is keyed by. `execSeq` is optional ON THE WIRE so a worker one
+ * release behind is not 400'd — the fleet and the control plane do not deploy together — but it
+ * is NOT optional in the database, so exactly one of two things happens here:
+ *
+ *  - NO step carries it  => reconstruct as index+1 over the reported array. EXACT, not a comfort
+ *    default: apps/runner appends outcomes in emission order and maps that array straight into
+ *    `steps`, an invariant pinned from the other side by
+ *    apps/runner/test/executor/step-identity.test.ts.
+ *  - SOME but not all    => 400. That is not a version skew, it is a broken worker, and mixing
+ *    two numbering schemes into one array would produce collisions the database then rejects
+ *    halfway through a report.
+ *
+ * A repeated execSeq is refused HERE, before the write, so the UNIQUE constraint stays a backstop
+ * rather than the error path — a 23505 surfacing from inside `withTenant` would abort a
+ * transaction that has already written case rows.
+ */
+type IdentifiedStep = CompletedStep & { readonly execSeq: number };
+
+function withExecSeq(steps: readonly CompletedStep[]): readonly IdentifiedStep[] {
+  const declared = steps.filter((s) => s.execSeq !== undefined).length;
+  if (declared === 0) return steps.map((s, i) => ({ ...s, execSeq: i + 1 }));
+  if (declared !== steps.length) {
+    throw new ValidationFailedError("Every step must carry execSeq, or none of them may.", [
+      `steps: ${String(declared)} of ${String(steps.length)} carry execSeq`,
+    ]);
+  }
+  const seen = new Set<number>();
+  const identified: IdentifiedStep[] = [];
+  for (const s of steps) {
+    const execSeq = s.execSeq;
+    if (execSeq === undefined) throw new Error("unreachable: declared === steps.length");
+    if (seen.has(execSeq)) {
+      throw new ValidationFailedError("execSeq must be unique within one complete.", [
+        `steps: execSeq ${String(execSeq)} appears twice`,
+      ]);
+    }
+    seen.add(execSeq);
+    identified.push({ ...s, execSeq });
+  }
+  return identified;
+}
+
+/**
  * The worker reports a FLAT list of steps carrying their own caseId; `res_case_results` wants
  * one row per case with its steps under it. Grouping happens here, in first-seen order, so the
  * rows land in the order the chain actually executed.
@@ -149,12 +192,12 @@ type CompletedStep = z.infer<typeof completeRequestSchema>["steps"][number];
  * too — a case is `failed` if any of its steps failed, `skipped` only if every step was skipped.
  */
 function toCaseResults(
-  steps: readonly CompletedStep[],
+  steps: readonly IdentifiedStep[],
   chainKey: string,
   finishedAt: Date,
 ): readonly CaseResultInput[] {
   const order: string[] = [];
-  const byCase = new Map<string, CompletedStep[]>();
+  const byCase = new Map<string, IdentifiedStep[]>();
   for (const step of steps) {
     const bucket = byCase.get(step.caseId);
     if (bucket === undefined) {
@@ -174,6 +217,10 @@ function toCaseResults(
         : "passed";
     const stepRows: readonly StepResultInput[] = own.map((s) => ({
       ordinal: s.ordinal,
+      // Chain-wide, so grouping by caseId must NOT renumber: the second case of one report keeps
+      // the numbers its steps were executed under.
+      execSeq: s.execSeq,
+      loopPath: s.loopPath,
       verdict: s.status,
       renderedSentence: s.renderedSentence,
       durationMs: s.durationMs,
@@ -464,6 +511,9 @@ export function internalRoutes(deps: {
         ]);
       }
       assertEpochMatchesToken(body.leaseEpoch, scope);
+      // Before the transaction opens: a 400 here has written nothing, while the same refusal
+      // raised mid-write would leave a fenced job with half a report rolled back under it.
+      const identified = withExecSeq(body.steps);
       const ctx: TenantContext = { teamId: scope.teamId };
       const now = new Date();
       const finished = await withTenant(db, ctx, async (tx) => {
@@ -475,7 +525,7 @@ export function internalRoutes(deps: {
           runId: fenced.runId,
           jobRunId: scope.jobRunId,
           attempt: fenced.attempt,
-          cases: toCaseResults(body.steps, fenced.chainKey, now),
+          cases: toCaseResults(identified, fenced.chainKey, now),
         });
         const outcome = unwrap(
           await completeJob(tx, ctx, {

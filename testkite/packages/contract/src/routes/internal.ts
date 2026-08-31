@@ -155,14 +155,42 @@ export const artifactResponseSchema = z.object({
 });
 
 /**
+ * The deepest `loopPath` the wire accepts. A PAYLOAD HYGIENE CEILING, not a product rule: it
+ * stops a broken worker from pushing an unbounded array into an `int[]` column. If authoring
+ * ever needs a nest deeper than this, the place to refuse it is the COMPILER, with a diagnostic
+ * at compile time — never the wire, silently, after the run already happened.
+ */
+export const LOOP_PATH_MAX_DEPTH = 16;
+
+/**
  * One step row per executed step, FLAT (carrying caseId) rather than nested per case — this is
  * the shape the fleet plan's worker already produces; the server groups by caseId when writing
  * res_case_results. The four presentation fields default so a worker that does not collect
  * screenshots still passes validation.
+ *
+ * A step's IDENTITY is two fields, and they do different jobs.
+ *
+ * `execSeq` is the KEY and the ORDER: 1-based, dense, monotone across the whole chain attempt,
+ * one per executed step. It is OPTIONAL ON THE WIRE and only on the wire — a worker built
+ * before this release sends none, and the control plane reconstructs it from array order, which
+ * is EXACT rather than a comfort default (apps/runner appends outcomes in emission order and
+ * maps that array straight into `steps`). It is NOT optional in the database.
+ *
+ * `loopPath` is the MEANING: the 1-based iteration index of each enclosing `for`, outermost
+ * first. `[]` means "reported: outside every loop"; `null` means "not reported at all". Keeping
+ * those apart is what stops a report from claiming an old worker's step ran outside a loop.
+ *
+ * WHY NOT ONE FIELD: an ordinal repeats inside one case even with no loop anywhere — an inlined
+ * step group keeps the group's own ordinals (packages/run-compiler/fixtures/
+ * group-inline-flat.golden.json: 1, 2, 3, 2). A loop-shaped discriminator cannot key that, and
+ * an array cannot order it (int[] sorts lexicographically, which drags every step outside a loop
+ * ahead of every step inside one, including the steps that run AFTER the loop).
  */
 export const completedStepSchema = z.object({
   caseId: z.string().uuid(),
   ordinal: z.number().int().min(1),
+  execSeq: z.number().int().min(1).optional(),
+  loopPath: z.array(z.number().int().min(1)).max(LOOP_PATH_MAX_DEPTH).nullable().default(null),
   status: z.enum(["passed", "failed", "skipped"]),
   durationMs: z.number().int().nonnegative(),
   renderedSentence: z.string().default(""),

@@ -20,6 +20,8 @@ import { buildInternalApp } from "../../src/http/internal/app.js";
 import { startRun, type StartRunDeps } from "../../src/modules/orchestration/run-service.js";
 import { dispatchPending } from "../../src/modules/orchestration/queue/job-queue.js";
 import { reapDeadLeases } from "../../src/modules/orchestration/queue/reaper.js";
+import { readRunEvents } from "../../src/modules/orchestration/events.js";
+import { readStepResults, type StepResultRow } from "../../src/modules/results/results-service.js";
 import type { KernelEnv } from "../../src/modules/kernel/index.js";
 
 /** The host credential. Long-lived and shared per host in production; per-file here. */
@@ -153,6 +155,17 @@ export interface InternalTestApp {
   caseResultCount: (jobRunId: string) => Promise<number>;
   artifactStatuses: (jobRunId: string) => Promise<readonly string[]>;
   sampleStep: () => SampleStep;
+  /**
+   * Every step row the plane wrote for one case, read back through the PRODUCTION read path
+   * rather than a raw SELECT: what a report will really show is the output of that function,
+   * driver narrowing included, and a fixture with its own query would not be asserting on it.
+   */
+  readSteps: (caseId: string) => Promise<readonly StepResultRow[]>;
+  /**
+   * The payloads of this run's stored events, in stream order — what the live gallery is
+   * painted from. Read through `readRunEvents`, the same function the SSE poll uses.
+   */
+  runEventPayloads: () => Promise<readonly Readonly<Record<string, unknown>>[]>;
   /**
    * Simulates `seconds` of elapsed time for the fleet plane by rewinding every deadline it has
    * stamped so far. Moving the rows back is the only way to age a lease here: the plane reads
@@ -345,6 +358,21 @@ export async function makeInternalTestApp(): Promise<InternalTestApp> {
       durationMs: 91,
       renderedSentence: "Click Login",
     }),
+    readSteps: async (caseId: string): Promise<readonly StepResultRow[]> => {
+      const r = await t.raw.query<{ id: string }>(
+        `SELECT id FROM res_case_results WHERE case_id = $1 ORDER BY attempt DESC, started_at DESC LIMIT 1`,
+        [caseId],
+      );
+      const caseResultId = r.rows[0]?.id;
+      if (caseResultId === undefined) throw new Error(`readSteps: no case result for ${caseId}`);
+      return t.asTeamCtx(teamA.teamId, (tx, ctx) => readStepResults(tx, ctx, caseResultId));
+    },
+    runEventPayloads: async (): Promise<readonly Readonly<Record<string, unknown>>[]> => {
+      const events = await t.asTeamCtx(teamA.teamId, (tx, ctx) =>
+        readRunEvents(tx, ctx, { runId: started.runId }),
+      );
+      return events.map((e) => e.payload);
+    },
     rewindFleetClock: async (seconds: number): Promise<void> => {
       await t.raw.query(
         `UPDATE job_runs

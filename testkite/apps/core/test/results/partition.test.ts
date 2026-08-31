@@ -205,6 +205,43 @@ describe("res_* monthly partitions", () => {
     ]);
   });
 
+  it("carries the new identity columns down to every partition, default included", async () => {
+    // ADD COLUMN on the parent of a partitioned table reaches every partition, and so does the
+    // later SET NOT NULL (measured 2026-08-31). The DEFAULT partition is named explicitly here
+    // because it is the one a retention window walks past and nobody looks at again.
+    // `relkind IN ('r','p')` = ordinary tables and the partitioned parent. Without it the LIKE
+    // also matches the INDEXES behind the new unique constraint, whose pg_attribute rows carry
+    // only the columns they index — a "missing" loop_path that is nothing of the sort.
+    const r = await t.db.execute(sql`
+      SELECT c.relname, a.attname, a.attnotnull FROM pg_class c
+      JOIN pg_attribute a ON a.attrelid = c.oid
+      WHERE c.relname LIKE 'res_step_results%' AND c.relkind IN ('r','p')
+        AND a.attname IN ('exec_seq','loop_path')`);
+    const byTable = new Map<string, string[]>();
+    for (const row of r.rows) {
+      const k = String(row["relname"]);
+      byTable.set(k, [...(byTable.get(k) ?? []), String(row["attname"])]);
+    }
+    expect([...byTable.keys()].length).toBeGreaterThan(1);
+    for (const [table, columns] of byTable) {
+      expect([...columns].sort(), table).toEqual(["exec_seq", "loop_path"]);
+    }
+    expect(byTable.get("res_step_results_default")?.sort()).toEqual(["exec_seq", "loop_path"]);
+    for (const row of r.rows) {
+      if (String(row["attname"]) !== "exec_seq") continue;
+      expect(row["attnotnull"], `${String(row["relname"])}.exec_seq is nullable`).toBe(true);
+    }
+  });
+
+  it("states the step identity as a CONSTRAINT, so the partition-key rule above covers it", async () => {
+    // Measured 2026-08-31: a bare CREATE UNIQUE INDEX does NOT appear in pg_constraint, so the
+    // "every unique constraint contains started_at" test above would never see it.
+    const r = await t.db.execute(sql`
+      SELECT conname FROM pg_constraint
+      WHERE conrelid = 'res_step_results'::regclass AND contype = 'u'`);
+    expect(r.rows.map((x) => String(x["conname"]))).toContain("res_step_results_exec_unique");
+  });
+
   it("columns in the hand-written SQL match the drizzle definitions EXACTLY (no drift)", async () => {
     // The DDL is hand-written and the drizzle types are declared separately, so nothing but
     // this test stops the two from quietly disagreeing.
