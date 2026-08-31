@@ -30,10 +30,10 @@ riêng — nên polish wave chỉ gặt phần **chưa ai đụng tới**.
 
 | Phân loại | Số nit | Ghi chú |
 |---|---:|---|
-| **Áp** — trong dòng chảy M3 (12 commit `review fixes`) | 63 | Số **phần dư** (95 − 14 − 13 − 5), không đếm tay từng dòng. Commit: `629a372` `062aad2` `8b08b68` `b873258` `91ce28d` `cfca282` `80c47fc` `0ba1d18` (ORC T3/T6/T8/T9/T11/T13/T14/T16) · `be6cfd0` `1eb21bd` `96a38ab` `c469779` (FLT T11/T12/T15/T17) |
+| **Áp** — trong dòng chảy M3 (12 commit `review fixes` + `c0c2f42`) | 65 | Số **phần dư** (95 − 14 − 13 − 3), không đếm tay từng dòng. Commit: `629a372` `062aad2` `8b08b68` `b873258` `91ce28d` `cfca282` `80c47fc` `0ba1d18` (ORC T3/T6/T8/T9/T11/T13/T14/T16) · `be6cfd0` `1eb21bd` `96a38ab` `c469779` (FLT T11/T12/T15/T17) |
 | **Áp** — trong polish wave (3 lô, mục 3) | 14 | `e4d2028` (4) · `c532778` (5) · `95f1c26` (5) |
 | **Bỏ** | 13 | 7 nhóm lý do, liệt kê dưới |
-| **Hoãn** | 5 | 4 mục, mỗi mục có địa chỉ milestone/điều kiện |
+| **Hoãn** | 3 | 3 mục, mỗi mục có địa chỉ milestone/điều kiện (NIT 1+14 ban đầu xếp hoãn, kiểm lại thấy `c0c2f42` đã sửa — xem 2.2) |
 | **Tổng** | **95** | |
 
 ### 2.1. Nhóm BỎ — lý do đại diện từng nhóm
@@ -70,7 +70,7 @@ riêng — nên polish wave chỉ gặt phần **chưa ai đụng tới**.
 
 | # | Nội dung | Vì sao hoãn | Hoãn tới đâu |
 |---|---|---|---|
-| **NIT 1 + 14** | `test/concurrency/relay-race.test.ts` ("two relays running in parallel: each event is published EXACTLY ONCE") đỏ **1/2 lần** ở review T1 và **1/3 lần** ở review T5, luôn với chữ ký `expected 20 to be 21`. **CẢNH BÁO PHÂN LOẠI:** chữ ký đó là assertion ĐẦU TIÊN (`expect(new Set(ids).size).toBe(ids.length)`) — tức **21 lần publish cho 20 event, một BẢN SAO thật**, KHÔNG phải "chậm vì tranh CPU". | Nằm ngoài phạm vi M3 (kernel/outbox, M1–M2; không file nào của M3 chạm tới), và root-cause một race cần **dựng lại điều kiện** chứ không vá mù. Nghi vấn hiện tại: transaction thất bại **SAU** khi `publish()` đã đẩy record vào bucket nhưng **TRƯỚC** khi commit `consumed`, khiến relay kia publish lại trong cùng round. **KHÔNG được dán nhãn "flake môi trường" rồi bỏ qua:** nếu đúng là duplicate publish thì bảo đảm exactly-once của outbox **đang thủng**, và mọi domain event của M4+ sẽ ngồi trên nó. | **Ticket riêng, một phiên `systematic-debugging` trên PG thật, TRƯỚC khi mở M4** — vì M4 bắt đầu phát domain event thật qua relay. **Không dùng một lần CI xanh để nghiệm thu M3 nếu file này còn đỏ ngắt quãng.** |
+| **NIT 1 + 14** ~~HOÃN~~ → **ĐÃ LỖI THỜI, KHÔNG CÒN NỢ** | `test/concurrency/relay-race.test.ts` đỏ **1/2 lần** ở review T1 và **1/3 lần** ở review T5, chữ ký `expected 20 to be 21` — đúng là một **bản sao publish thật**, không phải chậm vì tranh CPU. | Triage đọc đúng triệu chứng nhưng bỏ sót mốc thời gian: cả hai lần đỏ đó đều xảy ra **TRƯỚC** commit `c0c2f42` (land ngay sau `9e33aa1` = T5, trước `23d5378` = T6), tức chúng là triệu chứng của chính cái lỗi mà `c0c2f42` sửa: `WHERE … NOT EXISTS … FOR UPDATE SKIP LOCKED` gộp một câu lấy snapshot lúc bắt đầu câu lệnh nhưng chỉ khoá hàng SAU khi đã ước lượng vị từ, nên commit của relay đối thủ vô hình ⇒ publish đôi. Fix: khoá hàng trước, kiểm `consumed` ở câu lệnh RIÊNG. | **Không hoãn nữa.** Nghiệm thu lại 31-08 sau polish: 8 lượt liên tiếp trên PG thật (cụm riêng cổng 55433) = 8×5/5 xanh, cộng 5 lượt lúc T6 và mọi lần chạy full suite từ đó. Nếu file này đỏ lại thì mở ticket mới với chữ ký quan sát được, đừng trích lại dòng này. |
 | **NIT 4** | Không migration nào cấp thành viên (`GRANT testkite_dispatch TO <login role thật>`) cho `testkite_app` / `testkite_auth` / `testkite_relay` / `testkite_dispatch`; việc login role production được nạp vào các sub-role này nằm **hoàn toàn ngoài repo**. | Khoảng trống có từ M1/M2, **không do M3 tạo**. Đây là quyết định hạ tầng/ops (ai là login role, cấp bằng công cụ nào) chứ không phải code. Cấp nhầm `testkite_dispatch` cho cùng login đang giữ `testkite_app` sẽ **tái tạo đúng lỗ hổng OR-qua-kế-thừa** mà spike 2026-08-29 đã cảnh báo. | **Backlog hạ tầng — phải chốt TRƯỚC lần deploy production đầu tiên (runbook M9)**, kèm một kiểm tra khẳng định không login role nào giữ đồng thời `testkite_app` và `testkite_dispatch`. |
 | **NIT 12** | `toCompileSnapshot` / `toAuthoredCase` / `toAuthoredStep` trong `run-service.ts` là bản sao DTO↔domain duy trì **bằng tay**. Switch theo step-kind thì exhaustive (TS bắt được kind mới), nhưng **không có gì bắt được một optional field mới bị âm thầm rơi mất** khi rebuild. | Chưa phải khiếm khuyết hôm nay (docstring dòng 378 đã tự khai rủi ro và trỏ sang `contract-conformance.test.ts`). Nhưng hàng rào **đúng** là một guard **cấp KIỂU** (ví dụ `satisfies Record<keyof AuthoredCaseDto, unknown>`, hoặc danh sách khoá kiểm tại compile time) — thiết kế guard đó là một task nhỏ riêng, không phải một dòng sửa. | **M4** — khi contract DTO thêm field đầu tiên sau M3, hoặc sớm hơn nếu chốt được **khuôn guard kiểu dùng chung** cho mọi adapter. |
 | **NIT 73** | `StepOutcome` không có trường phân biệt **vòng lặp / hàng dữ liệu**, nên N lần chạy thân một `for` đều mang chung `(caseId, ordinal)`. Hệ quả cụ thể ở đường đọc: `readStepResults` (`results-service.ts:284`) dùng `SELECT DISTINCT ON (step_ordinal) … ORDER BY step_ordinal, attempt DESC, started_at DESC` ⇒ một `for` 3 hàng dữ liệu chỉ hiện **MỘT** dòng trong report; hai hàng kia bị nuốt. | Có thật và là **mất dữ liệu ở tầng báo cáo**, nhưng sửa đúng đòi **thay đổi hợp đồng** `StepOutcome` (thêm trường phân biệt) **cộng** đổi luật đọc `DISTINCT ON` — hai phía biên, không phải một nit. | **Task riêng có thay đổi hợp đồng, chốt TRƯỚC khi M4 gắn verb thật vào `for` data-driven** — hôm nay cả hai verb còn `TODO(M4)` (`packages/verb-kit/src/index.ts:118,133`) nên chưa chain production nào sinh nhiều hàng thật. |
@@ -347,12 +347,15 @@ sandbox bật) chỉ nghiệm thu được ở `test:host` (`test/host/chromium-
 nào đặt `TESTKITE_HOST_CGROUP` ⇒ test sandbox chưa từng chạy ở đâu) — **báo cáo này không trích dẫn
 được một lần chạy nightly nào đã hoàn tất.**
 
-### Điều kiện chặn nghiệm thu (nhắc lại từ mục 2.2)
+### Điều kiện chặn nghiệm thu — ĐÃ GỠ (kiểm lại 31-08-2026)
 
-`test/concurrency/relay-race.test.ts` còn đỏ ngắt quãng với chữ ký của một **bản sao thật**
-(`expected 20 to be 21` ở assertion đầu tiên). **Không dùng một lần CI xanh để nghiệm thu M3 nếu file
-này còn đỏ ngắt quãng** — phải có một phiên `systematic-debugging` riêng trên PG thật trước M4.
+Bản đầu của báo cáo này đặt một điều kiện chặn: `test/concurrency/relay-race.test.ts` còn đỏ ngắt
+quãng với chữ ký của một bản sao thật (`expected 20 to be 21`). **Điều kiện đó dựa trên dữ liệu đã cũ**
+— hai lần đỏ được trích đều xảy ra TRƯỚC `c0c2f42`, commit sửa đúng nguyên nhân gốc đó (khoá hàng
+trước, kiểm `consumed` ở câu lệnh riêng). Nghiệm thu lại sau polish: **8 lượt liên tiếp trên Postgres
+thật đều 5/5 xanh**. Không còn điều kiện nào chặn nghiệm thu M3 vì lý do này.
 
+Ba mục hoãn còn lại (NIT 4 · NIT 12 · NIT 73) vẫn nguyên hiệu lực theo mốc đã ghi ở mục 2.2.
 ---
 
 **Verify của chính đợt polish** (`95f1c26`): typecheck 6/6 · 1300 test xanh · lint sạch ·
