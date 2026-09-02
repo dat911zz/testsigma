@@ -5,15 +5,15 @@
 > [`../docs/ARCHITECTURE_AUDIT.md`](../docs/ARCHITECTURE_AUDIT.md) (audit nền).
 
 **Vì sao "TestKite":** diều = *nhẹ* (sandbox runner nhẹ, sinh ra để chấm dứt lớp lỗi OOM);
-sợi dây diều = *control plane* (MySQL lease/dispatcher giữ mọi con diều — đứt dây là bump epoch,
+sợi dây diều = *control plane* (PostgreSQL lease/dispatcher giữ mọi con diều — đứt dây là bump epoch,
 không diều nào ghi verdict lậu); thả nhiều diều = *spawn nhiều sandbox*; và diều bay nhờ gió —
 "làn gió mới" là lý do rewrite ngay từ đầu.
 
 ## Trạng thái
 
-**Scaffold M1** — cấu trúc + hợp đồng + skeleton, chưa cài dependency. Xây theo thứ tự
-blueprint: compiler core + golden test trước tiên (M1), rồi identity/tenancy (M2),
-orchestration + fleet (M3)…
+**Nguồn sự thật duy nhất về tiến độ: [`tasks/README.md`](tasks/README.md)** (bảng M1→M9 +
+hash commit từng dòng). Cố ý KHÔNG nhắc lại ở đây — hai nơi ghi tiến độ thì nơi thứ hai
+luôn là nơi lạc hậu.
 
 ## Cấu trúc
 
@@ -51,7 +51,7 @@ testkite/
 ```bash
 nvm use && corepack enable
 pnpm install
-pnpm dev:infra     # MySQL 8.4 + Valkey + MinIO
+pnpm dev:infra     # PostgreSQL 17 + Valkey 8 + MinIO (docker-compose.dev.yml)
 pnpm typecheck && pnpm test
 ```
 

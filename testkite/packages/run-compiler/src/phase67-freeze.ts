@@ -24,10 +24,12 @@
  *  - No `Date.now()`, no `Math.random()`: same input ⇒ same hash, forever. `node:crypto` is a
  *    pure COMPUTATION (no fs/net/db) so it doesn't break the "compiler is PURE" rule.
  *
- * TODO(M2) zstd: `planFormatVersion = 1` is the RAW, UNCOMPRESSED payload. Compression lives
- * at orchestration's storage/transport layer, not here — and once enabled, it must compress
+ * TODO(M6-storage) zstd: `planFormatVersion = 1` is the RAW, UNCOMPRESSED payload. Compression
+ * lives at orchestration's storage/transport layer, not here — and once enabled, it must compress
  * EXACTLY this canonical string, so `contentHash`'s meaning doesn't change. Changing the
- * compression scheme ⇒ bump `planFormatVersion` to 2.
+ * compression scheme ⇒ bump `planFormatVersion` to 2. The tag says M6 (not M2, which shipped
+ * without it) because the work is a storage/transport decision, and the backlog line lives in
+ * `testkite/tasks/M6-webhooks-observability-dr.md`.
  */
 import { createHash } from "node:crypto";
 import type { ResolvedCase, ResolvedStep } from "./phase45-resolve.js";

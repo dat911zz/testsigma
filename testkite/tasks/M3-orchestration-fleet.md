@@ -69,7 +69,7 @@
         browser-free (grep module specifier + `apps/core/package.json`) và gate `/internal` không rò
         vào OpenAPI công khai (hash: c11c437, 9450927)
 - [x] Soak thử: 200 chain synthetic, RSS ceilings giữ, không orphan chromium, API RSS phẳng
-      (hash: 0360993 — T19; job CI `fleet-soak` chạy nightly 02:00 UTC, số đo ở "Exit criteria")
+      (hash: 0360993 — T19; job CI `fleet-soak` CẤU HÌNH cron 02:00 UTC, số đo ở "Exit criteria")
       — **đính chính 02-09-2026, đọc ngay bên dưới: job nightly đó CHƯA TỪNG chạy.**
 
 ### Đính chính 02-09-2026 — `fleet-soak` là job TRƠ (review-0902 Lô 2, hash `d5bd370`)
@@ -161,8 +161,22 @@ Sửa bằng `raceDeadline()` trong `executor/timeouts.ts` (clear trong `finally
 **Ranh giới của bằng chứng này — đọc TRƯỚC khi trích dẫn nó cho một tiêu chí nghiệm thu:**
 
 - **Không** chứng minh sandbox chromium. Box chạy root, chromium từ chối bật sandbox ⇒ mọi số trên
-  là số KHÔNG sandbox. Hình thái production (uid 10001, sandbox bật) chỉ nghiệm thu ở `test:host`
-  (`test/host/chromium-sandbox.test.ts`) và ở job nightly trên runner GitHub (non-root).
+  là số KHÔNG sandbox (Playwright tự thêm `--no-sandbox` trừ khi `chromiumSandbox === true`). Hình
+  thái production (uid 10001, sandbox bật) chỉ nghiệm thu được ở `test:host`
+  (`test/host/chromium-sandbox.test.ts`) trên một host non-root — và bằng chứng đó **ĐANG NỢ, không
+  phải đã có**: job `fleet-soak` trên runner GitHub **chưa chạy lần nào** (đo 02-09-2026 qua API:
+  0 run sự kiện `schedule`, 0 run `workflow_dispatch` — xem "Đính chính 02-09-2026" ở trên). Ba thứ
+  cùng treo trên đúng một trigger hỏng đó, không cái nào có số thật:
+  - `apps/runner/test/soak/soak-200.test.ts` — soak 200 chain (số ở trên là chạy TAY trên box dev);
+  - `apps/runner/test/host/chromium-sandbox.test.ts` — hình thái non-root + sandbox BẬT;
+  - nửa **"real chromium"** của `apps/runner/test/browser/playwright-engine.test.ts` — `build-and-test`
+    không cài browser nên nửa đó rơi vào `describe.skip` im lặng ở mọi run.
+
+  **Chỗ dán bằng chứng khi có run thật:** _(chưa có URL)_. `workflow_dispatch` đã được thêm ở
+  `d5bd370`, nhưng chừng đó chưa đủ: GitHub chỉ dispatch được workflow đã có mặt trên nhánh mặc định
+  `dev`, mà `.github/workflows/testkite-ci.yml` chưa có ở đó (`git cat-file -e
+  origin/dev:.github/workflows/testkite-ci.yml` ⇒ absent, đo 02-09-2026). Điều kiện còn thiếu là một
+  quyết định merge, không phải một dòng YAML.
 - **Không** chứng minh tiêu chí #2. Soak không áp trần cgroup nào (sandbox cgroup v1 hybrid, không
   CAP_SYS_RESOURCE); "kernel giết đúng Chromium, node sống mà báo `browser_oom`" còn nợ host pilot
   (`test/host/cgroup-v2.test.ts`).
