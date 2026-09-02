@@ -14,7 +14,7 @@ import { identityRouteRegistrations } from "../../src/modules/identity/routes.js
 import { writeAuditEvent } from "../../src/modules/governance/index.js";
 import { governanceRouteRegistrations } from "../../src/modules/governance/routes.js";
 import { authoringRoutes } from "../../src/modules/authoring/index.js";
-import { orchestrationRoutes } from "../../src/modules/orchestration/index.js";
+import { orchestrationRoutes, type RunStreamDeps } from "../../src/modules/orchestration/index.js";
 import { onboardRouteRegistration } from "../../src/http/usecases/onboard-team.js";
 import type { ElementDto } from "@testkite/contract";
 
@@ -100,7 +100,16 @@ function pgTextArray(values: readonly string[]): string {
   return `{${values.map((v) => `"${v.replace(/(["\\])/g, "\\$1")}"`).join(",")}}`;
 }
 
-export async function makeTestApp(): Promise<TestApp> {
+/**
+ * Everything a caller may hand the harness. Empty for all but one suite: the SSE leak test
+ * needs `streamRun`'s timers to be ITS timers, so it can count what one stream opened and
+ * closed instead of reading a process-wide gauge that 740 other tests also write to.
+ */
+export interface MakeTestAppOptions {
+  readonly stream?: Omit<RunStreamDeps, "db">;
+}
+
+export async function makeTestApp(options: MakeTestAppOptions = {}): Promise<TestApp> {
   const db = await makeTestDb();
   const counters = {
     authLookups: 0,
@@ -163,7 +172,13 @@ export async function makeTestApp(): Promise<TestApp> {
     ],
     // Authoring is a plugin (same as composition-root); the L3 suite drives its
     // routes through the real auth hook to prove cross-tenant ids yield 404.
-    plugins: [authoringRoutes(db.db), orchestrationRoutes(db.db, { compile: COMPILE_DEPS })],
+    plugins: [
+      authoringRoutes(db.db),
+      orchestrationRoutes(db.db, {
+        compile: COMPILE_DEPS,
+        ...(options.stream === undefined ? {} : { stream: options.stream }),
+      }),
+    ],
   });
   await app.ready();
 

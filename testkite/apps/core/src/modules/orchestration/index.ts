@@ -93,5 +93,6 @@ export {
   activeRunStreamCount,
   SSE_HEARTBEAT_MS,
   SSE_POLL_MS,
+  type IntervalHandle,
   type RunStreamDeps,
 } from "./sse.js";

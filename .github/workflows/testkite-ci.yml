@@ -4,30 +4,56 @@ on:
   push:
     paths:
       - 'testkite/**'
+      # `testkite/**` khớp cả markdown: 138 commit chỉ sửa `tasks/` hoặc `docs/` đã kéo trọn
+      # db-tests (Postgres service ~2 phút) mà không có một dòng code nào để kiểm chứng.
+      # Hai dòng phủ định đứng SAU pattern rộng — GitHub áp theo thứ tự — và đứng TRƯỚC dòng
+      # workflow, nên sửa chính file này vẫn luôn chạy CI.
+      - '!testkite/tasks/**'
+      - '!testkite/docs/**'
       # Sửa chính workflow này cũng phải chạy lại CI — nếu không, job db-tests thêm ở
       # commit T9 sẽ không bao giờ chạy trên chính commit giới thiệu nó.
       - '.github/workflows/testkite-ci.yml'
   pull_request:
     paths:
       - 'testkite/**'
+      - '!testkite/tasks/**'
+      - '!testkite/docs/**'
       - '.github/workflows/testkite-ci.yml'
   # Nhịp riêng cho job `fleet-soak`: 200 chain synthetic mất vài phút và giá trị của nó là
   # XU HƯỚNG qua từng đêm, không phải tín hiệu per-commit. 02:00 UTC.
   schedule:
     - cron: '0 2 * * *'
+  # `schedule` CHỈ chạy trên nhánh mặc định (`dev`). Nhánh phát triển chưa merge vào đó ⇒ toàn
+  # repo có 0 run `schedule` và `fleet-soak` chưa từng chạy một lần nào: soak 200 chain, host
+  # shape test và nửa "real chromium" của playwright-engine.test.ts đều là gate trên giấy.
+  # `workflow_dispatch` là cách chạy nó trên nhánh này mà không phải chờ merge.
+  workflow_dispatch:
+
+# Job nào cũng chỉ đọc cây nguồn: không push, không comment, không release.
+permissions:
+  contents: read
+
+# Đẩy commit mới lên cùng một nhánh ⇒ huỷ run cũ đang chạy dở thay vì trả tiền cho một kết quả
+# không ai đọc nữa.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # Đo tại HEAD: job này mất ~4-6 phút. 20 phút là trần để một step treo (pnpm chờ mạng,
+    # một test không bao giờ resolve) chết trong vòng vài phút thay vì đốt 6 tiếng mặc định.
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Enable corepack
         run: corepack enable
 
       - name: Setup Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
@@ -225,6 +251,15 @@ jobs:
       # test DATA (not src/), and its Vietnamese case/step names feed into the golden
       # contentHash, so translating it needs a dedicated, hash-verified golden regen
       # rather than a blanket rewrite.
+      #
+      # apps/* is a GLOB and not three hand-written app names, because the hand-written list
+      # is what let apps/ui through: that app was scaffolded after this gate was written, and
+      # its one source file carried a Vietnamese header past a green gate for the whole of M3.
+      # Spelling `testkite/apps/ui/test` out instead would have been worse than the hole —
+      # that directory does not exist yet, and a missing path makes grep exit 2 EVEN WHEN IT
+      # PRINTED A MATCH, which this `if` reads as "clean" (measured 02-09-2026: the violating
+      # file listed on stdout, gate green). `shopt -s nullglob` above drops a glob that matches
+      # nothing, so a tree only enters the scan once it exists — and it enters by itself.
       - name: Gate — language (code/test must be English, docs stay Vietnamese)
         run: |
           set -euo pipefail
@@ -232,8 +267,7 @@ jobs:
           export LC_ALL=C.utf8
           PATTERN='[àáảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵÀÁẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬĐÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ]'
           TARGETS=(
-            testkite/apps/core/src testkite/apps/core/test
-            testkite/apps/runner/src testkite/apps/runner/test testkite/apps/runner/deploy
+            testkite/apps/*/src testkite/apps/*/test testkite/apps/runner/deploy
             testkite/packages/*/src testkite/tools
             testkite/*.mjs testkite/*.ts testkite/scripts
             testkite/apps/*/vitest.config.ts testkite/apps/*/drizzle.config.ts
@@ -270,11 +304,25 @@ jobs:
               || { echo "$p không còn trong blueprint §3"; exit 1; }
           done
 
+      # `--prod` KHÔNG phải để cho gate dễ xanh, nó là PHẠM VI: thứ duy nhất gate này bảo vệ là
+      # cái CHẠY TRONG ẢNH production. Đo 02-09-2026, `pnpm audit` đầy đủ báo đúng 1 moderate —
+      # esbuild <=0.24.2 (GHSA-67mh-4wv8-2f99, dev server đọc trộm response) theo đường
+      # `apps/core > drizzle-kit > @esbuild-kit/esm-loader > @esbuild-kit/core-utils > esbuild`,
+      # tức hoàn toàn nằm trong chuỗi devDependency (vitest/tsx/drizzle-kit) và không có mặt lúc
+      # runtime. Cùng ngày, `pnpm audit --prod --audit-level=moderate` = "No known
+      # vulnerabilities found", exit 0. Hai lệnh, hai câu trả lời khác nhau — đó là bằng chứng
+      # đây là cổng CÓ phạm vi chứ không phải cổng rỗng.
+      # Một advisory HIGH/CRITICAL chạm dependency production sẽ làm job này đỏ, và đó là ý định.
+      - name: Gate — audit dependency production (moderate trở lên là đỏ)
+        working-directory: testkite
+        run: pnpm audit --prod --audit-level=moderate
+
   # Tầng test thứ hai: Postgres THẬT. Job build-and-test ở trên chạy PGlite (một
   # connection wasm) nên tuyệt đối không chứng minh được tranh chấp khoá; suite
   # test/concurrency tự skip ở đó và CHỈ chạy thật ở job này.
   db-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17
@@ -296,9 +344,9 @@ jobs:
       # rỗng — tự chứng bằng test/harness/realpg-mode.test.ts.
       TESTKITE_REQUIRE_PG: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: corepack enable
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - run: corepack prepare pnpm@9 --activate
@@ -331,12 +379,17 @@ jobs:
   # `off-root-dev-only`: đây là nơi duy nhất chromium chạy CÓ SANDBOX ở quy mô 200 chain.
   # Sandbox dev (uid 0) thì không thể — xem đầu file apps/runner/test/soak/soak-200.test.ts.
   fleet-soak:
-    if: github.event_name == 'schedule'
+    # `workflow_dispatch` đứng cạnh `schedule` vì lý do ở khối `on:` trên: nightly không bao giờ
+    # nổ trên nhánh không phải mặc định, nên nếu chỉ có `schedule` thì job này là code chết.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # Cài chromium-headless-shell + 200 chain synthetic: dài hơn hẳn hai job kia, nên trần
+    # riêng. 45 phút vẫn là trần — không phải kỳ vọng.
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: corepack enable
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - run: corepack prepare pnpm@9 --activate

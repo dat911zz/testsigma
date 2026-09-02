@@ -86,11 +86,26 @@ export function parseLastEventId(header: string | readonly string[] | undefined)
   return Number.isSafeInteger(value) && value > 0 ? value : 0;
 }
 
+/** What `setInterval` hands back on this platform — carried around so neither side unwraps it. */
+export type IntervalHandle = ReturnType<typeof setInterval>;
+
 export interface RunStreamDeps {
   readonly db: TkDb;
   /** Poll interval override — the production value is `SSE_POLL_MS`; tests keep it as is. */
   readonly pollMs?: number;
   readonly heartbeatMs?: number;
+  /**
+   * The timer itself as a port, defaulting to the real globals. It exists for ONE claim, the
+   * one this file's header makes: an abandoned tab must not leave a timer behind. Proving it
+   * needs the handles THIS stream created, and `process.getActiveResourcesInfo()` cannot give
+   * them — it is a PROCESS-WIDE count, and vitest runs the whole suite in a single fork, so any
+   * unrelated timer that happens to die between two readings shows up as this stream's leak.
+   * That is not a hypothesis: two CI runs (33393369459, 33395811296) failed with `expected 1 to
+   * be 2` on commits that changed only markdown. Counting stand-ins passed in here make the
+   * measurement local to the stream under test and therefore deterministic.
+   */
+  readonly setIntervalFn?: (fn: () => void, ms: number) => IntervalHandle;
+  readonly clearIntervalFn?: (handle: IntervalHandle) => void;
 }
 
 /**
@@ -123,10 +138,12 @@ export function streamRun(
   let polling = false;
   openStreams += 1;
 
-  const timer = setInterval(() => {
+  const setEvery = deps.setIntervalFn ?? setInterval;
+  const clearEvery = deps.clearIntervalFn ?? clearInterval;
+  const timer = setEvery(() => {
     void tick();
   }, deps.pollMs ?? SSE_POLL_MS);
-  const beat = setInterval(() => {
+  const beat = setEvery(() => {
     if (alive) reply.raw.write(": ping\n\n");
   }, deps.heartbeatMs ?? SSE_HEARTBEAT_MS);
 
@@ -135,8 +152,8 @@ export function streamRun(
     // Order matters: the timers go first, so `activeRunStreamCount() === 0` is a promise that
     // nothing is left holding the event loop.
     alive = false;
-    clearInterval(timer);
-    clearInterval(beat);
+    clearEvery(timer);
+    clearEvery(beat);
     openStreams -= 1;
     reply.raw.end();
   };

@@ -23,14 +23,45 @@ import { request as httpRequest, type IncomingMessage } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { makeTestApp, type TestApp } from "../harness/http.js";
 import type { SeededTeam } from "../harness/pglite.js";
-import { activeRunStreamCount } from "../../src/modules/orchestration/sse.js";
+import {
+  activeRunStreamCount,
+  type IntervalHandle,
+} from "../../src/modules/orchestration/sse.js";
 import { recordRunEvent } from "../../src/modules/orchestration/events.js";
 
 let h: TestApp;
 let baseUrl = "";
 
+/**
+ * The interval handles the app under test opened, and the ones it has not handed back yet.
+ * `streamRun` takes both functions as ports, so this ledger covers exactly the timers ONE
+ * stream created.
+ *
+ * It replaces a `process.getActiveResourcesInfo()` reading. That one was PROCESS-WIDE, and
+ * `vitest.config.ts` puts this app's whole suite in a single fork, so any timer born or buried
+ * elsewhere between two readings landed on this test's ledger: CI runs 33393369459 and
+ * 33395811296 both failed here with `expected 1 to be 2` on commits that changed nothing but
+ * markdown. The leak being measured is real; the instrument was not.
+ */
+const timers = {
+  opened: 0,
+  live: new Set<IntervalHandle>(),
+  setIntervalFn(fn: () => void, ms: number): IntervalHandle {
+    const handle = setInterval(fn, ms);
+    timers.opened += 1;
+    timers.live.add(handle);
+    return handle;
+  },
+  clearIntervalFn(handle: IntervalHandle): void {
+    clearInterval(handle);
+    timers.live.delete(handle);
+  },
+};
+
 beforeAll(async () => {
-  h = await makeTestApp();
+  h = await makeTestApp({
+    stream: { setIntervalFn: timers.setIntervalFn, clearIntervalFn: timers.clearIntervalFn },
+  });
   baseUrl = await h.app.listen({ port: 0, host: "127.0.0.1" });
 });
 afterAll(async () => {
@@ -163,10 +194,6 @@ function jobRunIdOf(frame: SseFrame): string {
 /** Spins the event loop until `check()` holds; vitest's own timeout is the failure mode. */
 async function waitUntil(check: () => boolean): Promise<void> {
   while (!check()) await new Promise((resolve) => setTimeout(resolve, 5));
-}
-
-function timeoutCount(): number {
-  return process.getActiveResourcesInfo().filter((kind) => kind === "Timeout").length;
 }
 
 /** Opens a stream over a real socket, waits for the first byte, then walks away. */
@@ -336,13 +363,15 @@ describe("GET /v1/runs/:runId/stream", () => {
 
   it("closes its poll timer when the client goes away", async () => {
     const runId = await seedLiveRun();
-    // Warm-up: the first socket of a server also allocates node's own per-duration timer
-    // list, which would read as a leak on a one-shot measurement.
-    await openThenAbort(runId);
-    const before = timeoutCount();
+    const opened = timers.opened;
+    const live = timers.live.size;
     await openThenAbort(runId);
     expect(activeRunStreamCount()).toBe(0);
-    expect(timeoutCount()).toBe(before);
+    // One stream opens exactly two handles — the 1s poll and the 15s heartbeat — and an
+    // abandoned tab must hand BOTH back. Node's own timer bookkeeping is no longer part of the
+    // reading, so the warm-up round this test used to need is gone with it.
+    expect(timers.opened - opened).toBe(2);
+    expect(timers.live.size).toBe(live);
   }, 20_000);
 
   it("404s another team's run rather than streaming it", async () => {

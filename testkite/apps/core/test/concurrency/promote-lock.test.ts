@@ -224,22 +224,37 @@ describeRealPg("promote under real contention (real Postgres, two connections)",
     const c1 = await approvedCase();
     const a = await r.pool.connect();
     const b = await r.pool.connect();
+    let bAcquired = false;
+    let bPromise: Promise<void> = Promise.resolve();
     try {
       await a.query("BEGIN");
       await a.query(`SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))`, [
         teamId,
         c1.id,
       ]);
-      await b.query("BEGIN");
-      // Different case id ⇒ different lock ⇒ acquired immediately, no waiting.
-      await b.query(`SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))`, [
-        teamId,
-        "00000000-0000-0000-0000-0000000000ff",
-      ]);
-      await b.query("COMMIT");
-      await a.query("COMMIT");
-      expect(true).toBe(true);
+
+      bPromise = (async () => {
+        await b.query("BEGIN");
+        // Different case id ⇒ different lock ⇒ acquired while A still holds its own.
+        await b.query(`SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))`, [
+          teamId,
+          "00000000-0000-0000-0000-0000000000ff",
+        ]);
+        bAcquired = true;
+        await b.query("COMMIT");
+      })();
+
+      // The mirror image of the test above, down to the same 300ms window: there the waiter is
+      // still empty-handed after it, here it must already be through. A lock keyed on the team
+      // alone — or on nothing at all — would still be held by A right now, and this reads
+      // `false`. `expect(true).toBe(true)` could not tell the two apart.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(bAcquired).toBe(true);
     } finally {
+      // Releases A's lock whatever happened above: on a failure B is still parked on the lock,
+      // and handing a client back to the pool with a query in flight poisons the next test.
+      await a.query("COMMIT").catch(() => undefined);
+      await bPromise.catch(() => undefined);
       a.release();
       b.release();
     }

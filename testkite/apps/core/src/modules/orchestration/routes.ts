@@ -29,7 +29,7 @@ import {
 } from "@testkite/contract";
 import { withTenant, type TenantContext, type TkDb } from "../kernel/index.js";
 import { abortRun, loadRunStatus, startRun, type StartRunDeps } from "./run-service.js";
-import { streamRun } from "./sse.js";
+import { streamRun, type RunStreamDeps } from "./sse.js";
 
 type MethodUpper = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -104,6 +104,12 @@ export interface OrchestrationRoutesDeps {
    * have no facade until M4, so they stay injection ports handed in by the composition root.
    */
   readonly compile: StartRunDeps;
+  /**
+   * SSE timing/timer overrides, forwarded verbatim to `streamRun`. The composition root passes
+   * nothing and the stream runs on the real globals; the leak test passes counting stand-ins so
+   * it can assert on the handles ONE stream created instead of on a process-wide gauge.
+   */
+  readonly stream?: Omit<RunStreamDeps, "db">;
 }
 
 export function orchestrationRoutes(db: TkDb, deps: OrchestrationRoutesDeps): FastifyPluginAsync {
@@ -216,7 +222,7 @@ export function orchestrationRoutes(db: TkDb, deps: OrchestrationRoutesDeps): Fa
       // failure. This is also what keeps another team's run a 404 rather than an empty stream.
       const run = await withTenant(db, ctx, (tx) => loadRunStatus(tx, ctx, runId));
       if (run === undefined) throw new NotFoundError(`Run not found: ${runId}`);
-      streamRun(request, reply, ctx, runId, { db });
+      streamRun(request, reply, ctx, runId, { db, ...deps.stream });
       return reply;
     });
   };
