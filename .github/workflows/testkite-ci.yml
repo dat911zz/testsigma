@@ -36,7 +36,9 @@ permissions:
 # Đẩy commit mới lên cùng một nhánh ⇒ huỷ run cũ đang chạy dở thay vì trả tiền cho một kết quả
 # không ai đọc nữa.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # `event_name` is part of the key so a manual `workflow_dispatch` soak (~45 min) on this branch
+  # and an ordinary `push` run never cancel each other (found in review 02-09-2026, Lô 2).
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
