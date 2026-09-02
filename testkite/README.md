@@ -23,16 +23,21 @@ testkite/
 │   ├── core/          # @testkite/core — Fastify modular monolith (12 module, DAG một chiều)
 │   │   └── src/modules/{kernel,identity,governance,verbs,elements,testdata,
 │   │                    authoring,planning,orchestration,results,integrations,ai,mcp-gateway}
-│   ├── runner/        # @testkite/runner — BullMQ worker + Playwright headless-shell
-│   └── ui/            # @testkite/ui — React 19 + Vite, step-builder cho QA no-code
+│   ├── runner/        # @testkite/runner — worker claim job_runs (Postgres SKIP LOCKED)
+│   │                  #   + Playwright chromium-headless-shell; zero-credential
+│   └── ui/            # @testkite/ui — PLACEHOLDER (mới có src/main.tsx, chưa có test)
 ├── packages/
 │   ├── contract/      # @testkite/contract — zod là NGUỒN hợp đồng; OpenAPI 3.1 sinh ra + commit
-│   ├── run-compiler/  # @testkite/run-compiler — pure function, 9 phase, golden-tested
-│   └── verb-kit/      # @testkite/verb-kit — op registry (35 verb active; Class.forName đã chết)
+│   ├── run-compiler/  # @testkite/run-compiler — pure function, 7 phase (1→7), golden-tested
+│   └── verb-kit/      # @testkite/verb-kit — op registry (3 verb đăng ký; 35 verb là M4)
+├── docs/              # runbook vận hành + PROJECT_MAP.md (bản đồ cấu trúc)
 ├── tasks/             # BACKLOG theo milestone M1→M9 + open-questions (checklist làm việc)
 ├── ownership.json     # module → prefix bảng (cưỡng chế bằng lint, không phải văn hóa)
 └── docker-compose.dev.yml  # PostgreSQL 17 + Valkey 8 + MinIO
 ```
+
+**Bản đồ cấu trúc đầy đủ** — từng module một (trách nhiệm, bảng sở hữu, facade export, test nằm
+đâu), DAG sinh từ `module-dag.json`, và bảng cổng CI: [`docs/PROJECT_MAP.md`](docs/PROJECT_MAP.md).
 
 **Bắt đầu từ đâu:** mở [`tasks/README.md`](tasks/README.md) — bắt đầu thẳng M1 (clean break: không vá/bảo trì hệ cũ).
 8 quyết định lớn đã chốt 27-08 (xem bảng đầu blueprint) — M1 hết bị chặn.
