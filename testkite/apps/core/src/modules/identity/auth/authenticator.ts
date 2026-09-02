@@ -75,6 +75,11 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
             userId: apiTokens.userId,
             kind: apiTokens.kind,
             scopes: apiTokens.scopes,
+            // Selected even though the WHERE clause above already filters on both: they are
+            // what the cache stores so that a hit can answer "still alive?" without a
+            // round-trip. Reading them here means the cache never has to guess.
+            expiresAt: apiTokens.expiresAt,
+            revokedAt: apiTokens.revokedAt,
           })
           .from(apiTokens)
           .where(
@@ -119,6 +124,8 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
         role: principal.role,
         scopes: principal.scopes,
         cachedAt: 0,
+        expiresAt: found.tok.expiresAt,
+        revokedAt: found.tok.revokedAt,
       });
       // last_used_at is updated by a separate UPDATE (not on the auth hot path):
       // the auth path only has SELECT privileges, so writing belongs to withTenant at the route layer.

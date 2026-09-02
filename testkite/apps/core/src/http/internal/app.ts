@@ -28,6 +28,7 @@ import {
   verifyWorkerToken,
 } from "../../modules/orchestration/index.js";
 import { installErrorHandler } from "../errors.js";
+import { LOG_SERIALIZERS } from "../log-serializers.js";
 import { internalRoutes } from "./routes.js";
 
 const BEARER = /^Bearer (.+)$/;
@@ -49,7 +50,9 @@ export interface InternalAppDeps {
 
 export async function buildInternalApp(deps: InternalAppDeps): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: { level: deps.env.LOG_LEVEL },
+    // Same redaction as the public plane — this one talks to the fleet, but it runs the same
+    // error handler over the same database driver. See log-serializers.ts.
+    logger: { level: deps.env.LOG_LEVEL, serializers: LOG_SERIALIZERS },
     genReqId: () => randomUUID(),
     // A complete() payload carries every step of a chain; 1MB is not enough, 8MB is.
     bodyLimit: 8 * 1_048_576,

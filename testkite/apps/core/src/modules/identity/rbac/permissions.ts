@@ -79,6 +79,36 @@ export const ROLE_PERMISSIONS: Readonly<Record<MembershipRole, readonly Permissi
 };
 
 /**
+ * WHO MAY HAND OUT WHICH ROLE. `member:manage` says a caller may administer this team's
+ * people; it does NOT say which role they may write, and conflating the two is a one-request
+ * privilege escalation: every team_admin holds `member:manage`, so every team_admin could
+ * write `instance_operator` onto an account they control and walk away with `team:purge` +
+ * `token:issue:service`.
+ *
+ * The ceiling is the caller's OWN role, and it never includes that role itself — promotion to
+ * a peer is still an org-level decision, and self-promotion is refused separately (a caller
+ * may not touch their own membership at all; see identity/routes.ts::setMemberRole).
+ * `instance_operator` is the one exception that may grant its own level: it is the infra role
+ * that bootstraps the instance, and something has to be able to appoint the second operator.
+ *
+ * A role missing from a list is a role that CANNOT be granted, so a role added to
+ * `MembershipRole` without a line here defaults to un-grantable rather than to un-guarded.
+ */
+export const GRANTABLE_ROLES: Readonly<Record<MembershipRole, readonly MembershipRole[]>> = {
+  instance_operator: ["instance_operator", "org_admin", "team_admin", "author", "runner", "viewer"],
+  org_admin: ["team_admin", "author", "runner", "viewer"],
+  team_admin: ["author", "runner", "viewer"],
+  author: [],
+  runner: [],
+  viewer: [],
+};
+
+/** True when `actor` is allowed to write `target` onto somebody else's membership. */
+export function canGrantRole(actor: MembershipRole, target: MembershipRole): boolean {
+  return GRANTABLE_ROLES[actor].includes(target);
+}
+
+/**
  * Can NEVER be attached to a non-interactive credential (api token kind user_pat/service).
  * Copied verbatim from blueprint §3. A real human sitting at the keyboard (kind=session)
  * can still use it if their role has it, but every use is a HIGH audit line and bypasses

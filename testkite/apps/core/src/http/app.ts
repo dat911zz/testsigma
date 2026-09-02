@@ -14,6 +14,7 @@ import type { KernelEnv, TkDb } from "../modules/kernel/index.js";
 import type { Authenticator } from "../modules/identity/index.js";
 import { installAuth } from "./auth.js";
 import { installErrorHandler } from "./errors.js";
+import { LOG_SERIALIZERS } from "./log-serializers.js";
 import type { RouteRegistration } from "./types.js";
 
 export type TkApp = FastifyInstance;
@@ -34,7 +35,9 @@ export type HttpDeps = {
 
 export async function buildHttpApp(deps: HttpDeps): Promise<TkApp> {
   const app = Fastify({
-    logger: { level: deps.env.LOG_LEVEL },
+    // `serializers.err` is not cosmetic: the error handler logs the whole error on a 500, and
+    // a DrizzleQueryError carries the full SQL plus every bound value. See log-serializers.ts.
+    logger: { level: deps.env.LOG_LEVEL, serializers: LOG_SERIALIZERS },
     genReqId: () => randomUUID(),
     // Don't blindly trust the proxy; enable once there's an internal reverse proxy (M6 hardening).
     trustProxy: false,

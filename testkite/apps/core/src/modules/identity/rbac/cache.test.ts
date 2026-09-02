@@ -6,6 +6,9 @@ function fakeClock(start = 0): { now: () => number; advance: (ms: number) => voi
   return { now: () => t, advance: (ms) => { t += ms; } };
 }
 
+/** 2100-01-01: far enough away that a test about the TTL is never also a test about expiry. */
+const NEVER = new Date(4_102_444_800_000);
+
 const grant = (teamId: string) =>
   ({
     teamId,
@@ -15,6 +18,8 @@ const grant = (teamId: string) =>
     role: "author" as const,
     scopes: ["case:read"] as const,
     cachedAt: 0,
+    expiresAt: NEVER,
+    revokedAt: null,
   });
 
 describe("permission cache", () => {
@@ -35,6 +40,26 @@ describe("permission cache", () => {
     clock.advance(59_999);
     expect(c.get("tok-1")).toBeDefined();
     clock.advance(2);
+    expect(c.get("tok-1")).toBeUndefined();
+  });
+
+  it("an expired token is refused on a cache hit", () => {
+    // The credential's OWN lifetime, not the cache's. A token minted with 5 seconds left
+    // used to keep authenticating for the rest of the 60s TTL, because the only thing the
+    // cache ever compared was `cachedAt`: the DB row said "expired", the cache never asked.
+    const clock = fakeClock(1_000);
+    const c = createAuthzCache({ now: clock.now });
+    c.set("tok-1", { ...grant("team-a"), expiresAt: new Date(6_000) });
+    expect(c.get("tok-1")).toBeDefined();
+    clock.advance(4_999);
+    expect(c.get("tok-1"), "one millisecond before expiry the token is still valid").toBeDefined();
+    clock.advance(1);
+    expect(c.get("tok-1"), "expires_at is reached ⇒ the entry is gone, TTL or not").toBeUndefined();
+  });
+
+  it("a revoked token is refused on a cache hit", () => {
+    const c = createAuthzCache({ now: () => 0 });
+    c.set("tok-1", { ...grant("team-a"), revokedAt: new Date(0) });
     expect(c.get("tok-1")).toBeUndefined();
   });
 

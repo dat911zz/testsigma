@@ -1,6 +1,10 @@
 import { describe, expect, it, beforeAll, afterAll, beforeEach } from "vitest";
 import { makeTestApp, type TestApp } from "../harness/http.js";
 import { startMockIdp, type MockIdp } from "../harness/mock-idp.js";
+import {
+  OIDC_ASSIGNABLE_ROLES,
+  toAssignableRole,
+} from "../../src/modules/identity/oidc/connector.js";
 
 let h: TestApp;
 let idp: MockIdp;
@@ -15,20 +19,33 @@ afterAll(async () => {
   await h.close();
 });
 
+const REDIRECT = "http://127.0.0.1:8080/v1/auth/oidc/callback";
+
 /**
  * An OIDC connector for an arbitrary team — team B uses this to set up the cross-tenant
  * case. `roleMapping` is the IdP group -> TestKite role table; empty (the default) means
- * every login falls back to `default_role`.
+ * every login falls back to `default_role`. `redirectUris` is the connector's allowlist:
+ * a connector that lists none can start no login at all, which is what makes the column
+ * fail CLOSED for every row that predates it.
  */
 async function newConnector(
   teamId: string,
   name: string,
   roleMapping: Record<string, string> = {},
+  redirectUris: readonly string[] = [REDIRECT],
 ): Promise<string> {
   const r = await h.db.raw.query<{ id: string }>(
-    `INSERT INTO idn_oidc_connectors (team_id, name, issuer_url, client_id, client_secret, scopes, default_role, allow_insecure_http, role_mapping)
-     VALUES ($1,$2,$3,$4,$5,ARRAY['openid','email','groups'],'viewer',true,$6::jsonb) RETURNING id`,
-    [teamId, name, idp.issuer, idp.clientId, idp.clientSecret, JSON.stringify(roleMapping)],
+    `INSERT INTO idn_oidc_connectors (team_id, name, issuer_url, client_id, client_secret, scopes, default_role, allow_insecure_http, role_mapping, redirect_uris)
+     VALUES ($1,$2,$3,$4,$5,ARRAY['openid','email','groups'],'viewer',true,$6::jsonb,$7::text[]) RETURNING id`,
+    [
+      teamId,
+      name,
+      idp.issuer,
+      idp.clientId,
+      idp.clientSecret,
+      JSON.stringify(roleMapping),
+      `{${redirectUris.map((u) => `"${u}"`).join(",")}}`,
+    ],
   );
   return String(r.rows[0]?.id);
 }
@@ -37,8 +54,6 @@ beforeEach(async () => {
   await h.seed();
   connectorId = await newConnector(h.ids.teamA, "keycloak");
 });
-
-const REDIRECT = "http://127.0.0.1:8080/v1/auth/oidc/callback";
 
 async function start(cid = connectorId): Promise<{ authorizationUrl: string; state: string }> {
   const r = await h.app.inject({
@@ -235,6 +250,85 @@ describe("OIDC connector", () => {
       payload: { redirectUri: REDIRECT },
     });
     expect(r.statusCode).toBe(404);
+  });
+
+  /**
+   * The redirect_uri allowlist. Before it existed, `POST /start` echoed whatever URL the
+   * caller sent straight into the authorization request: anyone who learned a connector id
+   * (a public route, so anyone at all) could aim the IdP's code at a host they own and walk
+   * away with an authorization code for somebody else's tenant. The allowlist lives on the
+   * connector row, and matching is WHOLE-STRING — a prefix rule is the classic bypass, and
+   * it is asserted against explicitly below.
+   */
+  describe("redirect_uri allowlist", () => {
+    it("start refuses a redirectUri outside the connector allowlist", async () => {
+      const r = await h.app.inject({
+        method: "POST",
+        url: `/v1/auth/oidc/${connectorId}/start`,
+        payload: { redirectUri: "https://attacker.test/collect" },
+      });
+      expect(r.statusCode).toBe(400);
+      // No login state may exist for a refused start: the row is what a later callback
+      // trades for a session.
+      const states = await h.db.raw.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM idn_oidc_login_states WHERE connector_id = $1`,
+        [connectorId],
+      );
+      expect(states.rows[0]?.n).toBe(0);
+    });
+
+    it("start refuses a redirectUri that merely EXTENDS an allowlisted entry", async () => {
+      // `https://app.test/cb` allowlisted must not admit `https://app.test/cb.attacker.test`
+      // nor `https://app.test/cb/../elsewhere`: the entry is a whole string, not a prefix.
+      const cid = await newConnector(h.ids.teamA, "kc-prefix", {}, ["http://127.0.0.1:8080/cb"]);
+      for (const uri of [
+        "http://127.0.0.1:8080/cb.attacker.test",
+        "http://127.0.0.1:8080/cb/deeper",
+        "http://127.0.0.1:8080/cb?next=https://attacker.test",
+      ]) {
+        const r = await h.app.inject({
+          method: "POST",
+          url: `/v1/auth/oidc/${cid}/start`,
+          payload: { redirectUri: uri },
+        });
+        expect(r.statusCode, `redirectUri ${uri}`).toBe(400);
+      }
+      const exact = await h.app.inject({
+        method: "POST",
+        url: `/v1/auth/oidc/${cid}/start`,
+        payload: { redirectUri: "http://127.0.0.1:8080/cb" },
+      });
+      expect(exact.statusCode).toBe(200);
+    });
+
+    it("a connector with an EMPTY allowlist can start no login at all", async () => {
+      // Every row that predates the column defaults to '{}'. Fail closed: an operator
+      // fills the allowlist in, nobody silently keeps the old open behaviour.
+      const cid = await newConnector(h.ids.teamA, "kc-empty", {}, []);
+      const r = await h.app.inject({
+        method: "POST",
+        url: `/v1/auth/oidc/${cid}/start`,
+        payload: { redirectUri: REDIRECT },
+      });
+      expect(r.statusCode).toBe(400);
+    });
+
+    it("callback refuses when the state redirect_uri is no longer allowlisted", async () => {
+      // The allowlist is re-read at callback time, not trusted from the 10-minute-old state
+      // row: revoking a redirect URI has to kill the logins already in flight through it.
+      const { authorizationUrl } = await start();
+      const cb = await walkIdp(authorizationUrl);
+      await h.db.raw.query(
+        `UPDATE idn_oidc_connectors SET redirect_uris = '{}'::text[] WHERE id = $1`,
+        [connectorId],
+      );
+      expect((await callback(cb)).statusCode).toBe(401);
+    });
+
+    it("callback still succeeds while the state redirect_uri stays allowlisted", async () => {
+      const { authorizationUrl } = await start();
+      expect((await callback(await walkIdp(authorizationUrl))).statusCode).toBe(200);
+    });
   });
 
   it("client_secret NEVER leaves the API", async () => {
@@ -435,5 +529,113 @@ describe("OIDC — the membership role is re-synced from the IdP on every login"
       [h.ids.teamB, userId],
     );
     expect(other.rows[0]?.n).toBe(0);
+  });
+});
+
+/**
+ * `role_mapping` is jsonb — free-form JSON an operator typed into a connector row — and it
+ * used to be read as `Record<string, string>` and its value asserted to be a
+ * `MembershipRole`. Both claims are unchecked, and each one costs something on a PUBLIC
+ * route (`POST /v1/auth/oidc/{id}/callback`):
+ *   - a typo (`"authr"`) reaches the enum column and comes back as 22P02 ⇒ a 500 anyone can
+ *     trigger by logging in;
+ *   - `"org_admin"` / `"instance_operator"` are real `MembershipRole`s but NOT members of the
+ *     `oidc_default_role` enum, i.e. never meant to be reachable through SSO — an IdP group,
+ *     or whoever administers that IdP, would be granting org-level roles inside TestKite.
+ * The assignable set is now a constant checked at runtime; anything outside it is not a
+ * mapping at all, so the connector's `default_role` applies.
+ */
+describe("OIDC — role_mapping is clamped to the roles SSO may assign", () => {
+  const roleOf = async (userId: string): Promise<string | undefined> => {
+    const r = await h.db.raw.query<{ role: string }>(
+      `SELECT role FROM memberships WHERE team_id=$1 AND user_id=$2`,
+      [h.ids.teamA, userId],
+    );
+    return r.rows[0]?.role;
+  };
+
+  it("role_mapping value outside the assignable set falls back to defaultRole", async () => {
+    // A typo an operator can make in one keystroke. It must not become a 500 on a route
+    // that needs no credential at all.
+    const cid = await newConnector(h.ids.teamA, "kc-typo", { "acme-devs": "authr" });
+    const r = await login(cid, {
+      tk_sub: "kc-typo",
+      tk_email: "typo@acme.test",
+      tk_groups: "acme-devs",
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ context: { role: "viewer" } });
+    expect(await roleOf(userIdOf(r))).toBe("viewer");
+  });
+
+  it("role_mapping cannot grant instance_operator via SSO", async () => {
+    const cid = await newConnector(h.ids.teamA, "kc-esc", { "acme-devs": "instance_operator" });
+    const r = await login(cid, {
+      tk_sub: "kc-esc",
+      tk_email: "esc@acme.test",
+      tk_groups: "acme-devs",
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ context: { role: "viewer" } });
+    expect(await roleOf(userIdOf(r))).toBe("viewer");
+  });
+
+  it("role_mapping cannot grant org_admin via SSO either", async () => {
+    const cid = await newConnector(h.ids.teamA, "kc-org", { "acme-devs": "org_admin" });
+    const r = await login(cid, {
+      tk_sub: "kc-org",
+      tk_email: "org@acme.test",
+      tk_groups: "acme-devs",
+    });
+    expect(r.statusCode).toBe(200);
+    expect(await roleOf(userIdOf(r))).toBe("viewer");
+  });
+
+  it("a non-string mapping value is ignored, not coerced", async () => {
+    // jsonb holds numbers, objects and null just as happily as strings.
+    const cid = await newConnector(h.ids.teamA, "kc-nonstring", {});
+    await h.db.raw.query(
+      `UPDATE idn_oidc_connectors SET role_mapping = '{"acme-devs": 7}'::jsonb WHERE id = $1`,
+      [cid],
+    );
+    const r = await login(cid, {
+      tk_sub: "kc-nonstring",
+      tk_email: "nonstring@acme.test",
+      tk_groups: "acme-devs",
+    });
+    expect(r.statusCode).toBe(200);
+    expect(await roleOf(userIdOf(r))).toBe("viewer");
+  });
+
+  it("the assignable set IS the oidc_default_role enum — read off the migrated database", async () => {
+    // The constant says it mirrors drizzle/0018_oidc.sql. Two copies of one closed set with
+    // nothing comparing them is how they drift: widening the enum without widening the
+    // constant makes a legal `default_role` unmappable, and the reverse hands SSO a role the
+    // column would refuse. This is the only place both copies are read at once.
+    const r = await h.db.raw.query<{ enumlabel: string }>(
+      `SELECT e.enumlabel FROM pg_enum e
+         JOIN pg_type t ON t.oid = e.enumtypid
+        WHERE t.typname = 'oidc_default_role'
+        ORDER BY e.enumsortorder`,
+    );
+    expect(r.rows.map((x) => x.enumlabel)).toEqual([...OIDC_ASSIGNABLE_ROLES]);
+  });
+
+  it("toAssignableRole accepts only the set, and never coerces", () => {
+    for (const role of OIDC_ASSIGNABLE_ROLES) expect(toAssignableRole(role)).toBe(role);
+    for (const bad of ["org_admin", "instance_operator", "authr", "", 7, null, undefined, {}, ["author"]]) {
+      expect(toAssignableRole(bad), JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it("a mapping that IS assignable still wins over defaultRole", async () => {
+    const cid = await newConnector(h.ids.teamA, "kc-ok", { "acme-devs": "author" });
+    const r = await login(cid, {
+      tk_sub: "kc-ok",
+      tk_email: "ok@acme.test",
+      tk_groups: "acme-devs",
+    });
+    expect(r.statusCode).toBe(200);
+    expect(await roleOf(userIdOf(r))).toBe("author");
   });
 });

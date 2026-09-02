@@ -3,7 +3,7 @@
  * this file only wires business logic onto that contract.
  */
 import { and, desc, eq } from "drizzle-orm";
-import { identityRoutes, NotFoundError } from "@testkite/contract";
+import { ForbiddenError, identityRoutes, NotFoundError } from "@testkite/contract";
 import { withTenant, type TkDb } from "../kernel/index.js";
 import { publicRoute, route, type RouteRegistration } from "../../http/types.js";
 import type { AuditPort } from "./audit-port.js";
@@ -13,7 +13,7 @@ import { apiTokens, memberships, users } from "./db/schema.js";
 import { createOidcConnector } from "./oidc/connector.js";
 import { effectiveScopes } from "./rbac/authorize.js";
 import type { AuthzCache } from "./rbac/cache.js";
-import { ROLE_PERMISSIONS } from "./rbac/permissions.js";
+import { canGrantRole, ROLE_PERMISSIONS } from "./rbac/permissions.js";
 
 /**
  * `cache` is a DEPENDENCY, not optional: changing a role / revoking a token without
@@ -243,6 +243,23 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
 
     route(byId("setMemberRole"), async ({ ctx, params, body }) => {
       const now = clock();
+      // Two escalation guards, BOTH before the UPDATE and both 403 rather than 404: the
+      // answer must not depend on whether the target membership exists, or `member:manage`
+      // would double as a membership oracle.
+      //
+      // (a) Nobody edits their own membership. Self-promotion is the shortest path from
+      //     `member:manage` to any role at all, and self-DEMOTION is refused by the same
+      //     rule on purpose — an operator who can move their own role in one direction can
+      //     move it back in the other.
+      if (ctx.userId !== null && ctx.userId === params.userId) {
+        throw new ForbiddenError("a member cannot change their own role");
+      }
+      // (b) The role written is clamped to what the CALLER's role may hand out
+      //     (rbac/permissions.ts::GRANTABLE_ROLES). Without this, `member:manage` alone
+      //     grants every role in the enum, `instance_operator` included.
+      if (!canGrantRole(ctx.role, body.role)) {
+        throw new ForbiddenError(`role ${ctx.role} cannot grant role ${body.role}`);
+      }
       const row = await withTenant(deps.db, { teamId: ctx.teamId }, async (tx) => {
         const updated = await tx
           .update(memberships)

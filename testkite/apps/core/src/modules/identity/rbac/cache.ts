@@ -31,6 +31,19 @@ export type CachedGrant = {
   readonly role: MembershipRole;
   readonly scopes: readonly Permission[];
   readonly cachedAt: number;
+  /**
+   * The CREDENTIAL's own lifetime, copied from `api_tokens` at lookup time — not the cache's.
+   * The 60s TTL bounds how stale a ROLE may be; it must never bound how stale "is this
+   * credential still alive?" may be. Without these two fields, a token that expired (or was
+   * revoked out-of-band) one second after being cached kept authenticating for the rest of
+   * the minute: the DB row said no, and nothing on the cache-hit path ever asked it.
+   *
+   * NOT an invalidation channel: another replica revoking a token still has to wait out the
+   * TTL there (that is M6's job). This is the half that needs no channel at all, because the
+   * answer was already in the row this process itself read.
+   */
+  readonly expiresAt: Date;
+  readonly revokedAt: Date | null;
 };
 
 export type AuthzCache = {
@@ -54,7 +67,15 @@ export function createAuthzCache(opts: {
     get(key) {
       const hit = store.get(key);
       if (hit === undefined) return undefined;
-      if (now() - hit.cachedAt > ttl) {
+      // Three independent reasons to refuse, all of them terminal for this entry:
+      // the cache went stale (TTL), the credential's own lifetime ran out, or it was
+      // revoked. The last two are properties of the CREDENTIAL, so they are checked
+      // against the wall clock, never against `cachedAt`.
+      if (
+        now() - hit.cachedAt > ttl ||
+        now() >= hit.expiresAt.getTime() ||
+        hit.revokedAt !== null
+      ) {
         store.delete(key);
         return undefined;
       }

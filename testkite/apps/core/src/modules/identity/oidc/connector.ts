@@ -34,7 +34,7 @@
  */
 import * as client from "openid-client";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { NotFoundError, UnauthorizedError } from "@testkite/contract";
+import { NotFoundError, UnauthorizedError, ValidationFailedError } from "@testkite/contract";
 import { withAuthRole, withTenant, type TkDb } from "../../kernel/index.js";
 import type { AuditPort } from "../audit-port.js";
 import {
@@ -109,6 +109,70 @@ async function configFor(row: ConnectorRow): Promise<client.Configuration> {
   return config;
 }
 
+/**
+ * The roles SSO may assign — EXACTLY the `oidc_default_role` enum of drizzle/0018_oidc.sql,
+ * and deliberately a SUBSET of `MembershipRole`. `role_mapping` is jsonb an operator typed
+ * into a connector row, and `/v1/auth/oidc/{id}/callback` is a PUBLIC route, so the value
+ * read out of it is neither validated nor privileged input:
+ *   - `org_admin` / `instance_operator` are real roles that SSO must never mint. Whoever
+ *     administers the IdP would otherwise be handing out org-level roles inside TestKite by
+ *     editing a group.
+ *   - anything else (a typo, a number, an object) is not a role at all, and casting it
+ *     through to the enum column turns one mistyped letter into a 22P02 — a 500 that any
+ *     unauthenticated caller can trigger by logging in.
+ * Both cases resolve the same way: the mapping does not apply, so `default_role` does.
+ */
+export const OIDC_ASSIGNABLE_ROLES: readonly MembershipRole[] = [
+  "team_admin",
+  "author",
+  "runner",
+  "viewer",
+];
+
+export function toAssignableRole(x: unknown): MembershipRole | null {
+  return OIDC_ASSIGNABLE_ROLES.find((r) => r === x) ?? null;
+}
+
+/**
+ * First of the IdP's groups that maps to a role SSO may assign, or null. A group whose
+ * mapped value is NOT assignable is skipped rather than treated as a match: "mapped to
+ * something unusable" and "not mapped" have to mean the same thing, or the fallback to
+ * `default_role` would depend on which mistake the operator made.
+ */
+function mappedRole(roleMapping: unknown, groups: readonly string[]): MembershipRole | null {
+  if (typeof roleMapping !== "object" || roleMapping === null || Array.isArray(roleMapping)) {
+    return null;
+  }
+  const table = new Map<string, unknown>(Object.entries(roleMapping));
+  for (const g of groups) {
+    const role = toAssignableRole(table.get(g));
+    if (role !== null) return role;
+  }
+  return null;
+}
+
+/**
+ * `/start` is a PUBLIC route, so `input.redirectUri` is attacker-controlled: whoever knows a
+ * connector id can ask the API to send the IdP a callback URL of their choosing, and the
+ * authorization code for that tenant then lands wherever they pointed it.
+ *
+ * The match is the WHOLE STRING against ONE entry. A prefix rule — the shortcut this function
+ * exists to refuse — readmits the same attack twice over: `https://allowed.test/cb` would
+ * admit `https://allowed.test/cb.attacker.test` (a different host entirely, because the dot
+ * continues the authority when the entry has no trailing slash) and `https://allowed.test/cb/..%2f…`
+ * (a different path). An allowlist that is not exact is not an allowlist.
+ *
+ * An EMPTY list refuses everything: connectors created before the column exists default to
+ * '{}' and must be filled in by an operator rather than silently keeping the old behaviour.
+ */
+function assertAllowedRedirect(row: ConnectorRow, redirectUri: string): void {
+  if (!row.redirectUris.includes(redirectUri)) {
+    throw new ValidationFailedError("redirectUri is not registered for this connector", [
+      "redirectUri must match one of the connector's registered redirect URIs exactly",
+    ]);
+  }
+}
+
 export type OidcConnector = {
   readonly start: (input: {
     readonly connectorId: string;
@@ -129,6 +193,9 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
       readonly redirectUri: string;
     }): Promise<{ readonly authorizationUrl: string; readonly state: string }> {
       const row = await loadConnector(deps, input.connectorId);
+      // BEFORE discovery and before a login state row exists: a refused redirect_uri must
+      // cost the IdP nothing and must leave nothing behind for a later callback to trade in.
+      assertAllowedRedirect(row, input.redirectUri);
       const config = await configFor(row);
       const codeVerifier = client.randomPKCECodeVerifier();
       const challenge = await client.calculatePKCECodeChallenge(codeVerifier);
@@ -183,11 +250,17 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
             nonce: idnOidcLoginStates.nonce,
             codeVerifier: idnOidcLoginStates.codeVerifier,
             expiresAt: idnOidcLoginStates.expiresAt,
+            redirectUri: idnOidcLoginStates.redirectUri,
           });
         return rows[0];
       });
       if (consumed === undefined) throw invalid;
       if (consumed.expiresAt.getTime() < now().getTime()) throw invalid;
+      // The allowlist is re-read HERE, from the connector as it stands now — not trusted
+      // from a state row that may be ten minutes old. Removing a redirect URI has to kill
+      // the logins already in flight through it, otherwise revocation only takes effect
+      // after the last outstanding state expires.
+      if (!row.redirectUris.includes(consumed.redirectUri)) throw invalid;
 
       const config = await configFor(row);
       let claims: Record<string, unknown>;
@@ -208,9 +281,7 @@ export function createOidcConnector(deps: OidcDeps): OidcConnector {
       if (subject.length === 0 || email.length === 0) throw invalid;
       const rawGroups = claims[row.claimGroups];
       const groups = Array.isArray(rawGroups) ? rawGroups.map(String) : [];
-      const mapping = row.roleMapping as Record<string, string>;
-      const mapped = groups.map((g) => mapping[g]).find((r): r is string => r !== undefined);
-      const role = (mapped ?? row.defaultRole) as MembershipRole;
+      const role: MembershipRole = mappedRole(row.roleMapping, groups) ?? row.defaultRole;
 
       // Standard OIDC claim, paired with `email`. The IdP not sending it ⇒ treated as NOT verified.
       const emailVerified = claims["email_verified"] === true;

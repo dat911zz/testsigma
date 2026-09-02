@@ -151,6 +151,42 @@ describe("auth hook", () => {
     expect(r.statusCode).not.toBe(403);
   });
 
+  it("a token that expires INSIDE the 60s cache window is refused on the next request", async () => {
+    // /v1/auth/me carries `permission: null` ⇒ NOT a HIGH action ⇒ it reads the cache. The
+    // first call seeds the entry; 31 seconds later the CREDENTIAL is dead but the ENTRY is
+    // still fresh (TTL 60s), and before this fix the cached grant carried no expiry of its
+    // own, so it kept authenticating for the rest of the minute. Measured on the same test
+    // before the fix: 200.
+    const first = await h.app.inject({
+      method: "GET", url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${h.tokens.shortLivedA}` },
+    });
+    expect(first.statusCode).toBe(200);
+
+    h.clock.advance(31_000);
+
+    const after = await h.app.inject({
+      method: "GET", url: "/v1/auth/me",
+      headers: { authorization: `Bearer ${h.tokens.shortLivedA}` },
+    });
+    expect(after.statusCode).toBe(401);
+  });
+
+  it("a live token is still served from the cache — the expiry check is not a blanket miss", async () => {
+    // The companion assertion to the one above: if refusing an expired grant had been
+    // written as "always re-read", the 60s TTL would be decorative and every request would
+    // pay a round-trip.
+    h.counters.reset();
+    for (let i = 0; i < 2; i += 1) {
+      const r = await h.app.inject({
+        method: "GET", url: "/v1/auth/me",
+        headers: { authorization: `Bearer ${h.tokens.shortLivedA}` },
+      });
+      expect(r.statusCode).toBe(200);
+    }
+    expect(h.counters.authLookups).toBe(1);
+  });
+
   it("every response carries a requestId for log tracing", async () => {
     const r = await h.app.inject({ method: "GET", url: "/v1/auth/me" });
     expect((r.json() as { requestId: string }).requestId.length).toBeGreaterThan(0);

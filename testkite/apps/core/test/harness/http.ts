@@ -40,8 +40,21 @@ export type TestApp = {
     adminB: string;
     /** org_admin role on team A — the ONLY role (alongside instance_operator) that can create a new team. */
     orgAdminA: string;
+    /**
+     * Expires 30 SECONDS after seeding — i.e. INSIDE the permission cache's 60s TTL. The
+     * only way to observe what a cached grant does when the credential itself dies while
+     * the entry is still fresh; every other token here outlives the whole suite.
+     */
+    shortLivedA: string;
   };
   readonly counters: { authLookups: number; reset: () => void };
+  /**
+   * The clock the AUTH PATH runs on — the permission cache and the authenticator share it,
+   * exactly as they share `Date` in production. Moving it is the only way to test a
+   * credential that expires inside the cache window without sleeping for real seconds.
+   * Reset by `seed()`, so a test that advances it cannot leak into the next one.
+   */
+  readonly clock: { readonly advance: (ms: number) => void };
   /** Wait for every `defer`red task (failed-login audit) to finish — see the note below. */
   readonly settleDeferred: () => Promise<void>;
   readonly seed: () => Promise<void>;
@@ -123,10 +136,15 @@ export async function makeTestApp(): Promise<TestApp> {
     }
   };
 
-  const cache = createAuthzCache({});
+  // One clock for both, offset from the real one: `expires_at` is written by Postgres'
+  // `now()`, so the fake must stay anchored to wall time rather than start from zero.
+  let clockOffsetMs = 0;
+  const authNow = (): Date => new Date(Date.now() + clockOffsetMs);
+  const cache = createAuthzCache({ now: () => authNow().getTime() });
   const authenticator = createAuthenticator({
     db: db.db,
     cache,
+    now: authNow,
     onLookup: () => {
       counters.authLookups += 1;
     },
@@ -167,6 +185,7 @@ export async function makeTestApp(): Promise<TestApp> {
     revokedA: "",
     adminB: "",
     orgAdminA: "",
+    shortLivedA: "",
   };
 
   async function issue(
@@ -195,6 +214,7 @@ export async function makeTestApp(): Promise<TestApp> {
   async function seed(): Promise<void> {
     // The PREVIOUS test's deferred work must finish before TRUNCATE, or it will sneak
     // an audit line into the middle of a later test.
+    clockOffsetMs = 0;
     await settleDeferred();
     await db.reset();
     cache.invalidateTeam(ids.teamA);
@@ -287,6 +307,14 @@ export async function makeTestApp(): Promise<TestApp> {
       [ids.teamA, expired.prefix, expired.tokenHash, ids.authorUser, pgTextArray(AUTHOR)],
     );
     tokens.expiredA = expired.secret;
+    // Alive now, dead in 30 seconds — inside the cache's 60s TTL. See `tokens.shortLivedA`.
+    const shortLived = mintTokenSecret();
+    await db.raw.query(
+      `INSERT INTO api_tokens (team_id,name,prefix,token_hash,kind,user_id,scopes,expires_at)
+       VALUES ($1,'short',$2,$3,'user_pat',$4,$5::text[], now() + interval '30 seconds')`,
+      [ids.teamA, shortLived.prefix, shortLived.tokenHash, ids.authorUser, pgTextArray(AUTHOR)],
+    );
+    tokens.shortLivedA = shortLived.secret;
   }
 
   await seed();
@@ -297,6 +325,11 @@ export async function makeTestApp(): Promise<TestApp> {
     ids,
     tokens,
     counters,
+    clock: {
+      advance: (ms: number): void => {
+        clockOffsetMs += ms;
+      },
+    },
     settleDeferred,
     seed,
     demoteAdminToViewer: async () => {

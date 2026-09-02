@@ -1,0 +1,1 @@
+ALTER TABLE "idn_oidc_connectors" ADD COLUMN "redirect_uris" text[] DEFAULT '{}' NOT NULL;

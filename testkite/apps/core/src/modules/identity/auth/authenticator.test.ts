@@ -10,7 +10,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { TkDb } from "../../kernel/index.js";
-import type { AuthzCache, CachedGrant } from "../rbac/cache.js";
+import { createAuthzCache, type AuthzCache, type CachedGrant } from "../rbac/cache.js";
 import { createAuthenticator } from "./authenticator.js";
 import { mintTokenSecret } from "./token.js";
 
@@ -32,6 +32,8 @@ const GRANT: CachedGrant = {
   role: "author",
   scopes: ["case:read"],
   cachedAt: 0,
+  expiresAt: new Date(4_102_444_800_000),
+  revokedAt: null,
 };
 
 function recordingCache(): { cache: AuthzCache; gets: string[] } {
@@ -63,6 +65,39 @@ describe("authenticator — permission cache key", () => {
     expect(principal).toMatchObject({ teamId: GRANT.teamId, role: "author" });
     expect(gets).toEqual([createHash("sha256").update(minted.secret).digest("hex")]);
     expect(gets).not.toContain(minted.secret);
+  });
+
+  it("a revoked token is refused on a cache hit", async () => {
+    // Composed with the REAL cache, because that is what production wires: the point is
+    // that a cached grant whose credential has since been revoked is NOT an answer. The
+    // authenticator then has nowhere to go but the authority — and `dbNeverUsed` turning
+    // that round-trip into a throw is exactly the proof wanted here: the request did not
+    // sail through on a stale grant.
+    const minted = mintTokenSecret();
+    const cache = createAuthzCache({});
+    cache.set(createHash("sha256").update(minted.secret).digest("hex"), {
+      ...GRANT,
+      revokedAt: new Date(),
+    });
+    const authenticator = createAuthenticator({ db: dbNeverUsed, cache });
+
+    await expect(authenticator.authenticate(minted.secret, { fresh: false })).rejects.toThrow(
+      /touched the DB/,
+    );
+  });
+
+  it("an expired token is refused on a cache hit", async () => {
+    const minted = mintTokenSecret();
+    const cache = createAuthzCache({});
+    cache.set(createHash("sha256").update(minted.secret).digest("hex"), {
+      ...GRANT,
+      expiresAt: new Date(Date.now() - 1_000),
+    });
+    const authenticator = createAuthenticator({ db: dbNeverUsed, cache });
+
+    await expect(authenticator.authenticate(minted.secret, { fresh: false })).rejects.toThrow(
+      /touched the DB/,
+    );
   });
 
   it("secret with the wrong format: touches neither cache nor DB", async () => {

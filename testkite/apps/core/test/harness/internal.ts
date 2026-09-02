@@ -65,7 +65,12 @@ const CHAIN_COUNT = 3;
 /** Four times the reaper's 30s dead threshold: nothing about this heartbeat is borderline. */
 const DEAD_HEARTBEAT_SECONDS = 120;
 
-const ENV: KernelEnv = {
+/**
+ * Exported so a suite that only needs to inspect HOW `buildInternalApp` was built (its logger
+ * wiring, say) can raise the plane on a database it already has, instead of migrating a second
+ * PGlite and compiling a run it will never look at.
+ */
+export const INTERNAL_TEST_ENV: KernelEnv = {
   NODE_ENV: "test",
   PORT: 8080,
   DATABASE_URL: "postgres://tk:pw@localhost:5432/testkite",
@@ -202,7 +207,7 @@ let shared: Shared | undefined;
 async function build(): Promise<Shared> {
   const t = await makeTestDb();
   const app = await buildInternalApp({
-    env: ENV,
+    env: INTERNAL_TEST_ENV,
     db: t.db,
     bootstrapTokenHash: createHash("sha256").update(BOOTSTRAP_TOKEN).digest(),
     claimClock: (): number => claimClockMs,

@@ -232,6 +232,19 @@ export const idnOidcConnectors = pgTable(
     clientId: text("client_id").notNull(),
     clientSecret: text("client_secret").notNull(),
     scopes: text("scopes").array().notNull(),
+    /**
+     * The redirect_uri ALLOWLIST. `/v1/auth/oidc/{id}/start` is a public route, so the
+     * `redirectUri` it receives is attacker-controlled: without this column the API would
+     * hand the IdP any callback URL asked of it, and the authorization code for somebody
+     * else's tenant would land on the attacker's host. Matching is whole-string (see
+     * oidc/connector.ts) — a prefix rule readmits the same attack through
+     * `https://allowed.example/cb.attacker.test`.
+     *
+     * DEFAULT '{}' means every connector that predates this column starts NO login until an
+     * operator fills the list in. That is deliberate: the alternative — backfilling
+     * "whatever was used last" — would preserve exactly the hole this closes.
+     */
+    redirectUris: text("redirect_uris").array().notNull().default([]),
     claimEmail: text("claim_email").notNull().default("email"),
     claimGroups: text("claim_groups").notNull().default("groups"),
     /** IdP group -> TestKite role. No match ⇒ defaultRole. */
