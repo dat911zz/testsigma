@@ -70,6 +70,25 @@
         vào OpenAPI công khai (hash: c11c437, 9450927)
 - [x] Soak thử: 200 chain synthetic, RSS ceilings giữ, không orphan chromium, API RSS phẳng
       (hash: 0360993 — T19; job CI `fleet-soak` chạy nightly 02:00 UTC, số đo ở "Exit criteria")
+      — **đính chính 02-09-2026, đọc ngay bên dưới: job nightly đó CHƯA TỪNG chạy.**
+
+### Đính chính 02-09-2026 — `fleet-soak` là job TRƠ (review-0902 Lô 2, hash `d5bd370`)
+
+Đo qua API GitHub: workflow `TestKite CI` có **147 run, 0 run sự kiện `schedule`**. GitHub chỉ phát
+`schedule` trên nhánh MẶC ĐỊNH (`dev`), mà `.github/workflows/testkite-ci.yml` còn chưa có mặt trên
+`dev` (`git cat-file -e origin/dev:.github/workflows/testkite-ci.yml` ⇒ absent). Hệ quả cho mọi câu
+có chữ "nightly" ở tài liệu này:
+
+- số soak 200 chain ghi ở "Exit criteria" là số chạy TAY trên box dev (uid 0, chromium KHÔNG
+  sandbox), không phải số của một job CI;
+- `test:host` (`test/host/chromium-sandbox.test.ts`, `cgroup-v2.test.ts`) và nửa "real chromium" của
+  `apps/runner/test/browser/playwright-engine.test.ts` **chưa chạy lần nào trong bất kỳ pipeline
+  nào** — `build-and-test` không cài chromium nên nửa đó luôn rơi vào `describe.skip`.
+
+`d5bd370` thêm `workflow_dispatch:` + nới `if:` của job để chạy tay được. Nhưng chừng đó CHƯA đủ:
+GitHub cũng đòi workflow phải có mặt trên nhánh mặc định thì mới dispatch được, nên điều kiện còn
+thiếu là ĐƯA WORKFLOW LÊN `dev` — một quyết định merge, không phải một dòng YAML. Ba exit criteria
+còn nợ host pilot vì thế vẫn nợ nguyên.
 
 ## Trả nợ kỹ thuật (31-08-2026)
 
