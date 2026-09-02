@@ -32,18 +32,23 @@ export type CachedGrant = {
   readonly scopes: readonly Permission[];
   readonly cachedAt: number;
   /**
-   * The CREDENTIAL's own lifetime, copied from `api_tokens` at lookup time — not the cache's.
-   * The 60s TTL bounds how stale a ROLE may be; it must never bound how stale "is this
-   * credential still alive?" may be. Without these two fields, a token that expired (or was
-   * revoked out-of-band) one second after being cached kept authenticating for the rest of
-   * the minute: the DB row said no, and nothing on the cache-hit path ever asked it.
+   * The CREDENTIAL's own deadline, copied from `api_tokens` at lookup time — not the cache's.
+   * The 60s TTL bounds how stale a ROLE may be; it must never bound how long a credential
+   * outlives its own expiry. Without this field, a token that expired one second after being
+   * cached kept authenticating for the rest of the minute: the DB row said no, and nothing on
+   * the cache-hit path ever asked it.
    *
-   * NOT an invalidation channel: another replica revoking a token still has to wait out the
-   * TTL there (that is M6's job). This is the half that needs no channel at all, because the
-   * answer was already in the row this process itself read.
+   * EXPIRY IS THE ONLY HALF A SNAPSHOT CAN ANSWER, which is why it is the only one stored
+   * here. It is a DEADLINE — already fixed in the row this entry was built from, so the wall
+   * clock alone can decide it later. Revocation is an EVENT that happens AFTER that read:
+   * the lookup filters `revoked_at IS NULL`, so a `revokedAt` copied alongside this field
+   * would be `null` in every entry this cache ever holds, and a check on it would be dead
+   * code dressed up as a guard. What actually bounds a revoked token: `invalidateTeam()`,
+   * called by the revokeToken handler in the process that served the revocation, and the
+   * 60s TTL everywhere else. Making revocation immediate ACROSS replicas needs a real
+   * invalidation channel — that is M6's job, not this file's.
    */
   readonly expiresAt: Date;
-  readonly revokedAt: Date | null;
 };
 
 export type AuthzCache = {
@@ -67,15 +72,11 @@ export function createAuthzCache(opts: {
     get(key) {
       const hit = store.get(key);
       if (hit === undefined) return undefined;
-      // Three independent reasons to refuse, all of them terminal for this entry:
-      // the cache went stale (TTL), the credential's own lifetime ran out, or it was
-      // revoked. The last two are properties of the CREDENTIAL, so they are checked
-      // against the wall clock, never against `cachedAt`.
-      if (
-        now() - hit.cachedAt > ttl ||
-        now() >= hit.expiresAt.getTime() ||
-        hit.revokedAt !== null
-      ) {
+      // Two independent reasons to refuse, both terminal for this entry: the cache went
+      // stale (TTL), or the credential's own deadline passed. The second is a property of
+      // the CREDENTIAL, so it is checked against the wall clock, never against `cachedAt`.
+      // Revocation is NOT checked here and cannot be — see `expiresAt` above.
+      if (now() - hit.cachedAt > ttl || now() >= hit.expiresAt.getTime()) {
         store.delete(key);
         return undefined;
       }

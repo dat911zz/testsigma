@@ -243,9 +243,11 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
 
     route(byId("setMemberRole"), async ({ ctx, params, body }) => {
       const now = clock();
-      // Two escalation guards, BOTH before the UPDATE and both 403 rather than 404: the
-      // answer must not depend on whether the target membership exists, or `member:manage`
-      // would double as a membership oracle.
+      // Three escalation guards, ALL of them before the UPDATE. (a) and (b) answer 403
+      // rather than 404: their answer must not depend on whether the target membership
+      // exists, or `member:manage` would double as a membership oracle. (c) is a statement
+      // about the target's CURRENT role, so it has to read the row — it sits inside the
+      // transaction below, next to the write it guards.
       //
       // (a) Nobody edits their own membership. Self-promotion is the shortest path from
       //     `member:manage` to any role at all, and self-DEMOTION is refused by the same
@@ -261,6 +263,31 @@ export function identityRouteRegistrations(deps: IdentityRouteDeps): readonly Ro
         throw new ForbiddenError(`role ${ctx.role} cannot grant role ${body.role}`);
       }
       const row = await withTenant(deps.db, { teamId: ctx.teamId }, async (tx) => {
+        // (c) The role being OVERWRITTEN is clamped by the SAME matrix as the role being
+        //     written. Guard (b) alone was half a rule: a team_admin may not CREATE an
+        //     org_admin, yet could still DESTROY one — deleting the only account above it
+        //     in the team, and with it the only party allowed to hand the role back
+        //     (org_admin is the lowest role that may grant team_admin). "Cannot create but
+        //     can erase" contradicts the comment on GRANTABLE_ROLES itself.
+        //
+        //     `FOR UPDATE` because this is a check-then-write: without the row lock a
+        //     concurrent promotion could land between the SELECT and the UPDATE, and the
+        //     UPDATE would overwrite a role this caller was never allowed to touch.
+        //
+        //     Unlike (a)/(b) this guard has to know the target exists, so it answers 404
+        //     for an unknown member — no new oracle: the UPDATE below already answered 404
+        //     for exactly that case before this guard existed.
+        const existing = await tx
+          .select({ role: memberships.role })
+          .from(memberships)
+          .where(and(eq(memberships.teamId, ctx.teamId), eq(memberships.userId, params.userId)))
+          .limit(1)
+          .for("update");
+        const currentRole = existing[0]?.role;
+        if (currentRole === undefined) throw new NotFoundError("member");
+        if (!canGrantRole(ctx.role, currentRole)) {
+          throw new ForbiddenError(`role ${ctx.role} cannot change a member with role ${currentRole}`);
+        }
         const updated = await tx
           .update(memberships)
           .set({ role: body.role })

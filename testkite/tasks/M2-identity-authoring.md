@@ -44,3 +44,28 @@
 - **Nghiệm thu bổ sung theo cảnh báo quy trình của triage (NIT-17):** chạy full suite **2 lượt liên tiếp**
   trên Postgres thật, kết quả giống hệt nhau — 688 test, 0 skip (verb-kit 12 · contract 83 ·
   run-compiler 179 · apps/core 387 · tools 27). Không còn cơ sở nghi test giòn.
+
+## Chốt sổ review 02-09-2026 (Lô 1 — an ninh identity)
+
+- **Cache quyền — CHỈ nửa HẾT HẠN được đóng, không phải nửa thu hồi.** `CachedGrant.expiresAt`
+  là một *deadline* đã nằm sẵn trong hàng `api_tokens` mà chính process này đọc, nên đồng hồ
+  tường tự quyết được về sau. Thu hồi thì không: truy vấn nạp cache lọc `revoked_at IS NULL`,
+  nên trường `revokedAt` chụp kèm **luôn luôn** là `null` và nhánh `hit.revokedAt !== null`
+  trong `get()` là **code chết** — đo được: GET /v1/auth/me ⇒ 200, `UPDATE api_tokens SET
+  revoked_at = now()` ngoài luồng, GET lại ⇒ vẫn 200. Đã bỏ trường + nhánh + 2 unit test
+  (`rbac/cache.test.ts`, `auth/authenticator.test.ts`) vốn chỉ xanh nhờ tự tay
+  `cache.set(..., { revokedAt })` — một test xanh mang đúng tên lỗ hổng đang mở là thứ khiến
+  lượt review sau bỏ qua nó. **Đính chính commit 9dc2ce1:** dòng "token hết hạn/*bị thu hồi*
+  vẫn qua được cache hit" chỉ đúng với nửa hết hạn.
+  Thu hồi hiện bị chặn bởi: `invalidateTeam()` gọi ngay trong process xử lý
+  `DELETE /v1/tokens/{id}` (chứng minh end-to-end ở `test/identity/token-routes.test.ts`:
+  200 → revoke → 401), và TTL 60s ở mọi replica khác. Tức thời **liên replica** cần kênh
+  invalidation thật ⇒ **M6**.
+- **setMemberRole — kẹp cả vai BỊ GHI ĐÈ, không chỉ vai được ghi.** Đo trước khi sửa:
+  `PATCH /v1/members/{orgAdminUser}` bằng token team_admin với `{role:"viewer"}` ⇒ **200**,
+  hàng `memberships` của org_admin thành `viewer`. Bất đối xứng "không tạo được org_admin
+  nhưng xoá được org_admin" trái chính comment của `GRANTABLE_ROLES`, và gỡ luôn bên duy nhất
+  có thể phục hồi vai (org_admin là vai thấp nhất cấp được team_admin). Nay handler
+  `SELECT … FOR UPDATE` vai hiện tại trong cùng transaction trước UPDATE (khoá hàng vì đây là
+  check-then-write) và đòi `canGrantRole(ctx.role, currentRole)`; không thoả ⇒ 403, không có
+  hàng ⇒ 404 y như hợp đồng cũ.

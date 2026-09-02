@@ -33,7 +33,6 @@ const GRANT: CachedGrant = {
   scopes: ["case:read"],
   cachedAt: 0,
   expiresAt: new Date(4_102_444_800_000),
-  revokedAt: null,
 };
 
 function recordingCache(): { cache: AuthzCache; gets: string[] } {
@@ -67,24 +66,10 @@ describe("authenticator — permission cache key", () => {
     expect(gets).not.toContain(minted.secret);
   });
 
-  it("a revoked token is refused on a cache hit", async () => {
-    // Composed with the REAL cache, because that is what production wires: the point is
-    // that a cached grant whose credential has since been revoked is NOT an answer. The
-    // authenticator then has nowhere to go but the authority — and `dbNeverUsed` turning
-    // that round-trip into a throw is exactly the proof wanted here: the request did not
-    // sail through on a stale grant.
-    const minted = mintTokenSecret();
-    const cache = createAuthzCache({});
-    cache.set(createHash("sha256").update(minted.secret).digest("hex"), {
-      ...GRANT,
-      revokedAt: new Date(),
-    });
-    const authenticator = createAuthenticator({ db: dbNeverUsed, cache });
-
-    await expect(authenticator.authenticate(minted.secret, { fresh: false })).rejects.toThrow(
-      /touched the DB/,
-    );
-  });
+  // No revocation twin of the test below, on purpose: the loader filters
+  // `revoked_at IS NULL`, so a cached grant can never carry a revocation, and the only way
+  // to write that test is to hand `set()` a state production never reaches. See
+  // rbac/cache.ts::CachedGrant.expiresAt for what does bound a revoked token.
 
   it("an expired token is refused on a cache hit", async () => {
     const minted = mintTokenSecret();

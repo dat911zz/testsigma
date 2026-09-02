@@ -75,11 +75,12 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
             userId: apiTokens.userId,
             kind: apiTokens.kind,
             scopes: apiTokens.scopes,
-            // Selected even though the WHERE clause above already filters on both: they are
-            // what the cache stores so that a hit can answer "still alive?" without a
-            // round-trip. Reading them here means the cache never has to guess.
+            // Selected even though the WHERE clause below already filters on it: this is
+            // what the cache stores so that a hit can tell on its own when the credential's
+            // deadline passes, without a round-trip. `revoked_at` is deliberately NOT
+            // selected — the same WHERE pins it to `null`, so caching it would cache a
+            // constant (see rbac/cache.ts::CachedGrant.expiresAt).
             expiresAt: apiTokens.expiresAt,
-            revokedAt: apiTokens.revokedAt,
           })
           .from(apiTokens)
           .where(
@@ -125,7 +126,6 @@ export function createAuthenticator(deps: AuthenticatorDeps): Authenticator {
         scopes: principal.scopes,
         cachedAt: 0,
         expiresAt: found.tok.expiresAt,
-        revokedAt: found.tok.revokedAt,
       });
       // last_used_at is updated by a separate UPDATE (not on the auth hot path):
       // the auth path only has SELECT privileges, so writing belongs to withTenant at the route layer.

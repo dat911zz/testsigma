@@ -19,7 +19,6 @@ const grant = (teamId: string) =>
     scopes: ["case:read"] as const,
     cachedAt: 0,
     expiresAt: NEVER,
-    revokedAt: null,
   });
 
 describe("permission cache", () => {
@@ -57,11 +56,12 @@ describe("permission cache", () => {
     expect(c.get("tok-1"), "expires_at is reached ⇒ the entry is gone, TTL or not").toBeUndefined();
   });
 
-  it("a revoked token is refused on a cache hit", () => {
-    const c = createAuthzCache({ now: () => 0 });
-    c.set("tok-1", { ...grant("team-a"), revokedAt: new Date(0) });
-    expect(c.get("tok-1")).toBeUndefined();
-  });
+  // There is deliberately NO "a revoked token is refused on a cache hit" test here. Such a
+  // test can only be written by calling `set()` with a non-null revocation, a state the
+  // production loader cannot produce (it filters `revoked_at IS NULL`), so it would be a
+  // green test carrying the name of a hole that is still open. Revocation is bounded by
+  // `invalidateTeam` in-process — covered end to end in test/identity/token-routes.test.ts
+  // — and by the 60s TTL across replicas until M6 adds a real invalidation channel.
 
   it("invalidateTeam removes every entry for that team, keeps other teams", () => {
     const c = createAuthzCache({ now: () => 0 });

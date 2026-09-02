@@ -94,6 +94,27 @@ describe("PATCH /v1/members/{userId} — role escalation guards", () => {
     expect(await roleOf(h.ids.authorUser)).toBe("author");
   });
 
+  it("team_admin cannot demote an org_admin (403)", async () => {
+    // Clamping only the role being WRITTEN left the role being OVERWRITTEN wide open, and
+    // the two are not the same guard. `GRANTABLE_ROLES` says a team_admin is not trusted
+    // enough to CREATE an org_admin; before this fix it could still DESTROY one — remove
+    // the single account standing above it in this team, which is also the only party that
+    // can hand the role back (org_admin is the lowest role that may grant team_admin), and
+    // leave behind an ordinary-looking `member.role_change` audit line. Measured on this
+    // exact request before the fix: 200, and the membership row read back `viewer`.
+    const r = await patch(h.tokens.adminA, h.ids.orgAdminUser, "viewer");
+    expect(r.statusCode).toBe(403);
+    expect(await roleOf(h.ids.orgAdminUser)).toBe("org_admin");
+  });
+
+  it("org_admin CAN demote a team_admin — the new guard is a ceiling, not a freeze", async () => {
+    // The companion to the test above: refusing every overwrite would have been the easy
+    // way to make it pass, and would have broken the one demotion the matrix does allow.
+    const r = await patch(h.tokens.orgAdminA, h.ids.adminUser, "viewer");
+    expect(r.statusCode).toBe(200);
+    expect(await roleOf(h.ids.adminUser)).toBe("viewer");
+  });
+
   it("an unknown member is still 404, and the escalation guard runs FIRST", async () => {
     // Order matters: answering 404 for a role the caller may not grant would turn this
     // route into a membership oracle for anyone holding `member:manage`.
