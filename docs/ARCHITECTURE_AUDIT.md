@@ -409,6 +409,13 @@ Ba mục nợ có địa chỉ của M3 được trả trong một đợt riêng
 - **Hàng rào cấp KIỂU chỉ chứng minh cái nó NHÌN thấy.** `FieldMap` bắt được field optional mới bị rơi khi rebuild DTO↔domain, nhưng không biết thân hàm có CHÉP hay không ⇒ luôn phải kèm một tầng test pin tập entry `null`; và guard phải tự chứng minh không rỗng bằng fixture ĐỎ chạy qua `ts.createProgram` (`81e8c06`).
 - **Một bất biến an ninh phát biểu SAI còn tệ hơn không phát biểu.** "Không login nào giữ đồng thời hai vai `testkite_*`" cấm đúng cấu hình duy nhất chạy được (một pool + `SET LOCAL ROLE`); cái phải cấm là **kế thừa**, mà từ PG16 kế thừa nằm trên **TỪNG cạnh grant** nên `ALTER ROLE … NOINHERIT` KHÔNG sửa được grant đã tồn tại — đo được `rolinherit = false` mà vẫn đọc xuyên team (`d8141aa`).
 
+### 10.4. Rà soát toàn cục M1-M3 (02-09-2026, `9dc2ce1` `8605f55` `d5bd370` `861ab4f`, chi tiết ở `testkite/tasks/REVIEW-2026-09-02.md`)
+
+- **Một cổng chỉ tồn tại nếu phạm vi của nó TỰ MỞ RỘNG.** Cổng ngôn ngữ liệt kê tay từng app nên `apps/ui` — sinh sau cổng — chưa bao giờ bị quét; tệ hơn, `grep` trên một path không tồn tại exit **2** ngay cả khi ĐÃ in match, mà `if` đọc exit 2 là "sạch". Luật: GLOB + `nullglob` để cây mới **tự vào** phạm vi, và không tin một cổng xanh nào chưa có negative control in ra đúng vi phạm.
+- **Một job CI có `if:` đúng vẫn có thể CHƯA TỪNG chạy một lần nào.** `schedule` — và cả `workflow_dispatch` — chỉ sống trên nhánh mặc định; workflow chưa có trên `dev` ⇒ `fleet-soak` trơ suốt M3 trong khi tài liệu trích dẫn nó như bằng chứng đã có. Luật: trước khi viện dẫn một job, **đếm số run THẬT của nó**, đừng đọc YAML.
+- **Test khẳng định một đại lượng TOÀN TIẾN TRÌNH dưới `singleFork` là đỏ giả theo thiết kế.** `process.getActiveResourcesInfo()` là biến chung của cả 774 test apps/core, nên hai lần CI đỏ rơi vào commit chỉ sửa markdown. Sửa là **tiêm cổng thời gian** (`setIntervalFn`/`clearIntervalFn`), không phải sửa `close()` vốn đã đúng thứ tự.
+- **Một trường chụp lúc nạp cache không bao giờ phản ánh được sự kiện xảy ra SAU đó.** `revokedAt` trong `CachedGrant` là code chết vì truy vấn nguồn đã lọc `IS NULL`, và **hai test xanh mang đúng tên lỗ hổng đang mở** còn nguy hiểm hơn chính lỗ hổng. Cùng họ: guard kẹp giá trị được GHI mà quên kẹp giá trị BỊ GHI ĐÈ ⇒ `team_admin` hạ bệ được `org_admin`.
+
 ---
 
 ## Phụ lục A — File đáng chú ý nhất
