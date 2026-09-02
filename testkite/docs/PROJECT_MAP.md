@@ -28,7 +28,7 @@ nằm ở đây.
 
 **Luật rút gọn (transitive reduction).** `module-dag.json` liệt kê allow-list ĐẦY ĐỦ — `results`
 ghi cả chín module dưới nó — vì `eslint-plugin-boundaries` cần từng đích được nêu tên. Vẽ y
-nguyên là 61 cạnh trên 13 nút: một bức hình không ai đọc nổi, tức là không có hình. Nên hình
+nguyên là 71 cạnh trên 13 nút: một bức hình không ai đọc nổi, tức là không có hình. Nên hình
 dưới chỉ giữ **cạnh trực tiếp tối thiểu**: cạnh `A --> B` bị bỏ khi A còn một đích trực tiếp
 khác đã với tới được B. Cạnh bị bỏ VẪN được phép — cứ đi theo mũi tên là ra. Mỗi mũi tên đọc
 là **"A được phép import B"**; chiều ngược lại và chiều ngang không có ngoại lệ, đi bằng domain
@@ -295,9 +295,9 @@ có một fixture âm; cùng input ⇒ cùng `contentHash`). `fixtures/` cố ý
 
 Op registry thay cho `Class.forName` của Testsigma: verb là DATA, op là CODE, compiler bind ở
 compile-time. Một file `src/index.ts`: `registerVerb`, `getVerb`, `allVerbs`, `validateArgs`,
-kiểu `VerbDefinition`/`OpContext`/`OpResult`. **Ba lần gọi `registerVerb`** — trong đó 2 op còn
-`throw new Error("TODO(M4): ...")` ở thân hàm. 35 verb theo census sản xuất là mục tiêu **M4**,
-không phải hiện trạng.
+kiểu `VerbDefinition`/`OpContext`/`OpResult`. **Hai lần gọi `registerVerb`** — `web.click` và
+`web.enter` (55,7% số step sản xuất), CẢ HAI op còn `throw new Error("TODO(M4): ...")` ở thân
+hàm: chưa op nào chạy được. 35 verb theo census sản xuất là mục tiêu **M4**, không phải hiện trạng.
 
 ### `tools/` — test chạy từ gốc workspace (`pnpm run test:tools`)
 

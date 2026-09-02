@@ -29,7 +29,7 @@ testkite/
 ├── packages/
 │   ├── contract/      # @testkite/contract — zod là NGUỒN hợp đồng; OpenAPI 3.1 sinh ra + commit
 │   ├── run-compiler/  # @testkite/run-compiler — pure function, 7 phase (1→7), golden-tested
-│   └── verb-kit/      # @testkite/verb-kit — op registry (3 verb đăng ký; 35 verb là M4)
+│   └── verb-kit/      # @testkite/verb-kit — op registry (2 verb đăng ký, thân còn TODO M4; 35 verb là M4)
 ├── docs/              # runbook vận hành + PROJECT_MAP.md (bản đồ cấu trúc)
 ├── tasks/             # BACKLOG theo milestone M1→M9 + open-questions (checklist làm việc)
 ├── ownership.json     # module → prefix bảng (cưỡng chế bằng lint, không phải văn hóa)

@@ -60,8 +60,11 @@ function reachableFrom(graph: Readonly<Record<string, readonly string[]>>, start
 /**
  * TRANSITIVE REDUCTION. `module-dag.json` spells out the allow relation in FULL —
  * `results` lists all nine modules below it — because eslint-plugin-boundaries needs
- * every permitted target enumerated. Drawn literally that is 61 edges into 13 nodes:
- * a picture nobody can read, which is the same as no picture.
+ * every permitted target enumerated. Drawn literally, that allow-list is several times
+ * denser than the shape it encodes: a picture nobody can read, which is the same as no
+ * picture. The exact size is counted from the file by the suite below, never typed here,
+ * because a hand-typed count is the thing that rots (the map shipped "61 edges" against
+ * a file holding 71).
  *
  * An edge `from -> to` is dropped when `from` has another direct target that already
  * reaches `to`, i.e. when the edge adds no permission the rest of the graph does not
@@ -176,6 +179,33 @@ describe("the mermaid graph is generated, not drawn", () => {
     const graph = mermaidFromDag({ results: [], "mcp-gateway": ["results"] });
     expect(graph).toContain('mcp_gateway["mcp-gateway"]');
     expect(graph).toContain("mcp_gateway --> results");
+  });
+});
+
+/** Strips combining marks so Vietnamese prose can be matched by an ASCII pattern. */
+const deaccent = (text: string): string => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/** Size of the FULL allow relation: every target every module is permitted to import. */
+const totalEdges = (graph: Readonly<Record<string, readonly string[]>>): number =>
+  Object.values(graph).reduce((sum, targets) => sum + targets.length, 0);
+
+/**
+ * The reduced picture is only justified by how big the unreduced one would be, so the map
+ * states that size in prose — a claim about `module-dag.json` that nothing was checking.
+ * It was wrong on arrival ("61 edges" against a file holding 71), in the one paragraph
+ * whose job is to describe the DAG exactly. The map is Vietnamese and this tree must stay
+ * English, so the prose is deaccented before matching rather than quoted with its marks.
+ */
+describe("the map counts the allow-list instead of quoting a remembered number", () => {
+  it("states the edge and node totals module-dag.json actually holds", () => {
+    const match = /(\d+) canh tren (\d+) nut/.exec(deaccent(readMap()));
+    if (match === null) {
+      throw new Error(
+        'PROJECT_MAP.md no longer states the full allow-list size as "<N> canh tren <M> nut". That sentence is what justifies drawing a reduced graph; keep it, or move this gate to whatever replaced it.',
+      );
+    }
+    expect(Number(match[1]), "PROJECT_MAP.md states an edge count module-dag.json does not hold").toBe(totalEdges(dag));
+    expect(Number(match[2]), "PROJECT_MAP.md states a module count module-dag.json does not hold").toBe(Object.keys(dag).length);
   });
 });
 
